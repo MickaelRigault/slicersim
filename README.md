@@ -24,7 +24,7 @@ sim.update(redshift=0.7)
 lbda, flux_2, variance_2 = sim.get_spectrum(incl_error=True)
 ```
 
-and show your simulation spectra
+and show your simulated spectra
 ```python
 import matplotlib.pyplot as plt
 import numpy as np
