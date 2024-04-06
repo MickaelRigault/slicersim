@@ -3,7 +3,7 @@ Simulation of Slicer observations
 
 # Installation
 ```bash
-git clone
+git clone https://github.com/MickaelRigault/slicersim.git
 cd slicersims
 pip install .
 ```
