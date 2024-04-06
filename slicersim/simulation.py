@@ -404,7 +404,7 @@ class Simulation:
         if incl_error:
             target_signal += np.random.normal(loc=0, scale=np.sqrt(target_variance))
 
-        return target_signal, target_variance  # (nlbda,) [ADU, ADU²]
+        return self.spectrograph.lbda, target_signal, target_variance  # (nlbda,) [ADU, ADU²]
 
     def get_snr(self, switch_off=[]):
         """
@@ -413,7 +413,7 @@ class Simulation:
         See :meth:`get_spectrum`.
         """
 
-        signal, variance = self.get_spectrum(switch_off=switch_off)
+        _, signal, variance = self.get_spectrum(switch_off=switch_off)
 
         return signal / variance**0.5
 
@@ -443,7 +443,7 @@ class Simulation:
         if frame == "rest" and self.scene.redshift is not None:
             lbda_range = lbda_range * (1 + self.scene.redshift)
 
-        signal, variance = self.get_spectrum(**kwargs) # (2, lbda) in [ADU, ADU²]
+        _, signal, variance = self.get_spectrum(**kwargs) # (2, lbda) in [ADU, ADU²]
 
         band_sigs, band_vars = [], []
         for wmin, wmax in lbda_range:
@@ -556,7 +556,7 @@ class Simulation:
         """
 
         # data [ADU]
-        sig, var = self.get_spectrum(switch_off=switch_off)
+        _, sig, var = self.get_spectrum(switch_off=switch_off)
         dsig = np.where(var >= 0, var ** 0.5, np.Inf)
 
         # Axes
