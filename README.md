@@ -1,6 +1,12 @@
 # slicersim
 Simulation of Slicer observations
 
+# Installation
+```bash
+git clone
+cd slicersims
+pip install .
+```
 
 # Quick look
 
@@ -39,3 +45,7 @@ ax.legend(frameon=False, fontsize="small")
 ax.set(xlabel=r"wavelength [$\AA$]", ylabel="flux [ADU]")
 ```
 ![readme example](docs/gallery/spectra_examples.png)
+
+
+# Credits
+_adapted from the original MLAPerf v:0.18.0. Y. Copin and M. Rigault_
