@@ -48,4 +48,4 @@ ax.set(xlabel=r"wavelength [$\AA$]", ylabel="flux [ADU]")
 
 
 # Credits
-_adapted from the original MLAPerf v:0.18.0. Y. Copin and M. Rigault_
+_adapted from the original MLAPerf v:0.18.0 developed by Y. Copin (lead) and M. Rigault_
