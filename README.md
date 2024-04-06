@@ -36,5 +36,6 @@ ax.fill_between(lbda,
                 flux_2+np.sqrt(variance_2), alpha=0.3,
                label="z=0.7")
 ax.legend(frameon=False, fontsize="small")
-ax.set(xlabel=r"wavelength [$\AA$]", ylabel="flux")
+ax.set(xlabel=r"wavelength [$\AA$]", ylabel="flux [ADU]")
 ```
+![readme example](docs/gallery/spectra_examples.png)
