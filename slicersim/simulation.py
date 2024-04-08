@@ -462,6 +462,10 @@ class Simulation:
 
         # return df
 
+    def get_times(self):
+        """ dict of the simulation detector times [in sec] """
+        return  {k: getattr(self.detector, k) for k in ["integration_time","exposure_time", "tframe", "tgroup"]}
+    
     def estimate_variance_contribution(self, lbda_range, frame="rest",
                                        statistic=np.nanmean):
         """
