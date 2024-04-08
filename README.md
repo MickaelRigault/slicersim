@@ -38,3 +38,8 @@ ax.fill_between(lbda,
 ax.legend(frameon=False, fontsize="small")
 ax.set(xlabel=r"wavelength [$\AA$]", ylabel="flux")
 ```
+![readme example](docs/gallery/spectra_examples.png)
+
+
+# Credits
+_adapted from the original MLAPerf v:0.18.0 developed by Y. Copin and M. Rigault_
