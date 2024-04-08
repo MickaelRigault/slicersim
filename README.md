@@ -76,4 +76,4 @@ sim.get_times()
 ```
 
 # Credits
-_adapted from the original MLAPerf v:0.18.0 developed by Y. Copin and M. Rigault_
+Developped by M. Rigault ; _adapted from the original MLAPerf v:0.18.0 developed by Y. Copin and M. Rigault_
