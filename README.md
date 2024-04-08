@@ -63,6 +63,17 @@ print(f"with {ngroup} groups you reach a snr of {snr:.2f}")
 ```bash
 with 9 groups you reach a snr of 10.61
 ```
+so let's set the simulation to this ngroup and get the exposure times information
+```python
+sim.update(ngroup=ngroup)
+sim.get_times()
+```
+```bash
+{'integration_time': 679.2,
+ 'exposure_time': 724.48,
+ 'tframe': 2.83,
+ 'tgroup': 45.28}
+```
 
 # Credits
 _adapted from the original MLAPerf v:0.18.0 developed by Y. Copin and M. Rigault_
