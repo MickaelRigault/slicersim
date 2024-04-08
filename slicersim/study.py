@@ -187,8 +187,8 @@ class Study:
         """
 
         changed_parameters = list(kwargs.keys())
-        if "ABmag" in changed_parameters:
-            changed_parameters[changed_parameters.index("ABmag")] = "redshift"
+        if "abmag" in changed_parameters:
+            changed_parameters[changed_parameters.index("abmag")] = "redshift"
 
         origin = self.simu.get_parameter( changed_parameters ) # origin parameters
         self.simu.update(**kwargs) # set the new config

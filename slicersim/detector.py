@@ -37,9 +37,9 @@ class Detector:
     """
 
     #: Mutable parameters (list)
-    mutable_parameters = ('ngroup', 'nmd', 'tframe',
+    mutable_parameters = ['ngroup', 'nmd', 'tframe',
                           'ron', 'gain', 'qe', 'dark',
-                          'saturation', 'variance_model')
+                          'saturation', 'variance_model']
     # Do not mutate px_size, fixed to 10 µm in spectrograph
 
     def __init__(self, config, lbda=10_000., verbose=False):
