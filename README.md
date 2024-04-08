@@ -17,10 +17,10 @@ config = slicersim.iotools.get_config(scene='supernova.toml')
 sim = slicersim.Simulation.from_config(config)
 
 # update the simulation (see sim.mutable_parameters)
-sim.update(redshift=1.2)
+sim.update(target__redshift=1.2)
 lbda, flux_1, variance_1 = sim.get_spectrum(incl_error=True)
 
-sim.update(redshift=0.7)
+sim.update(target__redshift=0.7)
 lbda, flux_2, variance_2 = sim.get_spectrum(incl_error=True)
 ```
 

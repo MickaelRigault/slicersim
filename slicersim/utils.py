@@ -7,6 +7,28 @@ __author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
 import numpy as np
 
 
+def inspect_func( func ):
+    """ inspect the given function parameters
+    
+    Parameters
+    ----------
+    func: function
+        function to inspect
+
+    Returns
+    -------
+    list, dict
+       - names of the parameters (args and kwargs)
+       - dict of the kwargs only.
+    """
+    import inspect
+    inspect_full = inspect.getfullargspec( func )
+    all_params = inspect_full.args
+    # kwargs_ are the default function values
+    kwargs_ = dict(zip(all_params[::-1], inspect_full.defaults[::-1]))
+    return all_params, kwargs_
+
+
 def restride(arr, binfactor, squeezed=True, flattened=False):
     """
     Rebin ND-array `arr` by `binfactor`.

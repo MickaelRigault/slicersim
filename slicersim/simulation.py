@@ -13,8 +13,6 @@ import warnings
 import pprint
 
 import numpy as np
-
-from .iotools import get_config
 from .scene import Scene
 from .spectrograph import Spectrograph
 from .detector import Detector
@@ -38,29 +36,12 @@ class Simulation:
     the resulting target Signal-to-Noise Ratio.
     """
 
-    #: Mutable parameters (dict by origin)
-    simu_mutable_parameters = {
-        "scene": Scene.mutable_parameters,                # scene parameters
-        "spectrograph": Spectrograph.mutable_parameters,  # spectrograph parameters
-        "detector": Detector.mutable_parameters,          # detector parameters
-        "extraction": (                                   # extraction parameters
-            'xdisp_width', 'xdisp_width_insigma',
-            'aperture_radius', 'aperture_radius_insigma',
-            "nramp",
-        )}
-
-    #: Mutable parameters (concatenated list)
-    mutable_parameters = (simu_mutable_parameters["scene"] +
-                          simu_mutable_parameters["spectrograph"] +
-                          simu_mutable_parameters["detector"] +
-                          simu_mutable_parameters["extraction"])
-
     def __init__(self,
                  scene=None,
                  spectrograph=None,
                  detector=None,
                  extraction={},
-                 meta={}, **kwargs):
+                 meta={}):
         """
         A simulation is made of 4 elements:
 
@@ -81,7 +62,7 @@ class Simulation:
         self.spectrograph = spectrograph  #: Spectrograph instance
         self.detector = detector          #: Detector instance
         self.extraction = extraction      #: Extraction parameters
-        self.meta = {**meta, **kwargs}    #: Meta-parameters
+        self._in_meta = meta              #: Meta-parameters
 
     def __str__(self):
 
@@ -106,10 +87,12 @@ class Simulation:
 
         return s
 
+    def __repr__(self):
+        return self.__str__()
+        
     @classmethod
-    def from_config(cls, config=None):
-        """
-        Initiate simulation from config nested dictionary.
+    def from_config(cls, config):
+        """ Initiate simulation from config nested dictionary.
 
         :param dict config: top level configuration containing
                             configurations for scene, spectrograph, detector
@@ -119,9 +102,6 @@ class Simulation:
         :return: scene instance
         """
 
-        if not config:
-            config = get_config()  # Use default config
-
         # First initialize spectrograph to set wavelengths, then other elements
         # using spectrograph wavelengths.
 
@@ -129,7 +109,7 @@ class Simulation:
         spectrograph = Spectrograph.from_config(config["spectrograph"])
 
         # Initialize the scene from config (wavelength from spectrograph)
-        scene = Scene.from_config(config["scene"], spectrograph.lbda)
+        scene = Scene.from_config(config["scene"], lbda=spectrograph.lbda)
 
         # Initialize the detector from config
         detector = Detector.from_config(config["detector"], spectrograph.lbda)
@@ -142,65 +122,69 @@ class Simulation:
                    detector=detector,
                    extraction=extraction,
                    meta=config)  # Store config dict in meta
-
-    @property
-    def cube_shape(self):
-        """
-        Shape of the generated 3d-cube (nlbda, ny, nx).
-        """
-
-        return (self.spectrograph.nlbda,
-                self.spectrograph.ny,
-                self.spectrograph.nx)
-
-    @property
-    def observing_time(self):
-        """
-        Total observing time, i.e. `exptime * nramp`.
-        """
-
-        return self.detector.exposure_time * self.extraction["nramp"]
-
+                   
+    # =============== #
+    #   Methods       #
+    # =============== #
+    def _fetch_mutable_parameters(self, key):
+        """ """
+        mutable_ = [l for l in self.mutable_parameters if key in l]
+        if len(mutable_)==0:
+            return None
+        
+        return mutable_
+    
     def update(self, **kwargs):
-        """
-        Update any mutable parameter of the simulation.
+        """ Update any mutable parameter of the simulation.
 
-        This will guess the origin of the parameters from
-        :attr:`simu_mutable_parameters` origin-indexed dict.
+        for convinience, the update method respects the django '__' format, 
+        such that, e.g. 'target__phase' is understood as 'target.phase'.
+        This way, one can do:
+        >>> self.update(target__phase = -1)
 
-        :param dict kwargs: parameter names and values
+        for convinience, you can specify a shorten name, like "phase". 
+        If the correspondance to a mutable_parameters is uniquen this will accept it.
+        >>> self.update(phase = -1)
+
         """
 
         updates_scene = {}
         updates_detector = {}
         updates_spectrograph = {}
         updates_extraction = {}
-
+        
         for k, v in kwargs.items():
+            k = k.replace("__", ".") # django like 
             if k not in self.mutable_parameters:
-                warnings.warn(f"Parameter {k!r} is not mutable.")
-                continue
+                k = self._fetch_mutable_parameters(k)
+                if k is None:
+                    warnings.warn(f"Parameter {k!r} is not mutable.")
+                    continue
+                
+                if len(k) == 1:
+                    k = k[0]
+                else:
+                    warnings.warn(f"Parameter {k} is not well defined. several correspondance {k}.")
+                    continue
+            
             if v is None:       # Nothing to do
                 continue
-            if k in self.simu_mutable_parameters["scene"]:
+            
+            if k in self.scene.mutable_parameters:
                 updates_scene[k] = v
-            elif k in self.simu_mutable_parameters["detector"]:
-                updates_detector[k] = v
-            elif k in self.simu_mutable_parameters["spectrograph"]:
+                
+            elif k.startswith("detector."):
+                updates_detector[k.replace("detector.","")] = v
+                
+            elif k in self.spectrograph.mutable_parameters:
                 updates_spectrograph[k] = v
-            elif k in self.simu_mutable_parameters["extraction"]:
-                updates_extraction[k] = v
+                
             else:
-                raise ValueError(f"Unknown simulation parameter {k!r}.")
+                updates_extraction[k] = v
+
 
         # Update spectrograph 1st because it sets the wavelengths
         self.spectrograph.update(**updates_spectrograph)
-
-        if ({'spectral_range', 'spectral_resolution'} &
-            set(updates_spectrograph)):  # Updates of spectral quantities
-            updates_scene["lbda"] = self.spectrograph.lbda
-            updates_detector["lbda"] = self.spectrograph.lbda
-
         self.scene.update(**updates_scene)
         self.detector.update(**updates_detector)
 
@@ -209,26 +193,28 @@ class Simulation:
             **updates_extraction,
             spatial_sigma=self.spectrograph.spatial_sigma,
             spectral_sigma=self.spectrograph.spectral_sigma)
+        
         self.extraction.update(**updates_extraction)
 
         # Do NOT update meta, so reset still works as expected.
 
     def reset(self, which="*"):
+        """ reset the simulation element at their initial config value.
+
+        Careful, this creates a new element element and erases the current one.
+
+        Parameters
+        ----------
+        which: str, list
+            element to reset. could be '*'/'all' or a key of
+            :attr:`Simulation._elements`.
         """
-        Reset the simulation component at their initial config value.
 
-        Careful, this creates a new component element and erases the current one.
-
-        :param str or list which: component to reset.
-            could be '*'/'all' or a key of
-            :attr:`Simulation.simu_mutable_parameters`.
-        """
-
-        if which not in ['all', '*'] + list(self.simu_mutable_parameters.keys()):
+        if which not in ['all', '*'] + list(self._elements):
             raise ValueError(f"cannot parse the '{which}' reset.")
 
         if which in ['all', '*']:
-            which = self.simu_mutable_parameters.keys()  # Reset all components
+            which = self._elements  # Reset all elements
 
         if "spectrograph" in which:
             self.spectrograph = Spectrograph.from_config(
@@ -245,11 +231,13 @@ class Simulation:
         if "extraction" in which:
             self.extraction = self.meta.get("extraction")
 
+    # -------- #
+    #  GETTER  #
+    # -------- #
     def get_parameter(self, which=None, default=None, as_dict=True):
-        """
-        Get the value of a parameter of the simulation.
+        """ shortcut to get simulation parameter(s).
 
-        Should be an attribute of one of the component of the simulation,
+        Should be an attribute of one of the element of the simulation,
         e.g. `gain` from `Simulation.detector.gain`.
 
         :param str which: parameter name (or list of)
@@ -260,10 +248,10 @@ class Simulation:
 
         if which is None:       # Get all of them
             which = [ item
-                      for sublist in self.simu_mutable_parameters.values()
+                      for sublist in self._elements
                       for item in sublist ]
 
-        if np.ndim(which):      # If a list, loop over elements
+        if np.ndim(which):  # If a list, loop over elements
             return { param: self.get_parameter(param, as_dict=False)
                      for param in which }
 
@@ -275,10 +263,10 @@ class Simulation:
         if which == "ngroup":
             return self.detector.nmd[0]
 
-        # Otherwise, look at individual components
-        components = ["scene", "spectrograph", "detector"]
-        for comp in components:
-            instance = getattr(self, comp)
+        # Otherwise, look at individual elements
+        elements = ["scene", "spectrograph", "detector"]
+        for element in elements:
+            instance = getattr(self, element)
 
             if '.' in which:    # Composed key: key1.key2
                 k1, k2 = which.split('.')
@@ -292,32 +280,30 @@ class Simulation:
             if which in getattr(instance, "meta"):  # self.meta['which']
                 return getattr(instance, "meta")[which]
 
-            if comp == "scene": # for scene: self.meta['target']['which']
+            if element == "scene": # for scene: self.meta['target']['which']
                 meta_target = getattr(instance, "meta")["target"]
                 if which in meta_target:
                     return meta_target[which]
 
         return {which: default} if as_dict else default
 
-    def project_scene(self, in_photons=True, switch_off=[]):
-        """
-        Project the scene through spectrograph and get flux cube [ph or flambda].
+    def get_projected_scene(self, in_photons=True, switch_off=[]):
+        """ project the scene through spectrograph and get flux cube [ph or flambda].
 
         :param bool in_photons: cube in photon/s (default: flambda)
-        :param list switch_off: list of discarded scene components
+        :param list switch_off: list of discarded scene elements
                                 (target, host, background) + thermal
         :return: (nlbda, ny, nx) cube
         """
-
         cube = np.zeros(self.cube_shape)  # (nlbda, ny, nx)
 
         # spectra (3, nlbda):
         # * point source spectrum [erg/s/cm²/Å]
         # * host (not yet implemented)
         # * background spectrum [erg/s/cm²/Å/arcsec²]
-        target, host, background = self.scene.get_component_spectra(fillna=0)
+        lbda, (target, host, background) = self.scene.get_stacked_spectra(fillna=0)
 
-        # Fill the cube with scene components in photons/s/spx
+        # Fill the cube with scene elements in photons/s/spx
         if "target" not in switch_off:
             cube += self.spectrograph.generate_point_source(
                 target, position=self.scene.target_position)
@@ -341,12 +327,12 @@ class Simulation:
         """
         Get data cube as extracted from exposure [ADU].
 
-        :param list switch_off: list of discarded scene components
+        :param list switch_off: list of discarded scene elements
                                 (target, host, background) + thermal
         :return: (nlbda, ny, nx) cube signal and variance [ADU]
         """
 
-        cube = self.project_scene(in_photons=True,
+        cube = self.get_projected_scene(in_photons=True,
                                   switch_off=switch_off)  # (nlbda, ny, nx)
         sigmas = self.spectrograph.get_spectral_sigma()   # (nlbda,)
 
@@ -370,7 +356,7 @@ class Simulation:
         """
         Get the target signal and variance (in ADU).
 
-        :param list switch_off: list of discarded scene components
+        :param list switch_off: list of discarded scene elements
                                 (target, host, background) + thermal
         :param bool incl_error: should the signal be scattered by the error?
         :return: (nlbda,) signal and variance [ADU]
@@ -392,7 +378,7 @@ class Simulation:
 
         # Assume the spectrum is perfectly extracted
         if "target" not in switch_off:
-            target_phflux = self.scene.target * self.spectrograph.flambda2photon
+            _, target_phflux = self.scene.get_element_spectrum('target') * self.spectrograph.flambda2photon
             target_signal = target_phflux * self.detector.photonflux2ADU
         else:
             target_signal = np.zeros_like(self.spectrograph.lbda)
@@ -417,7 +403,7 @@ class Simulation:
 
         return signal / variance**0.5
 
-    def get_band_signal(self, lbda_range, frame="obs", statistic=np.nanmean,
+    def get_band_flux(self, lbda_range, frame="obs", statistic=np.nanmean,
                         squeeze=True, **kwargs):
         """
         Estimate mean signal and variance over a spectral domain.
@@ -440,8 +426,8 @@ class Simulation:
         if frame not in ["obs", "rest"]:
             raise ValueError(f"Unknown wavelength frame {frame!r}.")
 
-        if frame == "rest" and self.scene.redshift is not None:
-            lbda_range = lbda_range * (1 + self.scene.redshift)
+        if frame == "rest" and self.scene.target.redshift is not None:
+            lbda_range = lbda_range * (1 + self.scene.target.redshift)
 
         _, signal, variance = self.get_spectrum(**kwargs) # (2, lbda) in [ADU, ADU²]
 
@@ -462,10 +448,10 @@ class Simulation:
         """
         Compute mean SNR over a spectral domain.
 
-        See :meth:`get_band_signal`.
+        See :meth:`get_band_flux`.
         """
 
-        signal, variance = self.get_band_signal(lbda_range, frame,
+        signal, variance = self.get_band_flux(lbda_range, frame,
                                                 statistic=statistic, **kwargs)
 
         return signal / variance**0.5
@@ -476,8 +462,7 @@ class Simulation:
 
         # return df
 
-    def estimate_variance_contribution(self,
-                                       lbda_range, frame="rest",
+    def estimate_variance_contribution(self, lbda_range, frame="rest",
                                        statistic=np.nanmean):
         """
         Estimate different contributions to total variance.
@@ -493,38 +478,38 @@ class Simulation:
         """
 
         prop = dict(statistic=statistic, frame=frame)
-        signal, variance = self.get_band_signal(lbda_range, **prop)
+        signal, variance = self.get_band_flux(lbda_range, **prop)
 
-        # Detector components
+        # Detector elements
         # Dark
         current_dark = self.detector.dark
         self.detector.update(dark=0)             # Switch off dark
-        _, variance_nodark = self.get_band_signal(lbda_range, **prop)
+        _, variance_nodark = self.get_band_flux(lbda_range, **prop)
         self.detector.update(dark=current_dark)  # Switch it back
         dark_contrib = variance - variance_nodark
 
         # RoN
         current_ron = self.detector.ron
         self.detector.update(ron=0)
-        _, variance_noron = self.get_band_signal(lbda_range, **prop)
+        _, variance_noron = self.get_band_flux(lbda_range, **prop)
         self.detector.update(ron=current_ron)
         ron_contrib = variance - variance_noron
 
-        # Scene components
+        # Scene elements
         # Background
-        _, variance_nobkgd = self.get_band_signal(
+        _, variance_nobkgd = self.get_band_flux(
             lbda_range,
             switch_off=["background"], **prop)
         bkgd_contrib = variance - variance_nobkgd
 
         # Target
-        _, variance_notarget = self.get_band_signal(
+        _, variance_notarget = self.get_band_flux(
             lbda_range,
             switch_off=["target"], **prop)
         target_contrib = variance - variance_notarget
 
         # Thermal
-        _, variance_nothermal = self.get_band_signal(
+        _, variance_nothermal = self.get_band_flux(
             lbda_range,
             switch_off=["thermal"], **prop)
         thermal_contrib = variance - variance_nothermal
@@ -543,12 +528,96 @@ class Simulation:
             "frac_thermal": thermal_contrib / variance, # Thermal
         }
 
+    # ---------- #
+    #  Fetching  #
+    # ---------- #
+    def fetch_snr(self, target_snr, free_parameter="ngroup", 
+                  lbda_range=[4000, 6800], frame="rest", statistic=np.nanmean,
+                  reset_param=True,
+                  maxiter=100):
+        """ vary the free_parameter to reach the target SNR.
+    
+        Parameters
+        ----------
+        target_snr: float
+            target signal to noise ratio.
+    
+        free_parameter: str
+            parameters to vary (ngroup, nramp)
+        
+        lbda_range: list
+            (wmin, wmax) test wavelength range [Å]
+    
+        frame: str
+            wavelength frame ('obs', 'rest')
+        
+        statistic: func
+            function to apply on test domain to compute the snr.
+        
+        reset_param: bool
+            should the intput simulation be back to initial value (True)
+            or that of the reached snr (False)
+            
+        Returns
+        -------
+        int, float
+            - number of frame/group (see free_parameter)
+            - reached SNR.
+        """
+        # minimal values (including these)
+        minimal_values = {"ngroup": 2, "nramp": 1}
+        if free_parameter not in ["ngroup", "nramp"]:
+            raise ValueError(f"free_parameter should be 'ngroup' or 'nframe' {free_parameter} given.")
+        
+        prop_snr = dict(lbda_range=lbda_range, 
+                        frame=frame, 
+                        statistic=statistic)
+        
+        # used to reset the simu as its initial condition.
+        input_value = self.get_parameter(free_parameter)
+        new_snr = self.get_band_snr(**prop_snr)
+        if new_snr>=target_snr: # going down.
+            iterstep = -1  
+            condition = np.less
+        else: # going up
+            iterstep = +1
+            condition = np.greater
+
+        # while loop
+        counter = 0
+        current_value = input_value
+        while counter < maxiter and current_value+ iterstep>=minimal_values.get(free_parameter):
+        
+            new_value = current_value + iterstep
+            self.update(**{free_parameter: new_value})
+            new_snr =  self.get_band_snr(**prop_snr)
+            if condition(new_snr, target_snr):
+                if iterstep>0:  
+                    current_value = new_value
+                    self.update(**{free_parameter: new_value})
+                    new_snr =  self.get_band_snr(**prop_snr)
+                else:
+                    self.update(**{free_parameter: new_value-iterstep})
+                    new_snr =  self.get_band_snr(**prop_snr)
+                break
+                
+            counter += 1
+            current_value = new_value
+            
+        if reset_param: # reset if needed
+            self.update(**{free_parameter: input_value})
+    
+        return current_value, new_snr
+    
+    # ---------- #
+    #  Plotting  #
+    # ---------- # 
     def plot_spectrum(self, ax=None, switch_off=[], snr=False, **kwargs):
         """
         Plot the detected spectrum.
 
         :param matplotlib.Axes ax: axes
-        :param list switch_off: list of discarded scene components
+        :param list switch_off: list of discarded scene elements
                                 (target, host, background)
         :param bool snr: add SNR curve on top
         :param dict kwargs: propagated to plotting function
@@ -585,7 +654,7 @@ class Simulation:
 
     def plot_cube(self, in_photons=True, switch_off=[], spec_prop={}, **kwargs):
         """
-        Display the cube generated by :meth:`project_scene`.
+        Display the cube generated by :meth:`get_projected_scene`.
 
         The figure has two panels:
 
@@ -593,14 +662,14 @@ class Simulation:
         - right: white image (cube summed over wavelengthes)
 
         :param bool in_photons: cube in photon/s (default: flambda)
-        :param list switch_off: list of discarded scene components
+        :param list switch_off: list of discarded scene elements
                                 (target, host, background) + thermal
         :param dict spec_prop: spectrum plot options
         :param kwargs: cube `imshow` options
         :return: 2-axis figure
         """
 
-        cube = self.project_scene(in_photons=in_photons,
+        cube = self.get_projected_scene(in_photons=in_photons,
                                   switch_off=switch_off)
 
         unit = "ph/s" if in_photons else "erg/cm²/Å/s"
@@ -625,3 +694,45 @@ class Simulation:
         fig.colorbar(img, ax=ax_img, label="Integrated signal")
 
         return fig
+
+    # ================= #
+    #   Properties      #
+    # ================= #
+    @property
+    def meta(self):
+        """ """
+        return self._in_meta | {"scene": self.scene.meta,
+                                "spectrograph": self.spectrograph.meta,
+                                "detector": self.detector.meta,
+                                "extraction":self.extraction}
+    @property
+    def cube_shape(self):
+        """ Shape of the generated 3d-cube (nlbda, ny, nx). """
+        return (self.spectrograph.nlbda,
+                self.spectrograph.ny,
+                self.spectrograph.nx)
+
+    @property
+    def observing_time(self):
+        """ Total observing time, i.e. `exptime * nramp`. """
+        return self.detector.exposure_time * self.extraction["nramp"]    
+
+    @property
+    def mutable_parameters(self):
+        """ list of mutable parameters """
+        extra = [] + list(self.extraction.keys())
+        scene_ = self.scene.mutable_parameters
+        spectro_ = self.spectrograph.mutable_parameters
+        detector_ = [f"detector.{k}" for k in self.detector.mutable_parameters]
+        all_mutables =  scene_+spectro_+detector_ + extra
+        # remove lbda that could be in scene, as this is based on spectrograph
+        if "lbda" in all_mutables: 
+            all_mutables.remove("lbda")
+            
+        return all_mutables
+                
+
+    @property
+    def _elements(self): # test structure
+        """ internal list of elements """
+        return ["scene", "spectrograph", "detector", "extraction"]

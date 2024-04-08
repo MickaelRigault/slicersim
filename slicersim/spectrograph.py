@@ -83,14 +83,14 @@ class Spectrograph:
     """
 
     #: Mutable parameters (list)
-    mutable_parameters = ('spectral_range', 'spectral_resolution',
+    mutable_parameters = ['spectral_range', 'spectral_resolution',
                           'spectral_sigma', 'xdisp_sigma',
                           'spatial_sigma', 'guiding_sigma',
                           'spatial_scale', 'spatial_scale_insigma',
                           'spatial_shape', 'spatial_shape_insigma',
                           'mirror.temperature', 'mirror.emissivity',
                           'camera.acceptance', 'camera.speed',
-                          )
+                          ]
 
     def __init__(self, config, verbose=False):
         """
