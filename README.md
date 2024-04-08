@@ -47,5 +47,22 @@ ax.set(xlabel=r"wavelength [$\AA$]", ylabel="flux [ADU]")
 ![readme example](docs/gallery/spectra_examples.png)
 
 
+# Estimation Time Calculator
+
+Load your simulation
+```python
+config = slicersim.iotools.get_config(scene='supernova.toml')
+sim = slicersim.Simulation.from_config(config)
+```
+Create the SN Ia of interest and fetch the correct number of read-out mode "groups"
+```python
+sim.update(target__redshift = 1, target__c=0.3, target__x1=-0.5)
+ngroup, snr = sim.fetch_snr(10, lbda_range= [4000, 7000], frame="rest")
+print(f"with {ngroup} groups you reach a snr of {snr:.2f}")
+```
+```bash
+with 9 groups you reach a snr of 10.61
+```
+
 # Credits
 _adapted from the original MLAPerf v:0.18.0 developed by Y. Copin and M. Rigault_
