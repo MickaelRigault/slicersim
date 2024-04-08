@@ -176,7 +176,7 @@ class PointSource:
         return meta
 
     def __repr__(self):
-        return self.__str__
+        return self.__str__()
     
     def get_spectrum(self, lbda=None):
         """ """

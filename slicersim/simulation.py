@@ -41,7 +41,7 @@ class Simulation:
                  spectrograph=None,
                  detector=None,
                  extraction={},
-                 meta={}, **kwargs):
+                 meta={}):
         """
         A simulation is made of 4 elements:
 
@@ -62,7 +62,7 @@ class Simulation:
         self.spectrograph = spectrograph  #: Spectrograph instance
         self.detector = detector          #: Detector instance
         self.extraction = extraction      #: Extraction parameters
-        self.meta = {**meta, **kwargs}    #: Meta-parameters
+        self._in_meta = meta              #: Meta-parameters
 
     def __str__(self):
 
@@ -126,6 +126,14 @@ class Simulation:
     # =============== #
     #   Methods       #
     # =============== #
+    def _fetch_mutable_parameters(self, key):
+        """ """
+        mutable_ = [l for l in self.mutable_parameters if key in l]
+        if len(mutable_)==0:
+            return None
+        
+        return mutable_
+    
     def update(self, **kwargs):
         """ Update any mutable parameter of the simulation.
 
@@ -133,6 +141,10 @@ class Simulation:
         such that, e.g. 'target__phase' is understood as 'target.phase'.
         This way, one can do:
         >>> self.update(target__phase = -1)
+
+        for convinience, you can specify a shorten name, like "phase". 
+        If the correspondance to a mutable_parameters is uniquen this will accept it.
+        >>> self.update(phase = -1)
 
         """
 
@@ -144,8 +156,16 @@ class Simulation:
         for k, v in kwargs.items():
             k = k.replace("__", ".") # django like 
             if k not in self.mutable_parameters:
-                warnings.warn(f"Parameter {k!r} is not mutable.")
-                continue
+                k = self._fetch_mutable_parameters(k)
+                if k is None:
+                    warnings.warn(f"Parameter {k!r} is not mutable.")
+                    continue
+                
+                if len(k) == 1:
+                    k = k[0]
+                else:
+                    warnings.warn(f"Parameter {k} is not well defined. several correspondance {k}.")
+                    continue
             
             if v is None:       # Nothing to do
                 continue
@@ -260,7 +280,7 @@ class Simulation:
             if which in getattr(instance, "meta"):  # self.meta['which']
                 return getattr(instance, "meta")[which]
 
-            if comp == "scene": # for scene: self.meta['target']['which']
+            if element == "scene": # for scene: self.meta['target']['which']
                 meta_target = getattr(instance, "meta")["target"]
                 if which in meta_target:
                     return meta_target[which]
@@ -508,6 +528,90 @@ class Simulation:
             "frac_thermal": thermal_contrib / variance, # Thermal
         }
 
+    # ---------- #
+    #  Fetching  #
+    # ---------- #
+    def fetch_snr(self, target_snr, free_parameter="ngroup", 
+                  lbda_range=[4000, 6800], frame="rest", statistic=np.nanmean,
+                  reset_param=True,
+                  maxiter=100):
+        """ vary the free_parameter to reach the target SNR.
+    
+        Parameters
+        ----------
+        target_snr: float
+            target signal to noise ratio.
+    
+        free_parameter: str
+            parameters to vary (ngroup, nramp)
+        
+        lbda_range: list
+            (wmin, wmax) test wavelength range [Å]
+    
+        frame: str
+            wavelength frame ('obs', 'rest')
+        
+        statistic: func
+            function to apply on test domain to compute the snr.
+        
+        reset_param: bool
+            should the intput simulation be back to initial value (True)
+            or that of the reached snr (False)
+            
+        Returns
+        -------
+        int, float
+            - number of frame/group (see free_parameter)
+            - reached SNR.
+        """
+        # minimal values (including these)
+        minimal_values = {"ngroup": 2, "nramp": 1}
+        if free_parameter not in ["ngroup", "nramp"]:
+            raise ValueError(f"free_parameter should be 'ngroup' or 'nframe' {free_parameter} given.")
+        
+        prop_snr = dict(lbda_range=lbda_range, 
+                        frame=frame, 
+                        statistic=statistic)
+        
+        # used to reset the simu as its initial condition.
+        input_value = self.get_parameter(free_parameter)
+        new_snr = self.get_band_snr(**prop_snr)
+        if new_snr>=target_snr: # going down.
+            iterstep = -1  
+            condition = np.less
+        else: # going up
+            iterstep = +1
+            condition = np.greater
+
+        # while loop
+        counter = 0
+        current_value = input_value
+        while counter < maxiter and current_value+ iterstep>=minimal_values.get(free_parameter):
+        
+            new_value = current_value + iterstep
+            self.update(**{free_parameter: new_value})
+            new_snr =  self.get_band_snr(**prop_snr)
+            if condition(new_snr, target_snr):
+                if iterstep>0:  
+                    current_value = new_value
+                    self.update(**{free_parameter: new_value})
+                    new_snr =  self.get_band_snr(**prop_snr)
+                else:
+                    self.update(**{free_parameter: new_value-iterstep})
+                    new_snr =  self.get_band_snr(**prop_snr)
+                break
+                
+            counter += 1
+            current_value = new_value
+            
+        if reset_param: # reset if needed
+            self.update(**{free_parameter: input_value})
+    
+        return current_value, new_snr
+    
+    # ---------- #
+    #  Plotting  #
+    # ---------- # 
     def plot_spectrum(self, ax=None, switch_off=[], snr=False, **kwargs):
         """
         Plot the detected spectrum.
@@ -594,6 +698,13 @@ class Simulation:
     # ================= #
     #   Properties      #
     # ================= #
+    @property
+    def meta(self):
+        """ """
+        return self._in_meta | {"scene": self.scene.meta,
+                                "spectrograph": self.spectrograph.meta,
+                                "detector": self.detector.meta,
+                                "extraction":self.extraction}
     @property
     def cube_shape(self):
         """ Shape of the generated 3d-cube (nlbda, ny, nx). """
