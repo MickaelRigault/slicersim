@@ -4,4 +4,4 @@ __version__ = '0.3.0'
 from .simulation import *
 from .spectrograph import Spectrograph
 from .detector import Detector
-from .scene import Scene
+from .scene import *
