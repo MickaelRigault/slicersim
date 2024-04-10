@@ -3,6 +3,8 @@ import inspect
 import numpy as np
 
 from astropy.cosmology import Planck18 as cosmology
+from .base import SceneElement
+
 
 
 """
@@ -138,109 +140,42 @@ from astropy.cosmology import Planck18 as cosmology
 
         return target_spec  # point source spectrum [erg/s/cm²/Å] (nlbda,)
 """
-
-def get_pointsource_from_config(config):
-    """ parse the pointsource name from the config and 
-    returns the corresponding object
-    
-    """
-    name = config.get("name", None)
-    if name is None:
-        raise ValueError("no 'name' entry in the config. On needed to automatically parse the pointsource.")
-    
-    if name in ["SN", "SNIa", "SN Ia"]:
-        target = Supernovae.from_config(config)
-    else:
-        raise NotImplementedError(f"pointsource {name} not implemented")
-
-    return target
-
-
-class PointSource:
-    """
-    """
-    def __init__(self, position=None, lbda=None, meta={}):
-        """ """
-        self._position = position
-        meta = meta.copy()
-        if "position" not in meta:
-            meta["position"] = position
-
-        self._meta = meta.copy()
-        self._meta_in = meta.copy() # stored
-        self._lbda = lbda
-
-    def __str__(self):
-        import pprint
-        meta = pprint.pformat(self.meta, sort_dicts=False)
-        return meta
-
-    def __repr__(self):
-        return self.__str__()
-    
-    def get_spectrum(self, lbda=None):
-        """ """
-        raise NotImplementedError("PointSource object must define get_spectrum")
-
-
-    def _update_pointsource(self, **kwargs):
-        """ """
-        for k, v in kwargs.items():
-            setattr(self, f"_{k}", v)
-            
-    # ============== #
-    #   Properties   #
-    # ============== #
-    @property
-    def position(self):
-        """ """
-        return self._position
-
-    @property
-    def lbda(self):
-        """ wavelegnth of definition [A] """
-        return self._lbda
-
-    @property
-    def meta(self):
-        """ meta parameters of the object, if any """
-        return self._meta
-
-    @property
-    def _pointsource_mutable(self):
-        """ """
-        return ["position", "lbda", "abmag"]
-
-# ================= #
-#                   #
-# Type Ia Superovae #
-#                   #
-# ================= #
-def get_snia_model(redshift, source="salt2-extended", cosmo=cosmology, **kwargs):
+# ==================== #
+#  Top level shortcut  #
+# ==================== #
+def source_to_modelfunc(source):
     """ """
     if "salt" in source:
-        model = get_saltmodel(redshift=redshift, source=source, cosmo=cosmo, **kwargs)
-        
+        model_func = get_saltmodel_flux
     else:
-        raise NotImplementedError(f"only salt model sources have been implemented. {source} given")
+        raise NotImplementedError(f"no model_func defined for source: {source}")
 
-    return model
+    return model_func
 
-def _get_mutable_parameters_(source):
-    """ """
-    from ..utils import inspect_func
-    if "salt" in source:
-        func = get_saltmodel
-    else:
-        raise NotImplementedError(f"only salt model sources have been implemented. {source} given")
 
-    names, kwargs = inspect_func(func)
-    return names, kwargs
+def obsmag_to_redshift(mag, magabs,
+                        redshift_scan="0.001:3:0.01",
+                        cosmo=cosmology):
+    """
+    Linearly interpolate app. magn. into redshift given an abs. magn.
 
-# = Actual sources
-    
-def get_saltmodel(redshift, MBmax=-19.3, source="salt2-extended", cosmo=cosmology,
-                   x1=0, c=0, alpha=-0.14, beta=3.15):
+    :param mag: apparent magnitude(s)
+    :param float magabs: absolute magnitude
+    :param redshift_scan: redshift ramp (argument to `np.r_`)
+    :param cosmo: :class:`astropy.cosmology.Cosmology`
+    :return: linearly interpolated redshift(s)
+    """
+
+    zz = eval(f"np.r_[{redshift_scan}]")
+    obsmag = cosmo.distmod(zz).value + magabs
+
+    # Linear interpolation
+    return np.interp(mag, obsmag, zz)
+
+
+def get_saltmodel(redshift=0.1,
+                  MBmax=-19.3, source="salt2-extended", cosmo=cosmology,
+                  x1=0, c=0, alpha=-0.14, beta=3.15):
     """
     :pypi:`sncosmo` SALT2 SN Ia model at redshift z and with peak `MBmax`.
 
@@ -260,15 +195,14 @@ def get_saltmodel(redshift, MBmax=-19.3, source="salt2-extended", cosmo=cosmolog
     import sncosmo
 
     model = sncosmo.Model(source=source)
-    model.set(c=c, x1=x1)              # SALT2 parameters
-
+    model.set(z=redshift, c=c, x1=x1)              # SALT2 parameters
     eff_mbmax = MBmax + (x1*alpha + c*beta)  # Tripp relation (no env bias)
-    model.set(z=redshift)
+    
     # set effective peak magnitude
     model.set_source_peakabsmag(eff_mbmax,
                                 "bessellb", "AB", cosmo=cosmo)
 
-    def get_flux(time, wave): # make sure get_flux exists.
+    def get_flux(wave, time): # make sure get_flux exists.
 
         wmin, wmax = model.minwave(), model.maxwave()
         wave = np.atleast_1d(wave)
@@ -281,48 +215,43 @@ def get_saltmodel(redshift, MBmax=-19.3, source="salt2-extended", cosmo=cosmolog
     model.get_flux = get_flux  # Monkey patching
     return model
 
-def obsmag_to_redshift(mag, magabs=-19.3,
-                       redshift_scan="0.001:3:0.01", cosmo=cosmology):
-    """
-    Linearly interpolate app. magn. into redshift given an abs. magn.
-
-    :param mag: apparent magnitude(s)
-    :param float magabs: absolute magnitude
-    :param redshift_scan: redshift ramp (argument to `np.r_`)
-    :param cosmo: :class:`astropy.cosmology.Cosmology`
-    :return: linearly interpolated redshift(s)
-    """
-
-    zz = eval(f"np.r_[{redshift_scan}]")
-    obsmag = cosmo.distmod(zz).value + magabs
-
-    # Linear interpolation
-    return np.interp(mag, obsmag, zz)
-
-
-# = PointSource with phase dependencies = #
-class Transient( PointSource ):
+# ============== #
+#                #
+#   Models       #
+#                #
+# ============== #
+# explicit here the parameters to enable mutable_parameters parsing
+def get_saltmodel_flux(lbda, phase,
+                        abmag=None, # extra 
+                        redshift=0.1,
+                        MBmax=-19.3, source="salt2-extended", cosmo=cosmology,
+                        x1=0, c=0, alpha=-0.14, beta=3.15):
     """ """
-    @property
-    def _pointsource_mutable(self):
-        """ """
-        return list(super()._pointsource_mutable) + ["phase"]
-
-    @property
-    def phase(self):
-        """ """
-        if not hasattr(self, "_phase"):
-            self._phase = 0
+    if abmag is not None:
+        if redshift is not None:
+            warnings.warn(f"abmag and redshift are set, redshift is ignored and derived from abmag.")
             
-        return self._phase
+        redshift = obsmag_to_redshift(abmag, MBmax, cosmo=cosmo)
+        
+    model = get_saltmodel(redshift=redshift, MBmax=MBmax,
+                          source=source, cosmo=cosmo,
+                          x1=x1, c=c, alpha=alpha, beta=beta)
+
+    return model.get_flux(lbda, phase)
+
+
+
+class PointSource (SceneElement):
     
-class Supernovae( Transient ):
-    """ """
-    
-    def __init__(self, model, position=None, lbda=None, flux=None, meta={}):
+    """ A SceneElement with a position """
+    def __init__(self, model_func, position, lbda=None, meta={}):
         """ """
-        self._model = model
-        super().__init__(position=position, lbda=lbda, meta=meta)
+        self._position = position
+        meta = meta.copy()
+        if "position" not in meta:
+            meta["position"] = position
+
+        super().__init__(model_func=model_func, lbda=lbda, meta=meta)
     
     @classmethod
     def from_config(cls, config):
@@ -335,18 +264,16 @@ class Supernovae( Transient ):
 
         """
         position = config.get("position", (0, 0))
-        model, fullconfig = cls._config_to_model(config)
-        return cls(model=model, position=position, meta=fullconfig.copy())
+        model_func = config.get("model_func", None)
+        # look for one
+        if model_func is None: 
+            if "source" in config:
+                model_func = source_to_modelfunc(config["source"])
+            else:
+                raise ValueError("no model_func not source in the config. one is needed.")
 
-    @classmethod
-    def _config_to_model(cls, config):
-        """ """
-        config = config.copy()
-        source = config.get("source", "salt2-extended")
-        mutable_params, defaults = _get_mutable_parameters_(source)
-        param = {k: v for k in mutable_params if (v := config.get(k, None)) is not None}
         
-        return get_snia_model(**param), defaults | config
+        return cls(model_func=model_func, position=position, meta=config.copy())
         
     # ========== #
     #  Getter    #
@@ -381,70 +308,35 @@ class Supernovae( Transient ):
             phase = self.phase
             
         elif restframe and phase !=0:
-            if (z:=self.meta.get("redshift", None)) is None:
+            if (z:=self.redshift) is None:
                 raise ValueError("no known redshift for the target. Cannot use restrame")
             
             phase = phase/(1+z)
         
         # Actual flux
-        flux = self.model.get_flux(phase, lbda)  # compute spectrum
+        model_kwargs = self._parse_model_kwargs_()
+        flux = self.model_func(lbda, phase, **model_kwargs) # compute spectrum
         return lbda, flux
-
-    def update(self, **kwargs):
-        """ """
-        model_update = {}
-        pointsource_update = {}
-        for k, v in kwargs.items():
-            if k not in self.mutable_parameters:
-                warnings.warn(f"Parameter {k!r} is not mutable.")
-                continue
-            
-            if v is None:        # Skip
-                continue
-
-            # extra cases
-            if k == "abmag":
-                k = "redshift"
-                v = obsmag_to_redshift(v, self.meta["MBmax"])
-                
-            # updates
-            if k in self._model_mutables:
-                model_update[k] = v
-                
-            if k in self._pointsource_mutable:
-                pointsource_update[k] = v
-
-        if len(model_update)>0:
-            target_model = self._meta_in | model_update
-            self._model, model_update = self._config_to_model(target_model)
-            
-        self._update_pointsource(**pointsource_update)
-        self._meta = self._meta_in | model_update | pointsource_update
         
     # ================ #
     #   Properties     #
     # ================ #
     @property
-    def model(self):
-        """ model that contains the get_flux() method"""
-        return self._model
+    def redshift(self):
+        """ """
+        return self.meta.get("redshift", None)
+                
+    @property
+    def position(self):
+        """ """
+        return self._position
+
+    @property
+    def phase(self):
+        """ """
+        return self.meta.get("phase", None)
 
     @property
     def mutable_parameters(self):
         """ """
-        extra = ["abmag"] # see update()
-        model_mutables = self._model_mutables
-        pointsource_mutables = self._pointsource_mutable
-        return list(pointsource_mutables) + list(model_mutables) + extra
-    
-    @property
-    def _model_mutables(self):
-        """ """
-        source = self.meta.get("source", self.model.source.name)
-        mutable, defaults = _get_mutable_parameters_(source)
-        return mutable
-
-    @property
-    def redshift(self):
-        """ """
-        return self.meta.get("redshift", self.model.get("z"))
+        return self._model_mutables + ["position"]
