@@ -5,6 +5,8 @@ import numpy as np
 from astropy.cosmology import Planck18 as cosmology
 from .base import SceneElement
 
+from twins_embedding import TwinsEmbeddingModel
+twins_embedding_model = TwinsEmbeddingModel()
 
 
 """
@@ -147,6 +149,8 @@ def source_to_modelfunc(source):
     """ """
     if "salt" in source:
         model_func = get_saltmodel_flux
+    elif source == 'twins-embedding':
+        model_func = get_twins_embedding_flux
     else:
         raise NotImplementedError(f"no model_func defined for source: {source}")
 
@@ -239,6 +243,15 @@ def get_saltmodel_flux(lbda, phase,
 
     return model.get_flux(lbda, phase)
 
+
+def get_twins_embedding_flux(lbda, phase, redshift=0.05,
+                             magnitude=0., color=0., coordinates=(0., 0., 0.), cosmo=cosmology):
+    flux, flux_error = twins_embedding_model.evaluate(phase, magnitude, color, list(coordinates))
+    wl_obs = twins_embedding_model.wave * (1. + redshift)
+    dist_ratio = cosmo.luminosity_distance(0.05).value / cosmo.luminosity_distance(redshift).value
+    cosmo_k_corr = 1.05 / (1. + redshift)
+    flux_obs = flux * 1e-15 * dist_ratio ** 2. * cosmo_k_corr
+    return np.interp(lbda, wl_obs, flux_obs, left=np.nan, right=np.nan)
 
 
 class PointSource (SceneElement):
