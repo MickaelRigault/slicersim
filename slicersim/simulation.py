@@ -234,6 +234,55 @@ class Simulation:
     # -------- #
     #  GETTER  #
     # -------- #
+    def get_input_spectrum(self, which="target"):
+        """ get the input spectrum. 
+
+        This is a shortcut to self.scene.get_element_spectrum
+
+        Parameters
+        ----------
+        which: string
+            which input do you want:
+            - individual elements: 'target', 'background', 'host' 
+            - all merged: 'stacked'
+
+        Returns
+        -------
+        lbda: array
+            wavelength in Angstrom
+
+        flux: array
+            input flux (erg/s/cm^2/A)
+
+        """
+        if which == "stacked":
+            lbda, specs = sim.scene.get_stacked_spectra()
+            flux = np.sum(specs, axis=0)
+        else:
+            lbda, flux = self.scene.get_element_spectrum(which)
+            
+        return lbda, flux
+
+    def get_effective_transmission(self):
+        """ Effective total transmission of the spectrograph
+        
+        Product of the spectroscopic throughput: spectrograph.flambda2photon
+        and the detector efficiency: detector.photonflux2ADU
+
+
+        Returns
+        -------
+        lbda: array
+            wavelength in Angstrom
+
+        throughput: array
+            effective throughput (ADU/ (erg/s/cm^2/A) )
+
+        """
+        eff_throughput = self.spectrograph.flambda2photon * self.detector.photonflux2ADU
+        
+        return self.spectrograph.lbda, eff_throughput
+            
     def get_parameter(self, which=None, default=None, as_dict=True):
         """ shortcut to get simulation parameter(s).
 

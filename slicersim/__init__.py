@@ -1,4 +1,4 @@
-__version__ = '0.3.0'
+__version__ = '0.3.1'
 # from __version__ "0.18" of internal mlaperf
 
 from .simulation import *
