@@ -757,7 +757,7 @@ def plot_spectral_resolution(spectro, ax=None):
 if __name__ == "__main__":
 
     from mlaperf.iotools import get_config
-    config = get_config("instrument.toml")
+    config = get_config("params/ifs.toml")
 
     spectro = Spectrograph(config["spectrograph"])
     print(spectro)

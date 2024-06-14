@@ -27,6 +27,7 @@ except ModuleNotFoundError:
 
 
 MLAPERF_PATH = files("slicersim.config")     #: Path to data & config files.
+STP_REFERENCE_DATA = files("stp_reference_data")
 
 
 def expand_path(filename):
@@ -34,21 +35,22 @@ def expand_path(filename):
     Get full file path, including config path if necessary.
 
     If the input filename does not specifically include a path, it
-    will be looked for in the default :data:`MLAPERF_PATH` directory.
+    will be looked for in the default :data:`MLAPERF_PATH` and :data:`STP_REFERENCE_DATA` directories.
 
     :param str filename: file name
     :return: filename including default path if needed
     """
 
-    if os.path.dirname(filename):  # filename includes a path
-        fname = filename
-    else:                          # use MLAPERF_PATH as default
-        fname = MLAPERF_PATH.joinpath(filename)
+    for fname in [filename, MLAPERF_PATH.joinpath(filename), STP_REFERENCE_DATA.joinpath(filename)]:
+        if os.path.exists(fname):
+            break
+    else:
+        raise FileNotFoundError(f"{filename} not found.")
 
     return fname
 
 
-def get_config(scene="supernova.toml", instrument="instrument.toml"):
+def get_config(scene="supernova.toml", instrument="params/ifs.toml"):
     """
     Read configuration files.
 

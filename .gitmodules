@@ -1,0 +1,3 @@
+[submodule "stp_reference_data"]
+	path = stp_reference_data
+	url = https://github.com/uasal/stp_reference_data.git

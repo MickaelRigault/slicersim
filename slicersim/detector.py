@@ -485,7 +485,7 @@ if __name__ == "__main__":
     from mlaperf.iotools import get_config
     from mlaperf.detector import Detector
 
-    config = get_config("instrument.toml")
+    config = get_config("params/ifs.toml")
     # config["detector"]["QE"] = "H2RG18.csv"
 
     detector = Detector(config["detector"])
