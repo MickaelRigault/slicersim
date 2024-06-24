@@ -5,9 +5,11 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from twins_embedding import TwinsEmbeddingModel
+from manifold_gp import ManifoldGaussianProcess
 from iminuit import Minuit, cost
 from astropy.cosmology import WMAP9 as cosmo
-
+from astropy.table import Table
+import pickle
 
 # initialize model for fitting
 model = TwinsEmbeddingModel()
@@ -23,20 +25,42 @@ def trained_model(wave, dm, av, xi1, xi2, xi3, phase):
 def plot_results(X):
     redshift = X[:, 0]
     params = X[:, 1:7]
-    diffs = X[:, 7:] - X[:, 1:7]
-    labels = np.array([
+    params_fit = X[:, 7:]
+    labels = [
         '$\\Delta m$',
         '$c$',
         '$\\xi_1$',
         '$\\xi_2$',
         '$\\xi_3$',
         '$\\Delta t$',
-    ])
+    ]
+
+    # add in derived delta(distance modulus) using the RBTL GP manifold
+    if os.path.exists('rbtl_gp.pkl'):
+        with open('rbtl_gp.pkl', 'rb') as f:
+            manifold = pickle.load(f)
+    elif os.path.exists('apjabec3ct3_mrt.txt'):  # from https://content.cld.iop.org/journals/0004-637X/912/1/70/revision2/apjabec3ct3_mrt.txt
+        datas = Table.read('apjabec3ct3_mrt.txt', format='ascii.cds')
+        mask_color = datas['DAv'] < 0.5
+        covariates = np.array([datas['DAv']])
+        manifold = ManifoldGaussianProcess(None, np.array(datas[['xi1', 'xi2', 'xi3']].as_array().tolist()),
+                                           datas['Dm'], datas['e_Dm'], covariates=covariates,
+                                           mask=mask_color, parameters=None)
+        manifold.fit()
+    else:
+        manifold = None
+
+    if manifold is not None:
+        dmu_true = manifold.predict(params[:, 2:5], prediction_covariates=params[:, 1], return_uncertainties=False)
+        dmu_fit = manifold.predict(params_fit[:, 2:5], prediction_covariates=params_fit[:, 1], return_uncertainties=False)
+        params = np.hstack([params, dmu_true[:, None]])
+        params_fit = np.hstack([params_fit, dmu_fit[:, None]])
+        labels.append('$\\Delta \\mu$')
 
     varied = params.std(axis=0).astype(bool)
     params = params[:, varied]
-    diffs = diffs[:, varied]
-    labels = labels[varied]
+    diffs = params_fit[:, varied] - params
+    labels = np.array(labels)[varied]
     nextra = 2  # histogram & redshift
 
     fig, axes = plt.subplots(params.shape[1] + nextra, diffs.shape[1], figsize=(9., 10.), sharex='col', sharey='row')
