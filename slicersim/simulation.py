@@ -604,7 +604,7 @@ class Simulation:
     # ---------- #
     def fetch_snr(self, target_snr, free_parameter="ngroup", 
                   lbda_range=[4000, 6800], frame="rest", statistic=np.nanmean,
-                  reset_param=True,
+                  reset_param=True, guess=None,
                   maxiter=100):
         """ vary the free_parameter to reach the target SNR.
     
@@ -664,7 +664,7 @@ class Simulation:
 
         # while loop
         counter = 0
-        current_value = input_value
+        current_value = input_value if guess is None else guess            
         while counter < maxiter and current_value+ iterstep>=minimal_values.get(free_parameter):
         
             new_value = current_value + iterstep

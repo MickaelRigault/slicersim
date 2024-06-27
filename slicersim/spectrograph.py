@@ -18,7 +18,6 @@ __author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
 
 import warnings
 from dataclasses import dataclass
-
 import numpy as np
 
 import astropy.units as u
@@ -201,22 +200,29 @@ class Spectrograph:
 
     @classmethod
     def from_config(cls, config, verbose=False):
-        """
-        Initialize from spectrograph config.
+        """ Initialize from spectrograph config.
 
         Added for consistency between classes as an alternative to
         :meth:`__init__`.
 
-        :param dict config: spectrograph configuration dictionary
-        :param bool verbose: verbose mode
+        Parameters
+        ----------
+        config: dict
+            spectrograph configuration dictionary
+            
+        verbose: bool
+            verbose mode
+
+        Returns
+        -------
+        instance
         """
 
         return cls(config, verbose=verbose)
 
     @staticmethod
     def lbda_from_respow(spectral_range, res_power, npx=2):
-        r"""
-        Compute wavelength ramp for constant n-px resolving power.
+        r""" Compute wavelength ramp for constant n-px resolving power.
 
         .. math::
 

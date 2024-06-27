@@ -9,23 +9,20 @@ Detector module, to simulate:
    Detector
 """
 
-__author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
+__author__ = "Mickael Rigault <m.rigault@ipnl.in2p3.fr>, Yannick Copin <y.copin@ipnl.in2p3.fr>"
 
 import warnings
 import numpy as np
-
-from .utils import integ_gaussian1D_erf, complete_dims
-from . import iotools
-
-import astropy.units as u
+import astropy import units
 from astropy.utils.exceptions import AstropyWarning
+
+from . import iotools
+from .utils import integ_gaussian1D_erf, complete_dims
+
 
 
 class SaturationWarning(AstropyWarning):
-    """
-    Base class for saturation warnings.
-    """
-
+    """ Base class for saturation warnings. """
     
 class Detector:
     """
@@ -45,8 +42,7 @@ class Detector:
     # Do not mutate px_size, fixed to 10 µm in spectrograph
 
     def __init__(self, config, lbda=10_000., verbose=False):
-        """
-        Initialize the detector properties from `config` dictionary.
+        """ Initialize the detector properties from `config` dictionary.
 
         :param dict config: detector configuration dictionary
         :param lbda: wavelengths [Å]
@@ -76,7 +72,7 @@ class Detector:
                                     description='QE' if verbose else '')
             #: QE interpolator (wavelengths in Å)
             self.qe_interp = iotools.chromatic_interpolator(
-                tab[wname].to(u.AA), tab[qname], ext='zeros')
+                tab[wname].to(unitsAA), tab[qname], ext='zeros')
             #: Quantum efficiency [e-/photon]
             self.qe = self.qe_interp(self.lbda)
         self.saturation = int(config["saturation"])     #: Saturation limit [ADU]
@@ -123,19 +119,101 @@ class Detector:
     # ============== #
     #   Methods      #
     # ============== #
-    def get_exposure_time(self, nmd=None, tframe=None):
+    def update(self, reset_others=False, **kwargs):
+        """ Change any mutable attribute of the detector. """
+        lbda = kwargs.pop("lbda", None)  # removes it from the kwargs
+        updates = {}
+        for k, v in kwargs.items():
+            if k not in self.mutable_parameters:
+                warnings.warn(f"Parameter {k!r} is not mutable.")
+                continue
+            
+            if v is None:        # Skip
+                continue
+
+            # only change the number N of groups (M and D remain the same)
+            if k == 'ngroup':
+                n, m, d = self.nmd  # NMD = (ngroup, ngroups, ndrops)
+                k, v = 'nmd', (v, m, d)
+
+            if k in ["nframe_per_group", "nframes"]:
+                n, m, d = self.nmd  # NMD = (ngroup, nframe_per_group, ndrops)
+                k, v = 'nmd', (n, v, d)
+                
+            setattr(self, k, v)  # Update
+            updates[k] = v
+
+        # Update the lbda *after* all the parameters have been updated.
+        if lbda is not None:
+            self.update_lbda(lbda)  # updates all chromatic components
+
+        # update the metadata
+        if reset_others:
+            self._meta = self._meta_in | updates
+        else:
+            self._meta = self._meta | updates
+        
+    def update_lbda(self, lbda):
+        """ Update chromatic components.
+        
+        Parameters
+        ----------
+        lbda: Array, float
+            Wavelength [Å]
+
+        Returns
+        -------
+        None
         """
-        Total integration time (to be used for sequences).
+        self.lbda = lbda
+        # Update QE if needed
+        if self.qe_interp is not None:
+            self.qe = self.qe_interp(self.lbda)
+    
+    def get_exposure_time(self, nmd=None, tframe=None):
+        """ Total integration time (to be used for sequences).
+
+        Parameters
+        ----------
+        nmd: list, None
+            provide the nmd (aka MACC mode): #group, #frame/group, #drop
+            if None, self.nmd is used
+
+        tframe: float, None
+            the time between two frames. 
+            if None, self.tframe is used
+
+        Returns
+        -------
+        float
+            total integration time [s]
+        """
+        return self.nframes * self.tframe
+    
+    def get_integration_time(self, nmd=None, tframe=None):
+        """ Effective integration time (to be used for flux computations).
 
         :param nmd: (#group, #frame/group, #drop)
         :param float tframe: frame time [s]
-        :return: total integration time [s]
+        :return: effective integration time [s]
         """
-        return self.nframes * self.tframe    
+        if nmd is None:
+            nmd = self.nmd
+
+        if tframe is None:
+            tframe = self.tframe
+
+        return self._get_integration_time(nmd=nmd, tframe=tframe)
     
+    @staticmethod
+    def _get_integration_time(nmd, tframe):
+        """ internal function for the integration time """
+        n, m, d = nmd
+        return (n - 1) * (m + d) * tframe  # = (n - 1) * tgroup
+    
+    # - estimators
     def estimate_spx_spectrum(self, flux, sigma=1, width=5):
-        """
-        Estimate extracted signal and variance from incident flux [ph/s].
+        """ Estimate extracted signal and variance from incident flux [ph/s].
 
         It is evaluated from an *optimal* extraction, i.e. inverse-variance
         weighted least-square fit of the cross-dispersion profile (assumed
@@ -145,13 +223,23 @@ class Detector:
         If saturation, px in output spectrum [ADU] including a saturated
         detector px will have a NaN value and infinite variance.
 
-        :param flux: incident flux (arbitrary shape, e.g. (nlbda, ny, nx))
-                     [ph/s/px]
-        :param float sigma: cross-dispersion PSF width [px] (() or (nlbda,))
-        :param int width: cross-dispersion aperture width [px]
-        :return: spx spectrum [ADU] and variance [ADU²]
-        """
+        Parameters
+        ----------
+        flux: Array
+            incident flux (arbitrary shape, e.g. (nlbda, ny, nx)) [ph/s/px]
 
+        sigma: Array float
+            cross-dispersion PSF width [px] (() or (nlbda,))
+
+        width: int
+            cross-dispersion aperture width [px]
+
+        Returns
+        -------
+        Array, Array
+            - spx spectrum [ADU] 
+            - variance [ADU²]
+        """
         # Reshape photonflux2adu (() or (nlbda,)) to match flux's shape
         photonflux2ADU = complete_dims(self.photonflux2ADU, -np.ndim(flux))
 
@@ -160,13 +248,13 @@ class Detector:
 
         # Normalized cross-dispersion profile, flux.shape + (width,)
         sigma = complete_dims(sigma, -np.ndim(flux))
-        p = self.xdisp_profile(sigma=sigma, width=width)
+        p = self._xdisp_profile(sigma=sigma, width=width)
 
         # Incident flux [ph/s], flux.shape + (width,)
         profiles = p * complete_dims(flux, 1)
 
         # Detector signal [ADU], shape is (width,) + flux.shape
-        sig, var = self.estimate_px_signal(profiles, withdark=False)
+        sig, var = self.estimate_pixel_signal(profiles, withdark=False)
 
         # One should have signal almost equal to sig.sum(axis=0)
         # (up to aperture corrections)
@@ -181,19 +269,20 @@ class Detector:
                 warnings.warn(
                     f"{self.nsaturated_specpx} spectral px above {self.saturation} ADU.",
                     SaturationWarning)
+                
                 if np.ndim(signal):
-                    signal[saturated] = np.NaN
-                    variance[saturated] = np.Inf
+                    signal[saturated] = np.nan
+                    variance[saturated] = np.inf
                 else:
-                    signal, variance = np.NaN, np.Inf
+                    signal, variance = np.nan, np.inf
+                    
         else:
             self.nsaturated_specpx = None
 
         return signal, variance                  # flux.shape [ADU]
         
-    def estimate_px_signal(self, flux, withdark=False):
-        """
-        Estimate measured signal and variance from incident flux [ph/s].
+    def estimate_pixel_signal(self, flux, withdark=False):
+        """ Estimate measured signal and variance from incident flux [ph/s].
 
         Signal includes incident flux and dark contribution if needed.
         Variance systematically includes incident flux and dark contributions,
@@ -201,14 +290,21 @@ class Detector:
 
         If saturation, detector px above saturation limit will have infinite
         variance and NaN signal.
-
-        :param flux: incident pixel flux [ph/s]
-                     (arbitrary shape, e.g. (nwidth, nlbda, ny, nx))
-        :param bool withdark: include dark contribution to output signal
-        :param kwargs: parameters to be updated on the fly (no intermediate reset)
-        :return: pixel signal [ADU] and variance [ADU²]
+        
+        Parameters
+        ----------
+        flux: Array
+            incident flux (arbitrary shape, e.g. (nlbda, ny, nx)) [ph/s/px]
+        
+        withdark: bool
+            include dark contribution to output signal
+            
+        Returns
+        -------
+        Array, Array
+            - pixel signal [ADU]
+            - variance [ADU²]
         """
-
         # Reshape qe (() or (nlbda,)) to match flux's shape (nlbda, ..., width)
         qe = complete_dims(self.qe, -np.ndim(flux))
 
@@ -219,10 +315,9 @@ class Detector:
 
         # Variance estimate in [ADU²]
         if self.variance_model == "Rauscher+07":
-            variance = self.estimate_variance_rauscher07(**variance_prop)
-            
+            variance = self._estimate_variance_rauscher07(**variance_prop)
         elif self.variance_model == "Kubik20":
-            variance = self.estimate_variance_kubik20(**variance_prop)
+            variance = self._estimate_variance_kubik20(**variance_prop)
         else:
             raise NotImplementedError(
                 f"Unknown variance model {self.variance_model!r}.")
@@ -250,142 +345,10 @@ class Detector:
 
         return signal, variance  # [ADU], [ADU²]
 
-    def update(self, reset_others=False, **kwargs):
-        """
-        Change any mutable attribute of the detector.
-        """
-
-        lbda = kwargs.pop("lbda", None)  # removes it from the kwargs
-
-        updates = {}
-        for k, v in kwargs.items():
-            if k not in self.mutable_parameters:
-                warnings.warn(f"Parameter {k!r} is not mutable.")
-                continue
-            
-            if v is None:        # Skip
-                continue
-
-            # only change the number N of groups (M and D remain the same)
-            if k == 'ngroup':
-                n, m, d = self.nmd  # NMD = (ngroup, ngroups, ndrops)
-                k, v = 'nmd', (v, m, d)
-
-            if k in ["nframe_per_group", "nframe"]:
-                n, m, d = self.nmd  # NMD = (ngroup, nframe_per_group, ndrops)
-                k, v = 'nmd', (n, v, d)
-                
-            setattr(self, k, v)  # Update
-            updates[k] = v
-
-        # Update the lbda *after* all the parameters have been updated.
-        if lbda is not None:
-            self.update_lbda(lbda)  # updates all chromatic components
-
-        # update the metadata
-        if reset_others:
-            self._meta = self._meta_in | updates
-        else:
-            self._meta = self._meta | updates
         
-
-    def update_lbda(self, lbda):
-        """
-        Update chromatic components.
-
-        :param lbda: wavelength [Å]
-        """
-
-        self.lbda = lbda
-        # Update QE if needed
-        if self.qe_interp is not None:
-            self.qe = self.qe_interp(self.lbda)
-
-    def get_integration_time(self, nmd=None, tframe=None):
-        """ Effective integration time (to be used for flux computations).
-
-        :param nmd: (#group, #frame/group, #drop)
-        :param float tframe: frame time [s]
-        :return: effective integration time [s]
-        """
-        if nmd is None:
-            nmd = self.nmd
-
-        if tframe is None:
-            tframe = self.tframe
-
-        return self._get_integration_time(nmd=nmd, tframe=tframe)
-    
+    # - Internal
     @staticmethod
-    def _get_integration_time(nmd, tframe):
-        """ internal function for the integration time """
-        n, m, d = nmd
-        return (n - 1) * (m + d) * tframe  # = (n - 1) * tgroup
-
-    @property
-    def macc(self):
-        """
-        MACC description 'N:M:D'.
-        """
-        return ':'.join([ str(_) for _ in self.nmd ])
-        
-    @property
-    def nframes(self):
-        """
-        Total number of individual frames in the ramp.
-        """
-        n, m, d = self.nmd
-        return (n * (m + d) - d)
-
-    
-    @property
-    def tgroup(self):
-        """
-        Time between two groups (including drops).
-        """
-
-        n, m, d = self.nmd
-
-        return (m + d) * self.tframe
-
-    @property
-    def integration_time(self):
-        """
-        Effective integration time (to be used for flux computations).
-        """
-
-        return self.get_integration_time()
-
-    @property
-    def exposure_time(self):
-        """
-        Total integration time (to be used for sequences).
-        """
-
-        return self.get_exposure_time()
-
-    @property
-    def photonflux2ADU(self):
-        """
-        Conversion factor from photon flux [ph/s] to integrated signal [ADU].
-
-        This is effective exposure time [s] * QE [e-/ph] * gain [ADU/e-].
-        """
-
-        return self.integration_time * self.qe * self.gain
-
-    @property
-    def electronpers2ADU(self):
-        """
-        Conversion factor from electron/s to integrated signal [ADU].
-
-        This is effective exposure time [s] * gain [ADU/e-].
-        """
-
-        return self.integration_time * self.gain
-
-    @staticmethod
-    def estimate_variance_rauscher07(flux, nmd, tframe, ron, dark, gain):
+    def _estimate_variance_rauscher07(flux, nmd, tframe, ron, dark, gain):
         """
         Variance from Rauscher+2007 (corrected in Rauscher+2010).
 
@@ -401,7 +364,6 @@ class Detector:
            unbiased and naturally falls back to incident flux in
            the noiseless limit.
         """
-
         n, m, d = nmd
         if (n == 0) or (m == 0):
             return np.full_like(flux, np.nan)
@@ -418,7 +380,7 @@ class Detector:
         return var / gain**2        # [ADU²]
 
     @staticmethod
-    def estimate_variance_kubik20(flux, nmd, tframe, ron, dark, gain):
+    def _estimate_variance_kubik20(flux, nmd, tframe, ron, dark, gain):
         """
         Variance from Kubik2020 (private communication).
 
@@ -434,7 +396,6 @@ class Detector:
         :param float gain: Gain [ADU/e-]
         :return: total variance [ADU²]
         """
-
         n, m, d = nmd
 
         # Kubik20 works in ADU
@@ -452,7 +413,7 @@ class Detector:
         return var              # [ADU²]
 
     @staticmethod
-    def xdisp_profile(sigma=1, width=5, xdims=0):
+    def _xdisp_profile(sigma=1, width=5, xdims=0):
         """
         Get normalized cross-dispersion profile.
 
@@ -466,7 +427,6 @@ class Detector:
         :param int xdims: extra dimensions to be appended
         :return: normalized (embedded) profile
         """
-
         assert int(width) == width, \
             f"Non-integer x-disp. width not supported: {width}, {type(width)}."
 
@@ -478,14 +438,63 @@ class Detector:
             p = p.reshape(p.shape + (1,) * xdims)
 
         return p
-
-
+        
+    # ================ #
+    #   Properties     #
+    # ================ #
     @property
     def meta(self):
         """ metadata of the instance """
         return self._meta
+    
+    @property
+    def macc(self):
+        """ MACC description 'N:M:D'. (from self.nmd) """
+        return ':'.join([ str(_) for _ in self.nmd ])
+        
+    @property
+    def nframes(self):
+        """ Total number of individual frames in the ramp. """
+        n, m, d = self.nmd
+        return (n * (m + d) - d)
+    
+    @property
+    def tgroup(self):
+        """ Time between two groups (including drops). """
+        n, m, d = self.nmd
+        return (m + d) * self.tframe
 
+    @property
+    def integration_time(self):
+        """ Effective integration time (to be used for flux computations). """
+        return self.get_integration_time()
 
+    @property
+    def exposure_time(self):
+        """ Total integration time (to be used for sequences). """
+        return self.get_exposure_time()
+
+    @property
+    def photonflux2ADU(self):
+        """ Conversion factor from photon flux [ph/s] to integrated signal [ADU].
+
+        This is effective exposure time [s] * QE [e-/ph] * gain [ADU/e-].
+        """
+        return self.integration_time * self.qe * self.gain
+
+    @property
+    def electronpers2ADU(self):
+        """ Conversion factor from electron/s to integrated signal [ADU].
+
+        This is effective exposure time [s] * gain [ADU/e-].
+        """
+        return self.integration_time * self.gain
+
+#
+#
+#
+#
+#
 if __name__ == "__main__":
 
     from mlaperf.iotools import get_config
@@ -500,9 +509,9 @@ if __name__ == "__main__":
     flux = 1                                          # [ph/s]
     dark = detector.dark * detector.electronpers2ADU  # Dark contribution [ADU]
     # Signal (without dark) [ADU]
-    sigk, vsigk = detector.estimate_px_signal(flux, variance_model='Kubik20',
+    sigk, vsigk = detector.estimate_pixel_signal(flux, variance_model='Kubik20',
                                               withdark=False)
-    sigr, vsigr = detector.estimate_px_signal(flux, variance_model='Rauscher+07',
+    sigr, vsigr = detector.estimate_pixel_signal(flux, variance_model='Rauscher+07',
                                               withdark=False)
 
     def SNR(f, v):
