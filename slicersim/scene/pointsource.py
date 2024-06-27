@@ -298,7 +298,7 @@ def get_twins_embedding_flux(lbda, phase, redshift=0.05,
     return np.interp(lbda, wl_obs, flux_obs, left=np.nan, right=np.nan)
 
 
-class PointSource (SceneElement):
+class PointSource( SceneElement ):
     
     """ A SceneElement with a position """
     def __init__(self, model_func, position, lbda=None, meta={}):
@@ -334,19 +334,54 @@ class PointSource (SceneElement):
                        meta=config.copy())
 
     @classmethod
-    def from_spectrum(cls, lbda_, flux_, mag_,
+    def from_spectrum(cls, lbda_, flux_, mag=20, band="bessellb",
                      position=(0,0), lbda=None, meta={}):
-        """ """
-        meta["mag_ref"] = 10.
+        """ Generate a pointsource from any spectrum
+        
+        Parameters
+        ----------
+        lbda_: Array
+            wavelength [A] of the reference spectrum
+
+        flux_: Array
+            flux of the reference spectrum.
+            (the unit will be given by the magnitude)
+
+        mag: float
+            default magnitude of the target (see band)
+
+        band: str
+            name of the band (must be known by sncosmo)
+
+        position: list
+            x and y location of the point source within the IFU
+
+        lbda: None or Array
+            default wavelenght at which the spectrum may be gerenated
+            (ignore if unsure)
+
+        meta: dict
+            meta information carried by the object.
+
+        Returns
+        -------
+        PointSource
+        """
+        from sncosmo import Spectrum
+        meta["mag"] = mag
+        meta["band"] = band
+        meta["flux_ref"] = flux_
+        meta["lbda_ref"] = lbda_        
         this = cls(None, position=position, lbda=lbda, meta=meta)
-        
-        flux_ratio = 10**(-0.4*(mag_ - 10))
-        flux_at_mag10 = flux_ / flux_ratio # here you devide.
-        
+
         # internal function 
-        def _internal_get_flux(lbda, mag=10):
-            flux_ratio = 10**(-0.4*(mag - 10))
-            flux_ = np.interp(lbda, lbda_, flux_at_mag10, left=np.nan, right=np.nan)
+        def _internal_get_flux(lbda, mag, band):
+            """ """
+            in_mag = Spectrum(meta["lbda_ref"], meta["flux_ref"]
+                             ).bandmag(band, "ab")
+            flux_ratio = 10**( -0.4*(mag - in_mag) )
+            flux_ = np.interp(lbda, meta["lbda_ref"], meta["flux_ref"],
+                                  left=np.nan, right=np.nan)
             return flux_ * flux_ratio
         
         this._model_func = _internal_get_flux

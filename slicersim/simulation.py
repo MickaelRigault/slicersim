@@ -112,7 +112,7 @@ class Simulation:
         scene = Scene.from_config(config["scene"], lbda=spectrograph.lbda)
 
         # Initialize the detector from config
-        detector = Detector.from_config(config["detector"], spectrograph.lbda)
+        detector = Detector.from_config(config["detector"], lbda=spectrograph.lbda)
 
         # Initialize extraction parameters from config
         extraction = config["extraction"]
@@ -133,8 +133,22 @@ class Simulation:
             return None
         
         return mutable_
+
+    def change_target(self, pointsource):
+        """ override the considered pointsource 
+        
+        Parameters
+        ----------
+        pointsource: slicersim.PointSource
+            new pointsource to be used.
+
+        Returns
+        -------
+        None
+        """
+        self.scene._target = pointsource
     
-    def update(self, **kwargs):
+    def update(self, reset_others=False, **kwargs):
         """ Update any mutable parameter of the simulation.
 
         for convinience, the update method respects the django '__' format, 
@@ -148,9 +162,9 @@ class Simulation:
 
         """
 
-        updates_scene = {}
-        updates_detector = {}
-        updates_spectrograph = {}
+        updates_scene = {"reset_others": reset_others}
+        updates_detector = {"reset_others": reset_others}
+        updates_spectrograph = {"reset_others": reset_others}
         updates_extraction = {}
         
         for k, v in kwargs.items():
@@ -310,6 +324,10 @@ class Simulation:
 
         # Short cuts
         if which == "ngroup":
+            return self.detector.nmd[0]
+
+        # Short cuts
+        if which == "nframe":
             return self.detector.nmd[0]
 
         # Otherwise, look at individual elements
@@ -618,19 +636,27 @@ class Simulation:
             - reached SNR.
         """
         # minimal values (including these)
-        minimal_values = {"ngroup": 2, "nramp": 1}
-        if free_parameter not in ["ngroup", "nramp"]:
-            raise ValueError(f"free_parameter should be 'ngroup' or 'nframe' {free_parameter} given.")
+        minimal_values = {"ngroup": 2, "nramp": 1, 'nframe':2}
+        if free_parameter not in ["ngroup", "nramp", 'nframe']:
+            raise ValueError(f"free_parameter should be 'ngroup', 'nramp' or 'nframe' {free_parameter} given.")
         
         prop_snr = dict(lbda_range=lbda_range, 
                         frame=frame, 
                         statistic=statistic)
-        
+
+        # nframe supposed to change the macc mode to (1,1,0)
+        if free_parameter == "nframe":
+            input_nmd = self.get_parameter("nmd")
+            self.update(nmd=(minimal_values.get("ngroup"), 1, 0)) # start at min value
+            free_parameter = "ngroup" # 1 frame per group, so ngroup=nframe
+        else:
+            input_nmd = None
+
         # used to reset the simu as its initial condition.
         input_value = self.get_parameter(free_parameter)
         new_snr = self.get_band_snr(**prop_snr)
         if new_snr>=target_snr: # going down.
-            iterstep = -1  
+            iterstep = -1
             condition = np.less
         else: # going up
             iterstep = +1
@@ -651,16 +677,20 @@ class Simulation:
                     new_snr =  self.get_band_snr(**prop_snr)
                 else:
                     self.update(**{free_parameter: new_value-iterstep})
-                    new_snr =  self.get_band_snr(**prop_snr)
+                    new_snr = self.get_band_snr(**prop_snr)
                 break
                 
             counter += 1
             current_value = new_value
-            
+
+        integration_time = self.detector.get_integration_time()
         if reset_param: # reset if needed
-            self.update(**{free_parameter: input_value})
+            if input_nmd is not None:
+                self.update(nmd = input_nmd)
+            else:
+                self.update(**{free_parameter: input_value})
     
-        return current_value, new_snr
+        return current_value, new_snr, integration_time
     
     # ---------- #
     #  Plotting  #

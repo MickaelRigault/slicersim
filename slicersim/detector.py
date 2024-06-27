@@ -83,8 +83,9 @@ class Detector:
         self.px_size = float(config["px_size"])         #: Pixel size [µm]
         self.variance_model = config["variance_model"]  #: Variance model
 
-        self.meta = config                              #: Meta-parameters
-
+        self._meta_in = config.copy()                   #: Meta-parameters
+        self._meta = config.copy()                      #: Meta-parameters
+        
     def __str__(self):
 
         s = f"Detector {self.name!r}:"
@@ -117,12 +118,20 @@ class Detector:
         :param bool verbose: verbose mode
         :param lbda: wavelengths [Å]
         """
-
         return cls(config, lbda, verbose=verbose)
 
     # ============== #
     #   Methods      #
     # ============== #
+    def get_exposure_time(self, nmd=None, tframe=None):
+        """
+        Total integration time (to be used for sequences).
+
+        :param nmd: (#group, #frame/group, #drop)
+        :param float tframe: frame time [s]
+        :return: total integration time [s]
+        """
+        return self.nframes * self.tframe    
     
     def estimate_spx_spectrum(self, flux, sigma=1, width=5):
         """
@@ -241,19 +250,7 @@ class Detector:
 
         return signal, variance  # [ADU], [ADU²]
 
-
-    
-
-    @property
-    def macc(self):
-        """
-        MACC description 'N:M:D'.
-        """
-
-        return ':'.join([ str(_) for _ in self.nmd ])
-
-
-    def update(self, **kwargs):
+    def update(self, reset_others=False, **kwargs):
         """
         Change any mutable attribute of the detector.
         """
@@ -274,11 +271,10 @@ class Detector:
                 n, m, d = self.nmd  # NMD = (ngroup, ngroups, ndrops)
                 k, v = 'nmd', (v, m, d)
 
-            if k == "nframe_per_group":
-                n, m, d = self.nmd  # NMD = (ngroup, ngroups, ndrops)
+            if k in ["nframe_per_group", "nframe"]:
+                n, m, d = self.nmd  # NMD = (ngroup, nframe_per_group, ndrops)
                 k, v = 'nmd', (n, v, d)
                 
-
             setattr(self, k, v)  # Update
             updates[k] = v
 
@@ -287,7 +283,11 @@ class Detector:
             self.update_lbda(lbda)  # updates all chromatic components
 
         # update the metadata
-        self.meta = self.meta | updates
+        if reset_others:
+            self._meta = self._meta_in | updates
+        else:
+            self._meta = self._meta | updates
+        
 
     def update_lbda(self, lbda):
         """
@@ -301,34 +301,43 @@ class Detector:
         if self.qe_interp is not None:
             self.qe = self.qe_interp(self.lbda)
 
-    @staticmethod
-    def get_integration_time(nmd, tframe):
-        """
-        Effective integration time (to be used for flux computations).
+    def get_integration_time(self, nmd=None, tframe=None):
+        """ Effective integration time (to be used for flux computations).
 
         :param nmd: (#group, #frame/group, #drop)
         :param float tframe: frame time [s]
         :return: effective integration time [s]
         """
+        if nmd is None:
+            nmd = self.nmd
 
+        if tframe is None:
+            tframe = self.tframe
+
+        return self._get_integration_time(nmd=nmd, tframe=tframe)
+    
+    @staticmethod
+    def _get_integration_time(nmd, tframe):
+        """ internal function for the integration time """
         n, m, d = nmd
-
         return (n - 1) * (m + d) * tframe  # = (n - 1) * tgroup
 
-    @staticmethod
-    def get_exposure_time(nmd, tframe):
+    @property
+    def macc(self):
         """
-        Total integration time (to be used for sequences).
-
-        :param nmd: (#group, #frame/group, #drop)
-        :param float tframe: frame time [s]
-        :return: total integration time [s]
+        MACC description 'N:M:D'.
         """
+        return ':'.join([ str(_) for _ in self.nmd ])
+        
+    @property
+    def nframes(self):
+        """
+        Total number of individual frames in the ramp.
+        """
+        n, m, d = self.nmd
+        return (n * (m + d) - d)
 
-        n, m, d = nmd
-
-        return (n * (m + d) - d) * tframe
-
+    
     @property
     def tgroup(self):
         """
@@ -345,7 +354,7 @@ class Detector:
         Effective integration time (to be used for flux computations).
         """
 
-        return self.get_integration_time(self.nmd, self.tframe)
+        return self.get_integration_time()
 
     @property
     def exposure_time(self):
@@ -353,15 +362,7 @@ class Detector:
         Total integration time (to be used for sequences).
         """
 
-        return self.get_exposure_time(self.nmd, self.tframe)
-
-    @property
-    def nframes(self):
-        """
-        Total number of individual frames in the ramp.
-        """
-
-        return self.get_exposure_time(self.nmd, 1)
+        return self.get_exposure_time()
 
     @property
     def photonflux2ADU(self):
@@ -437,7 +438,7 @@ class Detector:
         n, m, d = nmd
 
         # Kubik20 works in ADU
-        tint = Detector.get_integration_time(nmd, tframe)  # [s]
+        tint = Detector._get_integration_time(nmd, tframe)  # [s]
         signal = (flux + dark) * gain * tint    # e-/s * ADU/e- * s [ADU]
 
         gghat = signal / (n - 1)                # g*ghat in K+16 [ADU]
@@ -478,6 +479,11 @@ class Detector:
 
         return p
 
+
+    @property
+    def meta(self):
+        """ metadata of the instance """
+        return self._meta
 
 
 if __name__ == "__main__":

@@ -30,7 +30,7 @@ class SceneElement:
     # ================ #
     #   Methods        #
     # ================ #                
-    def update(self, **kwargs):
+    def update(self, reset_others=False, **kwargs):
         """ change any mutable_parameters (see self.mutable_parameters) """
         model_update = {}
         for k, v in kwargs.items():
@@ -49,7 +49,10 @@ class SceneElement:
             else:
                 model_update[k] = v
 
-        self._meta = self._meta_in | model_update
+        if reset_others:
+            self._meta = self._meta_in | model_update
+        else:
+            self._meta = self._meta | model_update
 
     def get_spectrum(self, lbda=None):
         """ get the spectrum 
@@ -78,11 +81,13 @@ class SceneElement:
     def _parse_model_kwargs_(self):
         """ get default model_func parameters updated by current meta """
         # get default
-        _, default_param = inspect_func(self.model_func)
+        list_parameters, default_param = inspect_func(self.model_func)
+        list_parameters.remove("lbda") # this should not be there.
         # names of parameters
         kwargs_names = default_param.keys()
         # get meta input if any        
-        model_parameters = {k: self.meta[k] for k in kwargs_names if k in self.meta}
+        model_parameters = {k: self.meta[k] for k in list_parameters
+                                if k in self.meta}
         # default updated by current meta 
         return default_param | model_parameters
     

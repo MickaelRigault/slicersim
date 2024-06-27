@@ -104,7 +104,7 @@ class Scene:
         return getattr(self, element, None) is not None
 
 
-    def update(self, **kwargs):
+    def update(self, reset_others=False, **kwargs):
         """ change any mutable_parameters (see self.mutable_parameters) 
         
         for convinience, the update method respects the django '__' format, 
@@ -143,13 +143,13 @@ class Scene:
                 raise ValueError(f"Unknown scene parameter {k!r}.")
 
         if self.target is not None:
-            self.target.update(**updates_target)
+            self.target.update(reset_others=reset_others, **updates_target)
             
         if self.background is not None:
-            self.background.update(**updates_background)
+            self.background.update(reset_others=reset_others, **updates_background)
             
         if self.host is not None:
-            self.host.update(**updates_host)
+            self.host.update(reset_others=reset_others, **updates_host)
 
     def get_element_spectrum(self, which, lbda=None, fillna=0, **kwargs):
         """ """

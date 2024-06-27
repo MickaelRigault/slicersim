@@ -196,7 +196,8 @@ class Spectrograph:
         #     acceptance=float(config['camera'].get('acceptance', 0)),
         #     speed=float(config['camera'].get('speed', np.inf)))
 
-        self.meta = config      #: Meta-parameters
+        self._meta_in = config.copy()      #: Meta-parameters as input
+        self._meta = config.copy()         #: Meta-parameters as used
 
     @classmethod
     def from_config(cls, config, verbose=False):
@@ -430,7 +431,7 @@ class Spectrograph:
 
         return new_kw
 
-    def update(self, **kwargs):
+    def update(self, reset_others=False, **kwargs):
         """
         Update any mutable attribute of the spectrograph.
         """
@@ -472,7 +473,10 @@ class Spectrograph:
                 updates[k1] = dict(k2=v)
 
         # Update the metadata
-        self.meta = {**self.meta, **updates}
+        if reset_others:
+            self._meta = self._meta_in |updates
+        else:
+            self._meta = self._meta | updates
 
     def update_lbda(self):
         """
@@ -533,8 +537,7 @@ class Spectrograph:
         return sigma
 
     def get_spectral_sigma(self, xdims=0, xdisp_sigma=None):
-        """
-        Get spectral PSF stddev [px].
+        """ Get spectral PSF stddev [px].
 
         The total (Gaussian) spectral PSF is made of two components:
 
@@ -560,8 +563,7 @@ class Spectrograph:
                                         wref=10_000, xdims=xdims)
 
     def get_spatial_sigma(self, xdims=0, guiding_sigma=None):
-        """
-        Get spatial PSF stddev [arcsec].
+        """ Get spatial PSF stddev [arcsec].
 
         The total (Gaussian) spatial PSF is made of two components:
 
@@ -587,8 +589,7 @@ class Spectrograph:
                                         wref=10_000, xdims=xdims)
 
     def get_spatial_psf(self, position=(0, 0)):
-        """
-        Get normalized 2D spatial PSF on the MLA.
+        """ Get normalized 2D spatial PSF on the MLA.
 
         This uses the exact 2D Gaussian PSF integration over the spx.
 
@@ -606,8 +607,7 @@ class Spectrograph:
         return psf                         # (nlbda, ny, nx)
 
     def generate_point_source(self, spectrum, position=(0, 0)):
-        """
-        Generate a photon flux cube from a point source spectrum.
+        """ Generate a photon flux cube from a point source spectrum.
 
         :param spectrum: point source spectrum [erg/s/cm²/Å]
         :param 2-tuple position: point source position in MLA [spx]
@@ -623,12 +623,13 @@ class Spectrograph:
         return np.reshape(flux, (-1, 1, 1)) * psf  # Point source (nlbda, ny, nx)
 
     def generate_thermal(self):
-        """
-        Generate a photon flux cube from mirror thermal emission.
+        """ Generate a photon flux cube from mirror thermal emission.
 
-        :return: (nlbda, ny, nx) photon flux cube [ph/s/spx]
+        Returns
+        -------
+        (nlbda, ny, nx) 
+            photon flux cube [ph/s/spx]
         """
-
         signal = self.thermal_signal()  # (nlbda,)
 
         return np.full((self.nlbda, self.ny, self.nx),
@@ -672,15 +673,6 @@ class Spectrograph:
 
         return variance                  # (nlbda,) [ADU²]
 
-    @property
-    def omega(self):
-        """Spaxel solid angle [sr]."""
-
-        hspx = self.spatial_scale / 2  # [arcsec]
-        hspx *= 4.84813681109536e-06   # [rad]
-
-        return np.pi * np.sin(hspx)**2
-
     def thermal_signal(self, domains=None, temperature=None, emissivity=None):
         """
         Mirror thermal signal [ph/s/spx/Δλ].
@@ -713,6 +705,25 @@ class Spectrograph:
 
         return signal                              # [ph/s/spx/Δλ]
 
+    # ================= #
+    #  Properties       #
+    # ================= #
+    
+    @property
+    def meta(self):
+        """ metadata of the instance """
+        return self._meta
+
+    @property
+    def omega(self):
+        """Spaxel solid angle [sr]."""
+
+        hspx = self.spatial_scale / 2  # [arcsec]
+        hspx *= 4.84813681109536e-06   # [rad]
+
+        return np.pi * np.sin(hspx)**2
+    
+    
 
 def plot_spectral_resolution(spectro, ax=None):
     """
