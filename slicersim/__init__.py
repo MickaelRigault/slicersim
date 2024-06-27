@@ -1,5 +1,4 @@
-__version__ = '0.3.1'
-# from __version__ "0.18" of internal mlaperf
+__version__ = '0.4.0'
 
 from .simulation import *
 from .spectrograph import Spectrograph

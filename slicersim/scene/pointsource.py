@@ -5,8 +5,11 @@ import numpy as np
 from astropy.cosmology import Planck18 as cosmology
 from .base import SceneElement
 
-from twins_embedding import TwinsEmbeddingModel
-twins_embedding_model = TwinsEmbeddingModel()
+try:
+    from twins_embedding import TwinsEmbeddingModel
+    twins_embedding_model = TwinsEmbeddingModel()
+except ImportError:
+    twins_embedding_model = None
 
 
 """
@@ -245,12 +248,53 @@ def get_saltmodel_flux(lbda, phase,
 
 
 def get_twins_embedding_flux(lbda, phase, redshift=0.05,
-                             magnitude=0., color=0., coordinates=(0., 0., 0.), cosmo=cosmology):
+                             magnitude=0., color=0., coordinates=(0., 0., 0.),
+                             cosmo=cosmology, ref_redshift=0.05,
+                             norm=1e-15):
+    """ get a snia spectrum assuming the Twin Embedding model
+
+    Parameters
+    ----------
+    lbda: array
+        wavelength [A]
+
+    phase: float
+        rest-frame phase [days]
+
+    redshift: float
+        reshift of the simulated flux
+
+    magnitude: float
+        magnitude offset for the twin model (dmag)
+        
+    color: float
+        color term of the twin model (Av)
+
+    coordinates: list
+        embedding parameters for the twin model (xi)
+
+    cosmo: astropy.Cosmology
+        cosmology to be used to redshift the simulated target
+
+    ref_redshift: float
+        reference redshift
+
+    norm: float
+        normalisation of the output flux.
+    
+    Returns
+    -------
+    Array
+    """
+    if twins_embedding_model is None:
+        raise ImportError("The 'twins_embedding' module is not available.")
+    
     flux, flux_error = twins_embedding_model.evaluate(phase, magnitude, color, list(coordinates))
     wl_obs = twins_embedding_model.wave * (1. + redshift)
-    dist_ratio = cosmo.luminosity_distance(0.05).value / cosmo.luminosity_distance(redshift).value
-    cosmo_k_corr = 1.05 / (1. + redshift)
-    flux_obs = flux * 1e-15 * dist_ratio ** 2. * cosmo_k_corr
+    dist_ratio = cosmo.luminosity_distance(ref_redshift).value / cosmo.luminosity_distance(redshift).value
+    cosmo_k_corr = (1. + ref_redshift) / (1. + redshift) 
+    flux_obs = flux * norm * dist_ratio ** 2. * cosmo_k_corr
+    
     return np.interp(lbda, wl_obs, flux_obs, left=np.nan, right=np.nan)
 
 
@@ -286,8 +330,28 @@ class PointSource (SceneElement):
                 raise ValueError("no model_func not source in the config. one is needed.")
 
         
-        return cls(model_func=model_func, position=position, meta=config.copy())
+        return cls(model_func=model_func, position=position,
+                       meta=config.copy())
+
+    @classmethod
+    def from_spectrum(cls, lbda_, flux_, mag_,
+                     position=(0,0), lbda=None, meta={}):
+        """ """
+        meta["mag_ref"] = 10.
+        this = cls(None, position=position, lbda=lbda, meta=meta)
         
+        flux_ratio = 10**(-0.4*(mag_ - 10))
+        flux_at_mag10 = flux_ / flux_ratio # here you devide.
+        
+        # internal function 
+        def _internal_get_flux(lbda, mag=10):
+            flux_ratio = 10**(-0.4*(mag - 10))
+            flux_ = np.interp(lbda, lbda_, flux_at_mag10, left=np.nan, right=np.nan)
+            return flux_ * flux_ratio
+        
+        this._model_func = _internal_get_flux
+        return this
+    
     # ========== #
     #  Getter    #
     # ========== #
@@ -328,7 +392,10 @@ class PointSource (SceneElement):
         
         # Actual flux
         model_kwargs = self._parse_model_kwargs_()
-        flux = self.model_func(lbda, phase, **model_kwargs) # compute spectrum
+        if phase is not None:
+            model_kwargs |= {"phase":phase} # allow
+            
+        flux = self.model_func(lbda, **model_kwargs) # compute spectrum
         return lbda, flux
         
     # ================ #

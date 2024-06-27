@@ -25,7 +25,11 @@ def inspect_func( func ):
     inspect_full = inspect.getfullargspec( func )
     all_params = inspect_full.args
     # kwargs_ are the default function values
-    kwargs_ = dict(zip(all_params[::-1], inspect_full.defaults[::-1]))
+    if inspect_full.defaults is not None:
+        kwargs_ = dict(zip(all_params[::-1], inspect_full.defaults[::-1]))
+    else:
+        kwargs_ = {}
+    
     return all_params, kwargs_
 
 
