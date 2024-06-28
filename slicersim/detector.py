@@ -9,7 +9,7 @@ Detector module, to simulate:
    Detector
 """
 
-__author__ = "Mickael Rigault <m.rigault@ipnl.in2p3.fr>, Yannick Copin <y.copin@ipnl.in2p3.fr>"
+__author__ = "Mickael Rigault <m.rigault@ip2i.in2p3.fr>, Yannick Copin <y.copin@ip2i.in2p3.fr>"
 
 import warnings
 import numpy as np

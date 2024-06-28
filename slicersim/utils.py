@@ -34,8 +34,7 @@ def inspect_func( func ):
 
 
 def restride(arr, binfactor, squeezed=True, flattened=False):
-    """
-    Rebin ND-array `arr` by `binfactor`.
+    """ Rebin ND-array `arr` by `binfactor`.
 
     Let `arr.shape = (s1, s2, ...)` and `binfactor = (b1, b2, ...)` (same
     length), new shape will be `(s1/b1, s2/b2, ... b1, b2, ...)` (squeezed).

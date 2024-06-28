@@ -14,7 +14,7 @@ Astrophysical scene is handled by :class:`mlaperf.scene.Scene` and detector by
    Spectrograph
 """
 
-__author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
+__author__ = "Mickael Rigault <m.rigault@ip2i.in2p3.fr>, Yannick Copin <y.copin@ip2i.in2p3.fr>"
 
 import warnings
 from dataclasses import dataclass
@@ -57,7 +57,6 @@ class Mirror:
             s += ", no thermal emission"
 
         return s
-
 
 @dataclass
 class Camera:
@@ -107,7 +106,7 @@ class Spectrograph:
         # First set the spectral domain, which is needed for all
         # chromatic quantities
         #: Wavelength domain `[wmin, wmax]` [Å]
-        self.spectral_range = [ float(w) for w in config["spectral_range"] ]
+        self.spectral_range = [float(w) for w in config["spectral_range"] ]
         #: Constant input spectral resolution (actually resolving power)
         self.spectral_resolution = float(config.get("spectral_resolution", 0))
         #: Dispersion law filename (physical offset as a function of wavelength)
@@ -140,7 +139,7 @@ class Spectrograph:
         # Spectral domain: self.lbda[_edges]
         self.lbda = None        #: Wavelength at bin center (nlbda,)
         self.lbda_edges = None  #: Wavelength at bin edges (nlbda+1,)
-        self.set_lbda()
+        self.load_lbda()
 
         #: Chromatic (optical) spectral PSF on detector [px] (∝ λ at 1 µm)
         self.spectral_sigma = float(config["spectral_sigma"])
@@ -167,6 +166,7 @@ class Spectrograph:
             # throughput is a constant
             self.throughput = float(config["throughput"])
             self.throughput_name = self.throughput_name_interp = None
+            
         except ValueError:
             # throughput is a filename
             self.throughput_name = config["throughput"]  #: Throughput filename
@@ -188,12 +188,7 @@ class Spectrograph:
                 dint=float(config['mirror']['diameter_int'])),
             temperature=float(config['mirror'].get('temperature', 0)),
             emissivity=float(config['mirror'].get('emissivity', 0)),
-        )
-
-        # #: Camera
-        # self.camera = Camera(
-        #     acceptance=float(config['camera'].get('acceptance', 0)),
-        #     speed=float(config['camera'].get('speed', np.inf)))
+            )
 
         self._meta_in = config.copy()      #: Meta-parameters as input
         self._meta = config.copy()         #: Meta-parameters as used
@@ -247,92 +242,6 @@ class Spectrograph:
 
         return 10**loglbda_mid, 10**loglbda_edges
 
-    def set_lbda(self):
-        """
-        Set wavelength coordinates.
-
-        Set :attr:`lbda` (:attr:`nlbda` mid wavelengths) and :attr:`lbda_egdes`
-        (:attr:`nlbda` + 1 edge wavelengths).
-        """
-
-        if self.wsol is None:   # Compute from constant resolving power
-            self.lbda, self.lbda_edges = self.lbda_from_respow(
-                self.spectral_range, self.spectral_resolution)
-        else:                   # Compute from wavelength solution
-            wmin, wmax = self.spectral_range
-            npx = round(self.dsol(wmax) - self.dsol(wmin))    # Total nb of px
-            self.lbda = self.wsol(np.r_[:npx])                # λ at bin center
-            self.lbda_edges = self.wsol(np.r_[:npx+1] - 0.5)  # λ at bin edge
-
-    @property
-    def nlbda(self):
-        """Number of spectral pixels."""
-
-        return len(self.lbda)
-
-    def effective_resolution(self, npx=2, sigma=None, average=False):
-        r"""
-        Effective spectral resolution.
-
-        .. math::
-
-           R &= \frac{2}{n \delta\lambda} \\
-           \delta\lambda &= \max(1, \sigma) \times \Delta\lambda
-
-        where :math:`\Delta\lambda` is the spectral step [Å] and
-        :math:`\sigma` is the spectral resolution [px].
-
-        :param float npx: n-px resolution (i.e. n px per spectral elements)
-        :param sigma: spectral PSF stddev override
-        :param bool average: chromatic average (weighted by spectral step)
-        :return: effective n-px wavelength resolution
-                 (as a function of wavelength or averaged)
-        """
-
-        if sigma is None:
-            sigma = self.get_spectral_sigma()  # (nlbda,)
-        sigma = np.maximum(sigma, 1)
-
-        dlbda = np.diff(self.lbda_edges)
-        wres = self.lbda / (npx * sigma * dlbda)  # (nlbda,)
-
-        if average:             # Chromatic average
-            wres = np.average(wres, weights=dlbda)
-
-        return wres
-
-    def chromatic_average(self, quantity):
-        """
-        Chromatic average of a quantity (averaged over wavelength rather than px)
-
-        :param array quantity: chromatic quantity (nlbda,)
-        :return: chromatic average
-        """
-
-        return np.average(quantity, weights=np.diff(self.lbda_edges))
-
-    def set_spaxels(self):
-        """
-        Set spaxel coordinates [spx] from MLA shape.
-
-        Set `self.(x,y)[_edges]` from :attr:`spatial_shape`.
-        """
-
-        hnx, hny = (self.nx - 1)/2, (self.ny - 1)/2
-        self.y, self.x = np.ogrid[-hny:hny:self.ny*1j,
-                                  -hnx:hnx:self.nx*1j]  # Central coord. grids [spx]
-        self.y_edges, self.x_edges = np.ogrid[
-            -hny - 0.5:hny + 0.5:(self.ny + 1)*1j,
-            -hnx - 0.5:hnx + 0.5:(self.nx + 1)*1j]      # Edge coord. grids [spx]
-
-    @property
-    def mla_extent(self):
-        """MLA extent [spx]."""
-
-        hx, hy = self.nx / 2, self.ny / 2  # Half total width [spx]
-
-        return [-hx, hx, -hy, hy]
-
     def __str__(self):
 
         wmin, wmax = self.spectral_range
@@ -368,20 +277,8 @@ class Spectrograph:
 
         return s
 
-    @property
-    def flambda2photon(self):
-        """Chromatic conversion factor from erg/s/cm²/Å to ph/s."""
-
-        dlbda = np.diff(self.lbda_edges)  # Spectral step (nlbda,)
-        hnu = 1.9864459e-08 / self.lbda   # Photon energy [erg] with lbda in [Å]
-
-        # erg/s/cm²/Å * (cm² * throughput * Å / erg/ph) = ph/s
-        return (self.mirror.surface * 1e4 *
-                self.throughput * dlbda / hnu)  # (nlbda,) [ph/s]
-
     def rescale_parameters(self, **kwargs):
-        """
-        Convert parameters in relative units to absolute units.
+        """ Convert parameters in relative units to absolute units.
 
         .. Warning:: if needed, the reference parameters
            (e.g. :attr:`spatial_sigma`) should be updated
@@ -438,10 +335,7 @@ class Spectrograph:
         return new_kw
 
     def update(self, reset_others=False, **kwargs):
-        """
-        Update any mutable attribute of the spectrograph.
-        """
-
+        """ Update any mutable attribute of the spectrograph. """
         kwargs = self.rescale_parameters(**kwargs)
 
         updates = {}
@@ -489,59 +383,42 @@ class Spectrograph:
         Update wavelength and chromatic components.
         """
 
-        self.set_lbda()         # Update wavelengths
+        self.load_lbda()         # Update wavelengths
         # Update throughput if needed
         if self.throughput_interp is not None:
             self.throughput = self.throughput_interp(self.lbda)
 
-    def generate_background(self, spectrum):
+    # - setter
+    def load_lbda(self):
+        """ set wavelength coordinates.
+
+        Set :attr:`lbda` (:attr:`nlbda` mid wavelengths) and :attr:`lbda_egdes`
+        (:attr:`nlbda` + 1 edge wavelengths).
         """
-        Generate a photon flux cube from uniform scene background spectrum.
-
-        :param spectrum: uniform scene background spectrum [erg/s/cm²/Å/arcsec²]
-        :return: (nlbda, ny, nx) photon flux cube [ph/s/spx]
+        if self.wsol is None:   # Compute from constant resolving power
+            self.lbda, self.lbda_edges = self.lbda_from_respow(
+                self.spectral_range, self.spectral_resolution)
+        else:                   # Compute from wavelength solution
+            wmin, wmax = self.spectral_range
+            npx = round(self.dsol(wmax) - self.dsol(wmin))    # Total nb of px
+            self.lbda = self.wsol(np.r_[:npx])                # λ at bin center
+            self.lbda_edges = self.wsol(np.r_[:npx+1] - 0.5)  # λ at bin edge
+            
+    def set_spaxels(self):
         """
+        Set spaxel coordinates [spx] from MLA shape.
 
-        # erg/s/cm²/Å/arcsec² * cm² * Å / erg/ph * arcsec² = ph/s/spx
-        flux = spectrum * self.flambda2photon * self.spatial_scale**2
-
-        return np.full((self.nlbda, self.ny, self.nx),
-                       flux[:, np.newaxis, np.newaxis])  # (nlbda, ny, nx)
-
-    @staticmethod
-    def get_chromatic_sigma(lbda, chromatic_sigma, constant_sigma,
-                            wref=10_000., xdims=0):
-        """
-        Get total PSF, including chromatic and constant components.
-
-        The total (Gaussian) stddev is the quadratic sum of two components:
-
-        - the chromatic stddev, proportional to wavelength,
-          normalized at `wref`,
-        - the achromatic, constant stddev.
-
-        If needed, the 1D vector can be embedded in a N-dim array of
-        shape `(nlbda,) + (1,)*xdims`.
-
-        :param lbda: wavelength
-        :param chromatic_sigma: chromatic (linear) stddev
-        :param constant_sigma: achromatic (constant) stddev
-        :param float wref: reference wavelength (same unit as `lbda`)
-        :param int xdims: extra dimensions to be appended
-        :return: total stddev as function of wavelength
+        Set `self.(x,y)[_edges]` from :attr:`spatial_shape`.
         """
 
-        lmin, lmax = np.array(lbda)[[0, -1]]  # 1st and last wavelengths
-        assert lmin > wref/3 and lmax < wref*3, \
-            "Input and reference wavelengths probably not in same units."
-
-        sigma = np.hypot(constant_sigma,
-                         chromatic_sigma * (lbda / wref))  # [px]
-        if xdims:
-            sigma = sigma.reshape(sigma.shape + (1,) * xdims)
-
-        return sigma
-
+        hnx, hny = (self.nx - 1)/2, (self.ny - 1)/2
+        self.y, self.x = np.ogrid[-hny:hny:self.ny*1j,
+                                  -hnx:hnx:self.nx*1j]  # Central coord. grids [spx]
+        self.y_edges, self.x_edges = np.ogrid[
+            -hny - 0.5:hny + 0.5:(self.ny + 1)*1j,
+            -hnx - 0.5:hnx + 0.5:(self.nx + 1)*1j]      # Edge coord. grids [spx]
+            
+    # - getter    
     def get_spectral_sigma(self, xdims=0, xdisp_sigma=None):
         """ Get spectral PSF stddev [px].
 
@@ -559,11 +436,10 @@ class Spectrograph:
                                   (None for default)
         :return: total sigma [px]
         """
-
         if xdisp_sigma is None:
             xdisp_sigma = self.xdisp_sigma
 
-        return self.get_chromatic_sigma(self.lbda,
+        return self._get_chromatic_sigma(self.lbda,
                                         self.spectral_sigma,
                                         xdisp_sigma,
                                         wref=10_000, xdims=xdims)
@@ -589,7 +465,7 @@ class Spectrograph:
         if guiding_sigma is None:
             guiding_sigma = self.guiding_sigma
 
-        return self.get_chromatic_sigma(self.lbda,
+        return self._get_chromatic_sigma(self.lbda,
                                         self.spatial_sigma,
                                         guiding_sigma,
                                         wref=10_000, xdims=xdims)
@@ -612,38 +488,39 @@ class Spectrograph:
 
         return psf                         # (nlbda, ny, nx)
 
-    def generate_point_source(self, spectrum, position=(0, 0)):
-        """ Generate a photon flux cube from a point source spectrum.
+    def get_thermal_signal(self, domains=None, temperature=None, emissivity=None):
+        """ Mirror thermal signal [ph/s/spx/Δλ].
 
-        :param spectrum: point source spectrum [erg/s/cm²/Å]
-        :param 2-tuple position: point source position in MLA [spx]
-        :return: (nlbda, ny, nx) photon flux cube [ph/s/spx]
+        :param domains: (nlbda, 2) list of spectral domains [Å],
+                        or spectral px by default
+        :param float temperature: mirror temperature [K], or default one
+        :param float emissivity: mirror emissivity, or default one
+        :return: thermal signal in ph/s/spx/Δλ
         """
 
-        # Spatial PSF
-        psf = self.get_spatial_psf(position=position)      # (nlbda, ny, nx)
+        from .thermal import thermal_signal
 
-        # erg/s/cm²/Å / erg/ph * cm² * Å = ph/s
-        flux = spectrum * self.flambda2photon      # (nlbda,) [ph/s]
+        if domains is None:
+            domains = np.vstack([self.lbda_edges[:-1],
+                                 self.lbda_edges[1:]]).T  # (nlbda, 2) [Å]
+        if temperature is None:
+            temperature = self.mirror.temperature  # Mirror temperature [K]
 
-        return np.reshape(flux, (-1, 1, 1)) * psf  # Point source (nlbda, ny, nx)
+        if emissivity is None:
+            emissivity = self.mirror.emissivity    # Mirror emissivity
 
-    def generate_thermal(self):
-        """ Generate a photon flux cube from mirror thermal emission.
+        omega = self.omega                         # Spx solid angle [sr]
+        signal = np.array([
+            thermal_signal(omega,
+                           self.mirror.surface,    # Collecting area [m²]
+                           domain_mu,              # Spectral bin [µm]
+                           temperature, emissivity)
+            for domain_mu in (domains * 1e-4) ])   # Convert from Å to µm
 
-        Returns
-        -------
-        (nlbda, ny, nx) 
-            photon flux cube [ph/s/spx]
-        """
-        signal = self.thermal_signal()  # (nlbda,)
-
-        return np.full((self.nlbda, self.ny, self.nx),
-                       signal[:, np.newaxis, np.newaxis])  # (nlbda, ny, nx)
-
-    def point_source_variance(self,
-                              varcube, position=(0, 0), radius=5, optimal=True,
-                              verbose=False):
+        return signal                              # [ph/s/spx/Δλ]
+    
+    def point_source_variance(self, varcube, position=(0, 0), radius=5,
+                                  optimal=True, verbose=False):
         """
         Point-source extracted variance from variance cube.
 
@@ -679,54 +556,161 @@ class Spectrograph:
 
         return variance                  # (nlbda,) [ADU²]
 
-    def thermal_signal(self, domains=None, temperature=None, emissivity=None):
+   def effective_resolution(self, npx=2, sigma=None, average=False):
+        r""" Effective spectral resolution.
+
+        .. math::
+
+           R &= \frac{2}{n \delta\lambda} \\
+           \delta\lambda &= \max(1, \sigma) \times \Delta\lambda
+
+        where :math:`\Delta\lambda` is the spectral step [Å] and
+        :math:`\sigma` is the spectral resolution [px].
+
+        :param float npx: n-px resolution (i.e. n px per spectral elements)
+        :param sigma: spectral PSF stddev override
+        :param bool average: chromatic average (weighted by spectral step)
+        :return: effective n-px wavelength resolution
+                 (as a function of wavelength or averaged)
         """
-        Mirror thermal signal [ph/s/spx/Δλ].
+        if sigma is None:
+            sigma = self.get_spectral_sigma()  # (nlbda,)
+        sigma = np.maximum(sigma, 1)
 
-        :param domains: (nlbda, 2) list of spectral domains [Å],
-                        or spectral px by default
-        :param float temperature: mirror temperature [K], or default one
-        :param float emissivity: mirror emissivity, or default one
-        :return: thermal signal in ph/s/spx/Δλ
+        dlbda = np.diff(self.lbda_edges)
+        wres = self.lbda / (npx * sigma * dlbda)  # (nlbda,)
+
+        if average:             # Chromatic average
+            wres = np.average(wres, weights=dlbda)
+
+        return wres    
+
+    # - generate        
+    def generate_point_source(self, spectrum, position=(0, 0)):
+        """ Generate a photon flux cube from a point source spectrum.
+
+        :param spectrum: point source spectrum [erg/s/cm²/Å]
+        :param 2-tuple position: point source position in MLA [spx]
+        :return: (nlbda, ny, nx) photon flux cube [ph/s/spx]
         """
 
-        from .thermal import thermal_signal
+        # Spatial PSF
+        psf = self.get_spatial_psf(position=position)      # (nlbda, ny, nx)
 
-        if domains is None:
-            domains = np.vstack([self.lbda_edges[:-1],
-                                 self.lbda_edges[1:]]).T  # (nlbda, 2) [Å]
-        if temperature is None:
-            temperature = self.mirror.temperature  # Mirror temperature [K]
+        # erg/s/cm²/Å / erg/ph * cm² * Å = ph/s
+        flux = spectrum * self.flambda2photon      # (nlbda,) [ph/s]
 
-        if emissivity is None:
-            emissivity = self.mirror.emissivity    # Mirror emissivity
+        return np.reshape(flux, (-1, 1, 1)) * psf  # Point source (nlbda, ny, nx)
 
-        omega = self.omega                         # Spx solid angle [sr]
-        signal = np.array([
-            thermal_signal(omega,
-                           self.mirror.surface,    # Collecting area [m²]
-                           domain_mu,              # Spectral bin [µm]
-                           temperature, emissivity)
-            for domain_mu in (domains * 1e-4) ])   # Convert from Å to µm
+    def generate_thermal(self):
+        """ Generate a photon flux cube from mirror thermal emission.
 
-        return signal                              # [ph/s/spx/Δλ]
+        Returns
+        -------
+        (nlbda, ny, nx) 
+            photon flux cube [ph/s/spx]
+        """
+        signal = self.get_thermal_signal()  # (nlbda,)
 
+        return np.full((self.nlbda, self.ny, self.nx),
+                       signal[:, np.newaxis, np.newaxis])  # (nlbda, ny, nx)
+                       
+    def generate_background(self, spectrum):
+        """ Generate a photon flux cube from uniform scene background spectrum.
+
+        :param spectrum: uniform scene background spectrum [erg/s/cm²/Å/arcsec²]
+        :return: (nlbda, ny, nx) photon flux cube [ph/s/spx]
+        """
+
+        # erg/s/cm²/Å/arcsec² * cm² * Å / erg/ph * arcsec² = ph/s/spx
+        flux = spectrum * self.flambda2photon * self.spatial_scale**2
+
+        return np.full((self.nlbda, self.ny, self.nx),
+                       flux[:, np.newaxis, np.newaxis])  # (nlbda, ny, nx)
+
+    #
+    # - tools
+    #                       
+    def chromatic_average(self, quantity):
+        """ Chromatic average of a quantity (averaged over wavelength rather than px)
+
+        :param array quantity: chromatic quantity (nlbda,)
+        :return: chromatic average
+        """
+        return np.average(quantity, weights=np.diff(self.lbda_edges))
+                       
+    #
+    # - Internal
+    #
+    @staticmethod
+    def _get_chromatic_sigma(lbda, chromatic_sigma, constant_sigma,
+                             wref=10_000., xdims=0):
+        """
+        Get total PSF, including chromatic and constant components.
+
+        The total (Gaussian) stddev is the quadratic sum of two components:
+
+        - the chromatic stddev, proportional to wavelength,
+          normalized at `wref`,
+        - the achromatic, constant stddev.
+
+        If needed, the 1D vector can be embedded in a N-dim array of
+        shape `(nlbda,) + (1,)*xdims`.
+
+        :param lbda: wavelength
+        :param chromatic_sigma: chromatic (linear) stddev
+        :param constant_sigma: achromatic (constant) stddev
+        :param float wref: reference wavelength (same unit as `lbda`)
+        :param int xdims: extra dimensions to be appended
+        :return: total stddev as function of wavelength
+        """
+
+        lmin, lmax = np.array(lbda)[[0, -1]]  # 1st and last wavelengths
+        assert lmin > wref/3 and lmax < wref*3, \
+            "Input and reference wavelengths probably not in same units."
+
+        sigma = np.hypot(constant_sigma,
+                         chromatic_sigma * (lbda / wref))  # [px]
+        if xdims:
+            sigma = sigma.reshape(sigma.shape + (1,) * xdims)
+
+        return sigma
+    
+    
     # ================= #
     #  Properties       #
     # ================= #
+    @property
+    def mla_extent(self):
+        """ MLA extent [spx]."""
+        hx, hy = self.nx / 2, self.ny / 2  # Half total width [spx]
+        return [-hx, hx, -hy, hy]
+    
+    @property
+    def flambda2photon(self):
+        """ Chromatic conversion factor from erg/s/cm²/Å to ph/s. """
+        dlbda = np.diff(self.lbda_edges)  # Spectral step (nlbda,)
+        hnu = 1.9864459e-08 / self.lbda   # Photon energy [erg] with lbda in [Å]
+
+        # erg/s/cm²/Å * (cm² * throughput * Å / erg/ph) = ph/s
+        return (self.mirror.surface * 1e4 *
+                self.throughput * dlbda / hnu)  # (nlbda,) [ph/s]
+                
+    @property
+    def nlbda(self):
+        """ number of spectral pixels. """
+        return len(self.lbda)
     
     @property
     def meta(self):
-        """ metadata of the instance """
+        """ metadata of the instance. """
         return self._meta
 
     @property
     def omega(self):
-        """Spaxel solid angle [sr]."""
-
+        """ spaxel solid angle [sr]. """
         hspx = self.spatial_scale / 2  # [arcsec]
         hspx *= 4.84813681109536e-06   # [rad]
-
         return np.pi * np.sin(hspx)**2
     
     
