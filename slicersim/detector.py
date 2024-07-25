@@ -13,7 +13,7 @@ __author__ = "Mickael Rigault <m.rigault@ip2i.in2p3.fr>, Yannick Copin <y.copin@
 
 import warnings
 import numpy as np
-import astropy import units
+from astropy import units
 from astropy.utils.exceptions import AstropyWarning
 
 from . import iotools
@@ -72,7 +72,7 @@ class Detector:
                                     description='QE' if verbose else '')
             #: QE interpolator (wavelengths in Å)
             self.qe_interp = iotools.chromatic_interpolator(
-                tab[wname].to(unitsAA), tab[qname], ext='zeros')
+                tab[wname].to(units.AA).value, tab[qname], ext='zeros')
             #: Quantum efficiency [e-/photon]
             self.qe = self.qe_interp(self.lbda)
         self.saturation = int(config["saturation"])     #: Saturation limit [ADU]

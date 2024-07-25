@@ -383,7 +383,7 @@ class Simulation:
             cube += self.spectrograph.generate_background(background)
 
         if "thermal" not in switch_off:
-            cube += self.spectrograph.generate_thermal() # [ph/s]
+            cube += self.spectrograph.get_thermal_signal(as_cube=True) # [ph/s]
 
         if not in_photons:      # Convert back to flambda
             cube /= self.spectrograph.flambda2photon[:, np.newaxis, np.newaxis]
@@ -605,7 +605,7 @@ class Simulation:
     def fetch_snr(self, target_snr, free_parameter="ngroup", 
                   lbda_range=[4000, 6800], frame="rest", statistic=np.nanmean,
                   reset_param=True, guess=None,
-                  maxiter=100):
+                  maxiter=100, tol=1, iterstep=1):
         """ vary the free_parameter to reach the target SNR.
     
         Parameters
@@ -637,6 +637,42 @@ class Simulation:
         """
         # minimal values (including these)
         minimal_values = {"ngroup": 2, "nramp": 1, 'nframe':2}
+        
+        # internal function that perform the fit steps
+        def change(value, current_snr, iterstep):
+            """ """    
+            if current_snr >= target_snr: # going down.
+                was_high = True
+                coefs = -1
+                condition = np.less
+            else: # going up
+                was_high = False
+                coefs = +1
+                condition = np.greater
+
+            new_value = value + coefs*iterstep
+            if new_value<=0:
+                new_value = 1
+                warnings.warn(f"requested value lower than 0 old value {value} + iterstep {iterstep}")
+                
+            _ = self.update(**{free_parameter: new_value})
+            new_snr = self.get_band_snr(**prop_snr)
+            
+            # need to go in the same direction
+            if (new_snr >= target_snr and was_high):
+                new_iterstep = int(iterstep*2)
+            elif (new_snr < target_snr and not was_high):
+                new_iterstep = int(iterstep*2)
+            # need to come back
+            else:
+                new_iterstep = 1
+
+            return new_value, new_snr, new_iterstep        
+
+
+        # ---------------------- #
+        # Parsing input uptions  #
+        # ---------------------- #
         if free_parameter not in ["ngroup", "nramp", 'nframe']:
             raise ValueError(f"free_parameter should be 'ngroup', 'nramp' or 'nframe' {free_parameter} given.")
         
@@ -652,45 +688,38 @@ class Simulation:
         else:
             input_nmd = None
 
-        # used to reset the simu as its initial condition.
-        input_value = self.get_parameter(free_parameter)
-        new_snr = self.get_band_snr(**prop_snr)
-        if new_snr>=target_snr: # going down.
-            iterstep = -1
-            condition = np.less
-        else: # going up
-            iterstep = +1
-            condition = np.greater
 
-        # while loop
-        counter = 0
-        current_value = input_value if guess is None else guess            
-        while counter < maxiter and current_value+ iterstep>=minimal_values.get(free_parameter):
+        # initial values
+        init_value = self.get_parameter(free_parameter)
         
-            new_value = current_value + iterstep
-            self.update(**{free_parameter: new_value})
-            new_snr =  self.get_band_snr(**prop_snr)
-            if condition(new_snr, target_snr):
-                if iterstep>0:  
-                    current_value = new_value
-                    self.update(**{free_parameter: new_value})
-                    new_snr =  self.get_band_snr(**prop_snr)
-                else:
-                    self.update(**{free_parameter: new_value-iterstep})
-                    new_snr = self.get_band_snr(**prop_snr)
-                break
-                
+        if guess is None:
+            current_value = init_value
+            current_snr = self.get_band_snr(**prop_snr)
+        else:
+            current_value = guess
+            self.update(**{free_parameter: current_value})
+            current_snr = self.get_band_snr(**prop_snr)
+            
+        # while loop
+        counter = 0        
+        while np.abs(current_snr-target_snr)>tol and counter<maxiter:
+            current_value, current_snr, iterstep = change(current_value, current_snr, iterstep)
             counter += 1
-            current_value = new_value
 
+        # make sure it is at least the minimum
+        if current_value < minimal_values.get(free_parameter):
+            current_value = minimal_values.get(free_parameter)
+            self.update(**{free_parameter: current_value })
+            current_snr = self.get_band_snr(**prop_snr)
+            
         integration_time = self.detector.get_integration_time()
         if reset_param: # reset if needed
             if input_nmd is not None:
                 self.update(nmd = input_nmd)
             else:
-                self.update(**{free_parameter: input_value})
+                self.update(**{free_parameter: init_value})
     
-        return current_value, new_snr, integration_time
+        return current_value, current_snr, integration_time
     
     # ---------- #
     #  Plotting  #

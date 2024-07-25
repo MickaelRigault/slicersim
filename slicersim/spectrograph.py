@@ -26,28 +26,44 @@ from .utils import integ_gaussian2D_erf
 from . import iotools
 
 
-@dataclass
-class Mirror:
+
+class Mirror():
     """
     Mirror data class.
     """
 
-    surface: float              #: Collecting area [m²]
-    temperature: float = 0.     #: Temperature [K]
-    emissivity: float = 0.      #: Emissivity
+    mutable_parameters = ['temperature', 'emissivity',
+                          "diameter_ext", "diameter_int",
+                          "surface"]
 
-    @staticmethod
-    def get_surface(dext, dint=0):
-        """
-        Collecting area from outer and inner diameters.
+    def __init__(self, surface=None, temperature=0, emissivity=0, meta={}):
+        """ """
+        
+        self._surface = surface
+        # update a copy of the meta
+        meta = meta.copy()
+        # make sure temperature and emissivity are given.
+        meta["temperature"] = temperature
+        meta["emissivity"] = emissivity        
 
-        :param float dext: outer diameter [m]
-        :param float dint: inner diameter [m]
-        :return: collecting area
-        """
+        self._meta = meta.copy()
+        self._meta_in = meta.copy()        
 
-        return np.pi/4 * (dext ** 2 - dint ** 2)
+        if surface is None and np.any([k not in self.meta for k in ["diameter_ext", "diameter_int"]]):
+            warnings.warn("Surface not given and 'diameter_ext' and/or 'diameter_int' are unknown.")
+                                          
+        
+    @classmethod
+    def from_config(cls, config):
+        """ """
+        surface = config.get("surface", None) # if None, diameter_ext and diameter_int used.
+        temperature = config.get("temperature", 0)
+        emissivity = config.get("emissivity", 0)
 
+        return cls(surface=surface, temperature=temperature, emissivity=emissivity,
+                    meta=config # core information stored in meta
+                    )
+        
     def __str__(self):
 
         s = f"Mirror: {self.surface:.0f} m²"
@@ -58,6 +74,66 @@ class Mirror:
 
         return s
 
+    def update(self, reset_others=False, **kwargs):
+        """ """
+        updates = {}
+        for k, v in kwargs.items():
+            if k not in self.mutable_parameters:
+                warnings.warn(f"{k} is not a Mirror mutable parameter.")
+                continue
+        
+            if k == "surface":
+                self._surface = float(v)
+                continue
+
+            # keys that affect others
+            if k in ["diameter_ext", "diameter_int"]:
+                self._surface = None # reset since diameters given
+
+            updates[k] = v
+            
+        if reset_others:
+            self._meta = self._meta_in | updates
+        else:
+            self._meta = self._meta | updates
+
+    # ============= #
+    #   Properties  #
+    # ============= #
+    @property
+    def meta(self):
+        """ metadata containing the mirror specifications """
+        return self._meta
+    
+    @property
+    def surface(self):
+        """ Collecting area from outer and inner diameters [m^2] """
+        if self._surface is None:
+            return np.pi/4 * (self.diameter_ext ** 2 - self.diameter_int ** 2)
+        
+        return self._surface
+
+    @property
+    def diameter_ext(self):
+        """ external diameter (assumed circular) """
+        return self.meta.get("diameter_ext", None)
+
+    @property
+    def diameter_int(self):
+        """ internal diameter (assumed circular) """
+        return self.meta.get("diameter_int", None)
+    
+    @property
+    def temperature(self):
+        """ mirror temperature (in K) """
+        return self.meta.get("temperature", None)
+    
+
+    @property
+    def emissivity(self):
+        """ Emissivity of the mirror  """
+        return self.meta.get("emissivity", None)
+    
 @dataclass
 class Camera:
     """
@@ -86,7 +162,6 @@ class Spectrograph:
                           'spatial_sigma', 'guiding_sigma',
                           'spatial_scale', 'spatial_scale_insigma',
                           'spatial_shape', 'spatial_shape_insigma',
-                          'mirror.temperature', 'mirror.emissivity',
                           'camera.acceptance', 'camera.speed',
                           ]
 
@@ -182,14 +257,9 @@ class Spectrograph:
             # This will be updated in update_lbda when needed
 
         #: Mirror
-        self.mirror = Mirror(
-            surface=Mirror.get_surface(
-                dext=float(config['mirror']['diameter_ext']),
-                dint=float(config['mirror']['diameter_int'])),
-            temperature=float(config['mirror'].get('temperature', 0)),
-            emissivity=float(config['mirror'].get('emissivity', 0)),
-            )
-
+        self.mirror = Mirror.from_config(config['mirror'])
+        self.mutable_parameters = self.mutable_parameters + [f"mirror.{k}" for k in self.mirror.mutable_parameters]
+        
         self._meta_in = config.copy()      #: Meta-parameters as input
         self._meta = config.copy()         #: Meta-parameters as used
 
@@ -339,6 +409,7 @@ class Spectrograph:
         kwargs = self.rescale_parameters(**kwargs)
 
         updates = {}
+        mirror_updates = {}
         for k, v in kwargs.items():
             if k not in self.mutable_parameters:
                 warnings.warn(f"Parameter {k!r} is not mutable.")
@@ -347,6 +418,11 @@ class Spectrograph:
             if v is None:        # Skip
                 continue
 
+            if k.startswith("mirror."):
+                mirror_updates[k.replace("mirror.", "")] = v
+                continue
+
+            
             if '.' not in k:         # Simple key
                 setattr(self, k, v)  # Update attribute
             else:                    # Chained key: key1.key2
@@ -370,8 +446,11 @@ class Spectrograph:
                 updates[k] = v  # Keep track of updated parameters
             else:               # Chained key: key1.key2
                 k1, k2 = k.split('.')
-                updates[k1] = dict(k2=v)
+                updates[k1] = {k2:v}
 
+        # update mirror
+        self.mirror.update(**mirror_updates, reset_others=reset_others)
+        
         # Update the metadata
         if reset_others:
             self._meta = self._meta_in |updates
@@ -488,14 +567,27 @@ class Spectrograph:
 
         return psf                         # (nlbda, ny, nx)
 
-    def get_thermal_signal(self, domains=None, temperature=None, emissivity=None):
+    def get_thermal_signal(self, domains=None, temperature=None, emissivity=None,
+                               as_cube=False):
         """ Mirror thermal signal [ph/s/spx/Δλ].
 
-        :param domains: (nlbda, 2) list of spectral domains [Å],
-                        or spectral px by default
-        :param float temperature: mirror temperature [K], or default one
-        :param float emissivity: mirror emissivity, or default one
-        :return: thermal signal in ph/s/spx/Δλ
+        Parameters
+        ----------
+        domains:  
+            (nlbda, 2) list of spectral domains [Å] or spectral px by default
+
+        temperature: float
+            mirror temperature [K], or default one
+            
+        emissivity: float
+            mirror emissivity, or default one
+            
+        as_cube: bool
+            output format (3d cube of float or float)
+
+        Returns
+        -------
+        thermal signal in ph/s/spx/Δλ (3d cube or float, see as_cube)
         """
 
         from .thermal import thermal_signal
@@ -517,6 +609,10 @@ class Spectrograph:
                            temperature, emissivity)
             for domain_mu in (domains * 1e-4) ])   # Convert from Å to µm
 
+        if as_cube:
+            signal = np.full((self.nlbda, self.ny, self.nx),
+                                 signal[:, np.newaxis, np.newaxis])  # (nlbda, ny, nx)
+            
         return signal                              # [ph/s/spx/Δλ]
     
     def point_source_variance(self, varcube, position=(0, 0), radius=5,
@@ -556,7 +652,7 @@ class Spectrograph:
 
         return variance                  # (nlbda,) [ADU²]
 
-   def effective_resolution(self, npx=2, sigma=None, average=False):
+    def effective_resolution(self, npx=2, sigma=None, average=False):
         r""" Effective spectral resolution.
 
         .. math::
@@ -602,18 +698,6 @@ class Spectrograph:
 
         return np.reshape(flux, (-1, 1, 1)) * psf  # Point source (nlbda, ny, nx)
 
-    def generate_thermal(self):
-        """ Generate a photon flux cube from mirror thermal emission.
-
-        Returns
-        -------
-        (nlbda, ny, nx) 
-            photon flux cube [ph/s/spx]
-        """
-        signal = self.get_thermal_signal()  # (nlbda,)
-
-        return np.full((self.nlbda, self.ny, self.nx),
-                       signal[:, np.newaxis, np.newaxis])  # (nlbda, ny, nx)
                        
     def generate_background(self, spectrum):
         """ Generate a photon flux cube from uniform scene background spectrum.
