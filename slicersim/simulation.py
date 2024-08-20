@@ -296,7 +296,39 @@ class Simulation:
         eff_throughput = self.spectrograph.flambda2photon * self.detector.photonflux2ADU
         
         return self.spectrograph.lbda, eff_throughput
+
+    def get_effective_waveresolution(self, npx=2, sigma=None):
+        """ effective wavelength resolution
+
+        R &= \frac{2}{n \delta\lambda} \\
+        with
+        \delta\lambda &= \max(1, \sigma) \times \Delta\lambda
+        and 
+        `\Delta\lambda` the spectral step [Å] 
+        and
+        `\sigma` is the spectral resolution [px].
+
+        Parameters
+        ----------
+        npx: float
+            n-px resolution (i.e. n px per spectral elements)
+                    
+        sigma: 
+            spectral PSF stddev override
             
+        Returns
+        -------
+        lbda: array
+            wavelength in Angstrom
+
+        waveresolution: array
+            effective wavelength resolution 
+
+        """
+
+        eff_waveresolution = self.spectrograph.effective_resolution(npx=npx, sigma=sigma)
+        return self.spectrograph.lbda, eff_waveresolution    
+    
     def get_parameter(self, which=None, default=None, as_dict=True):
         """ shortcut to get simulation parameter(s).
 
