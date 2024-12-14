@@ -1,8 +1,8 @@
 # Instrumental parameters ==============================
 
 [spectrograph.mirror]
-diameter_ext = 6.5         # Primary mirror external diameter [m]
-diameter_int = 1.3         # Primary mirror internal diameter [m]
+diameter_ext = 3.2         # Primary mirror external diameter [m]
+diameter_int = 0           # Primary mirror internal diameter [m]
 temperature = 288          # Mirror temperature [K] (0 for none)
 emissivity = 0.1           # Mirror emissivity
 
@@ -10,6 +10,7 @@ emissivity = 0.1           # Mirror emissivity
 # [spectrograph.camera]
 # acceptance = 0.6           # Camera acceptance [rad]
 # speed = 32                 # Camera speed (f-number)
+
 
 [spectrograph]
 name = "NACRE (baseline)"
@@ -45,16 +46,9 @@ readout_noise = 10.0       # Read-out noise per frame [e-]
 tframe = 2.830             # Single frame (read) time [s]
 px_size = 10.0             # Pixel physical size [µm]
                            # (should be consistent w/ dispersion_law)
-dark = 1e-2                # Dark current [e-/s/px]
-# M(ULTI)ACC(UM) modes (using Rausher+07 NMD notations):
-# N=#groups, M=#frames/group, D=#drops between groups
-# M should be a power of 2 for electronics
-# N>1, M=1, D=0: Up-The-Ramp
-# N=2, M=1: Correlated Double Sampling (aka Fowler)
-# N=2, M>1: Multiple CDS (aka Fowler-M)
-readout_mode = [16, 16, 0]  # (N * (M + D) - D) = 256 frames, exptime = 12'05''
+readout_mode = [16, 8, 0]  # (N * (M + D) - D) = 256 frames, exptime = 12'05''
 variance_model = "Rauscher+07"  # Variance model (Kubik20 or Rauscher+07)
-
+dark = 2.8e-3              # Dark current [e-/s/px] # Effective incl. box temperature
 # NOT IMPLEMENTED: dark current as function of detector temperature
 # cutoff = 1.7         # Cut-off wavelength [µm] (for dark current)
 # temperature = 0      # Temperature [K] (for dark current, 0 for none)

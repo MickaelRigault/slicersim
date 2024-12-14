@@ -563,7 +563,11 @@ class Simulation:
 
     def get_times(self):
         """ dict of the simulation detector times [in sec] """
-        return  {k: getattr(self.detector, k) for k in ["integration_time","exposure_time", "tframe", "tgroup"]}
+        # detector ones
+        times = {k: getattr(self.detector, k) for k in ["integration_time","exposure_time", "tframe", "tgroup"]}
+        # effective one
+        times["total_exptime"] = self.observing_time # incl nramps
+        return times
     
     def estimate_variance_contribution(self, lbda_range, frame="rest",
                                        statistic=np.nanmean):
@@ -634,12 +638,119 @@ class Simulation:
     # ---------- #
     #  Fetching  #
     # ---------- #
-    def fetch_snr(self, target_snr, free_parameter="ngroup", 
+    def fetch_snr(self, target_snr,
+                      free_parameter="default",
+                      #
+                      longest_ramp=1800,
+                      nmd_ramp=(64,8,0),
+                      allow_bypass=True,
+                      #
+                      lbda_range=[4000, 6800], frame="rest",
+                      statistic=np.nanmean,
+                      reset_param=True, guess=None,
+                      maxiter=100, tol=1, iterstep=1):
+        """ vary the free_parameter to reach the target SNR.
+    
+        Parameters
+        ----------
+        target_snr: float
+            target signal to noise ratio.
+    
+        free_parameter: str
+            if None or default, this will follow the expecting
+            observation strategy: ngroup up to 
+            30min exposures, nramp for more.
+            otherwise, forces single free_parameter: nframe, ngroup, nramp
+        
+        longest_ramp: float
+            = ignored if free_parameter is not 'default' =
+            longest accept ramp before breaking in multiple ramps.
+            
+        lbda_range: list
+            (wmin, wmax) test wavelength range [Å]
+    
+        frame: str
+            wavelength frame ('obs', 'rest')
+        
+        statistic: func
+            function to apply on test domain to compute the snr.
+        
+        reset_param: bool
+            should the intput simulation be back to initial value (True)
+            or that of the reached snr (False)
+            
+        Returns
+        -------
+        int, float
+            - number of frame/group (see free_parameter)
+            - reached SNR.
+            - integration_time
+        """
+        prop_fetch = dict(lbda_range=lbda_range, frame=frame,
+                          statistic=statistic, reset_param=reset_param, guess=guess,
+                          maxiter=maxiter,
+                          tol=tol, iterstep=iterstep)
+
+        
+        if free_parameter is None:
+            free_parameter = "default"
+
+        if free_parameter == "default": # observation strategy
+            used_free_parameter = "ngroup"
+            check_if_too_long = True
+        else:
+            used_free_parameter = free_parameter
+            check_if_too_long = False
+
+
+        # fast check:
+        bypass = False # do not bypass 
+        if check_if_too_long and allow_bypass:
+            test_config = {"nmd":nmd_ramp, "nramp":2}
+            input_config = self.get_parameter( list(test_config.keys()) )
+            self.update(**test_config)
+            tworamp_snr = self.get_band_snr(lbda_range=lbda_range, frame=frame, statistic=statistic)
+            if tworamp_snr<target_snr:
+                bypass=True
+                
+            self.update(**input_config)
+                
+            
+            
+        if not bypass:
+            read_config, snr, integration_time = self._fetch_snr(target_snr,
+                                                            # This is changing.
+                                                            free_parameter=used_free_parameter,
+                                                            #
+                                                            **prop_fetch)
+                                                            
+        # single ramp too long: let's loop over ramps.
+        if bypass or (check_if_too_long and integration_time>longest_ramp):
+            used_free_parameter = "nramp"
+            input_nmd = self.get_parameter("nmd")
+            self.update(nmd = nmd_ramp)
+            
+            read_config, snr, integration_time = self._fetch_snr(target_snr,
+                                                                      # This is changing.
+                                                                      free_parameter=used_free_parameter,
+                                                                      # make sure then at least 2 ramps.
+                                                                      ** (prop_fetch | {"min_value":2} )
+                                                                      )
+            # reset back to initial nmd
+            self.update(nmd = input_nmd)
+        
+        return read_config, snr, integration_time
+
+        
+        
+    def _fetch_snr(self, target_snr, free_parameter="ngroup", 
                   lbda_range=[4000, 6800], frame="rest", statistic=np.nanmean,
-                  reset_param=True, guess=None,
+                  reset_param=True, guess=None, min_value=None,
                   maxiter=100, tol=1, iterstep=1):
         """ vary the free_parameter to reach the target SNR.
     
+        = internal function that has fixed free_parameters; see self.fetch_snr() = 
+
         Parameters
         ----------
         target_snr: float
@@ -669,7 +780,10 @@ class Simulation:
         """
         # minimal values (including these)
         minimal_values = {"ngroup": 2, "nramp": 1, 'nframe':2}
-        
+        if min_value is None:
+            min_value = minimal_values.get(free_parameter)
+
+            
         # internal function that perform the fit steps
         def change(value, current_snr, iterstep):
             """ """    
@@ -683,9 +797,9 @@ class Simulation:
                 condition = np.greater
 
             new_value = value + coefs*iterstep
-            if new_value<=0:
+            if new_value <=0 :
                 new_value = 1
-                warnings.warn(f"requested value lower than 0 old value {value} + iterstep {iterstep}")
+                warnings.warn(f"requested value lower than 0 old value {value} + iterstep {iterstep}")                
                 
             _ = self.update(**{free_parameter: new_value})
             new_snr = self.get_band_snr(**prop_snr)
@@ -715,7 +829,7 @@ class Simulation:
         # nframe supposed to change the macc mode to (1,1,0)
         if free_parameter == "nframe":
             input_nmd = self.get_parameter("nmd")
-            self.update(nmd=(minimal_values.get("ngroup"), 1, 0)) # start at min value
+            self.update(nmd=(min_value, 1, 0)) # start at min value
             free_parameter = "ngroup" # 1 frame per group, so ngroup=nframe
         else:
             input_nmd = None
@@ -735,23 +849,30 @@ class Simulation:
         # while loop
         counter = 0        
         while np.abs(current_snr-target_snr)>tol and counter<maxiter:
+            if current_value<=min_value and current_snr>=target_snr: # means lowest is already enough
+                break            
             current_value, current_snr, iterstep = change(current_value, current_snr, iterstep)
             counter += 1
 
         # make sure it is at least the minimum
-        if current_value < minimal_values.get(free_parameter):
-            current_value = minimal_values.get(free_parameter)
+        if current_value < min_value:
+            current_value = min_value
             self.update(**{free_parameter: current_value })
             current_snr = self.get_band_snr(**prop_snr)
+
+        # return used nmd
+        used_config = {"nmd": self.get_parameter("nmd"),
+                       "nramp": self.get_parameter("nramp")}
+                           
             
-        integration_time = self.detector.get_integration_time()
+        total_exptime = self.observing_time # includes nramps
         if reset_param: # reset if needed
             if input_nmd is not None:
                 self.update(nmd = input_nmd)
             else:
                 self.update(**{free_parameter: init_value})
     
-        return current_value, current_snr, integration_time
+        return used_config, current_snr, total_exptime
     
     # ---------- #
     #  Plotting  #

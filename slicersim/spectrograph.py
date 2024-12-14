@@ -601,13 +601,12 @@ class Spectrograph:
         if emissivity is None:
             emissivity = self.mirror.emissivity    # Mirror emissivity
 
-        omega = self.omega                         # Spx solid angle [sr]
-        signal = np.array([
-            thermal_signal(omega,
-                           self.mirror.surface,    # Collecting area [m²]
-                           domain_mu,              # Spectral bin [µm]
-                           temperature, emissivity)
-            for domain_mu in (domains * 1e-4) ])   # Convert from Å to µm
+        omega = self.omega                              # Spx solid angle [sr]
+        signal = thermal_signal(omega,
+                                self.mirror.surface,    # Collecting area [m²]
+                                domains * 1e-4,         # Spectral bin [µm]
+                                temperature,
+                                emissivity)
 
         if as_cube:
             signal = np.full((self.nlbda, self.ny, self.nx),

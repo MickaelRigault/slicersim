@@ -48,7 +48,7 @@ def expand_path(filename):
     return fname
 
 
-def get_config(scene="supernova.toml", instrument="instrument.toml"):
+def get_config(scene="supernova.toml", instrument="lazuli.toml"):
     """
     Read configuration files.
 

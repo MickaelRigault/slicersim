@@ -140,16 +140,22 @@ def thermal_signal(omega, area, spectral_band, temperature, emissivity):
 
     :param omega: solid angle [sr]
     :param area: area [m²]
-    :param spectral_band: spectral band [µm]
+    :param spectral_band: spectral band [µm] (could be array of)
     :param temperature: temperature [K]
     :param emissivity: emissivity
     """
 
     from scipy.integrate import quad
 
-    wmin, wmax = spectral_band
-    flux, _ = quad(nphot_BB, wmin, wmax, args=(temperature,))
-
+    if np.ndim(spectral_band) == 1:
+        wmin, wmax = spectral_band
+        flux, _ = quad(nphot_BB, wmin, wmax, args=(temperature,))
+    elif np.ndim(spectral_band) == 2:
+        flux = np.asarray([quad(nphot_BB, wmin, wmax, args=(temperature,))[0]
+                               for wmin, wmax in spectral_band])
+    else:
+        raise ValueError(f"ndim of input spectral_band must be 1 or 2 {np.ndim(spectral_band)=} ")
+    
     return flux * omega * area * emissivity  # [photon/s] integrated over bandwidth
 
 def dark_current(det_cutoff, det_temp, px_size, type='HgCdTe'):
