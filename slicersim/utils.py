@@ -2,10 +2,35 @@
 Miscellaneous functions.
 """
 
-__author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
+__author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>", "Mickael Rigault <m.rigault@ipnl.in2p3.fr>",
 
 import numpy as np
 
+
+def mesh_kwargs(**kwargs):
+    """
+    Create a dataframe with all parameter combinations.
+
+    >>> mesh_kwargs(scale=[0.02, 0.05], sigma=[0.03, 0.06])
+       scale  sigma
+    0   0.02   0.03
+    1   0.05   0.03
+    2   0.02   0.06
+    3   0.05   0.06
+    """
+    import pandas
+    scan_params = list(kwargs.keys())     # (npar,)
+    # Number of scanned parameters (i.e. columns in final df)
+    # npar = len(scan_params)
+
+    mesh = np.meshgrid(*kwargs.values())  # npar × (nval1, nval2, ...)
+    mshape = np.shape(mesh)               # (npar, nval1, nval2, ...)
+    shape = (mshape[0], np.prod(mshape[1:]))  # (npar, nval1*nval2*...)
+    df_params = pandas.DataFrame(
+        np.reshape(mesh, shape).T,        # (nval1*nval2*..., npar)
+        columns=scan_params)              # (npar,)
+
+    return df_params
 
 def inspect_func( func ):
     """ inspect the given function parameters

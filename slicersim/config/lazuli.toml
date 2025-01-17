@@ -3,8 +3,8 @@
 [spectrograph.mirror]
 diameter_ext = 3.2         # Primary mirror external diameter [m]
 diameter_int = 0           # Primary mirror internal diameter [m]
-temperature = 288          # Mirror temperature [K] (0 for none)
-emissivity = 0.1           # Mirror emissivity
+temperature = [283, 253, 283, 278]          # Mirror temperature [K] (0 for none)
+emissivity = [0.05, 0.02, 0.02, 0.02]           # Mirror emissivity
 
 # NOT USED
 # [spectrograph.camera]

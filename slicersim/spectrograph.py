@@ -44,7 +44,7 @@ class Mirror():
         meta = meta.copy()
         # make sure temperature and emissivity are given.
         meta["temperature"] = temperature
-        meta["emissivity"] = emissivity        
+        meta["emissivity"] = emissivity
 
         self._meta = meta.copy()
         self._meta_in = meta.copy()        
@@ -66,8 +66,12 @@ class Mirror():
         
     def __str__(self):
 
-        s = f"Mirror: {self.surface:.0f} m²"
-        if self.temperature:
+        s = f"Primary Mirror: {self.surface:.0f} m²"
+        if self.nelements > 1:
+            s += f": {self.nelements} mirrors (emissivity in %):"
+            for temp, emmi in zip(self.temperature, self.emissivity):
+                s += f" {temp:.0f}K ({emmi:.2%}), "      
+        elif self.temperature:
             s += f" at {self.temperature:.0f} K, emissivity: {self.emissivity:.2f}"
         else:
             s += ", no thermal emission"
@@ -128,11 +132,15 @@ class Mirror():
         """ mirror temperature (in K) """
         return self.meta.get("temperature", None)
     
-
     @property
     def emissivity(self):
         """ Emissivity of the mirror  """
         return self.meta.get("emissivity", None)
+
+    @property
+    def nelements(self):
+        """ numer of mirrors """
+        return len( np.atleast_1d(self.temperature) )
     
 @dataclass
 class Camera:
@@ -595,18 +603,25 @@ class Spectrograph:
         if domains is None:
             domains = np.vstack([self.lbda_edges[:-1],
                                  self.lbda_edges[1:]]).T  # (nlbda, 2) [Å]
+                                 
         if temperature is None:
             temperature = self.mirror.temperature  # Mirror temperature [K]
-
+        temperature = np.atleast_1d(temperature)
+        
         if emissivity is None:
             emissivity = self.mirror.emissivity    # Mirror emissivity
-
+        emissivity = np.atleast_1d(emissivity)
+            
         omega = self.omega                              # Spx solid angle [sr]
-        signal = thermal_signal(omega,
-                                self.mirror.surface,    # Collecting area [m²]
-                                domains * 1e-4,         # Spectral bin [µm]
-                                temperature,
-                                emissivity)
+            
+        # sum over 1 element if only 1 temperature
+        signal = np.sum([ thermal_signal(omega,
+                                    self.mirror.surface,    # Collecting area [m²]
+                                    domains * 1e-4,         # Spectral bin [µm]
+                                    temperature_,
+                                    emissivity_)
+                        for temperature_, emissivity_ in zip(temperature, emissivity)
+                            ], axis=0)
 
         if as_cube:
             signal = np.full((self.nlbda, self.ny, self.nx),

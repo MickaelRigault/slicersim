@@ -10,9 +10,12 @@ __authors__ = "Mickaël Rigault <m.rigault@ipnl.in2p3.fr>, " \
     "Yannick Copin <y.copin@ipnl.in2p3.fr>"
 
 import warnings
+warnings.simplefilter('always', UserWarning)
+
 import pprint
 
 import numpy as np
+import pandas
 from .scene import Scene
 from .spectrograph import Spectrograph
 from .detector import Detector
@@ -25,6 +28,15 @@ except ModuleNotFoundError:
 
 
 __all__ = ["Simulation"]
+
+COLORS = {"target": "#283C48", 
+          "host":"#6E441E", 
+          "ron": "#80886D", 
+          "background": "#B08630", 
+          "dark": "#616B62", 
+          "thermal":"#662515"
+              }
+
 
     
 class Simulation:
@@ -394,6 +406,7 @@ class Simulation:
                                 (target, host, background) + thermal
         :return: (nlbda, ny, nx) cube
         """
+
         cube = np.zeros(self.cube_shape)  # (nlbda, ny, nx)
 
         # spectra (3, nlbda):
@@ -407,11 +420,11 @@ class Simulation:
             cube += self.spectrograph.generate_point_source(
                 target, position=self.scene.target_position)
 
-        if "host" not in switch_off:
+        if "host" not in switch_off:      
             if np.any(host):
                 warnings.warn("Host cube not implemented.")
 
-        if "background" not in switch_off:
+        if "background" not in switch_off:                    
             cube += self.spectrograph.generate_background(background)
 
         if "thermal" not in switch_off:
@@ -419,7 +432,7 @@ class Simulation:
 
         if not in_photons:      # Convert back to flambda
             cube /= self.spectrograph.flambda2photon[:, np.newaxis, np.newaxis]
-
+            
         return cube  # (nlbda, ny, nx) | [ph/s] or [erg/cm²/Å/s]
 
     def get_detected_cube(self, switch_off=[]):
@@ -430,9 +443,28 @@ class Simulation:
                                 (target, host, background) + thermal
         :return: (nlbda, ny, nx) cube signal and variance [ADU]
         """
+        switch_off = np.atleast_1d(switch_off).tolist() # as list
+        
+        AVAILABLE_SWITCHOFF = ["dark", "ron", "target", "host", "background","thermal"]
+        if np.any(effect_bool := [effect not in AVAILABLE_SWITCHOFF for effect in switch_off]):
+            unknown_effect = np.asarray(switch_off)[effect_bool]
+            warnings.warn(f"unknown switch off effect(s) {unknown_effect}.")
+            
+        # Detector effect
+        if "dark" in switch_off:
+            current_dark = self.get_parameter("dark")
+            self.update(detector__dark=0)            # Switch off dark
+        else:
+            current_dark = None
+        if "ron" in switch_off:
+            current_ron = self.get_parameter("ron")
+            self.update(detector__ron=0)             # Switch off dark
+        else:
+            current_ron = None
 
+        # Scene effect
         cube = self.get_projected_scene(in_photons=True,
-                                  switch_off=switch_off)  # (nlbda, ny, nx)
+                                        switch_off=switch_off)  # (nlbda, ny, nx)
         sigmas = self.spectrograph.get_spectral_sigma()   # (nlbda,)
 
         try:
@@ -449,18 +481,28 @@ class Simulation:
             sigma=sigmas,       # (nlbda,) [px]
             width=width)
 
+        #
+        # switch back in detector effects
+        #
+        if current_dark is not None:
+            self.update(detector__dark=current_dark)
+            
+        if current_ron is not None:
+            self.update(detector__ron=current_ron)
+            
+        # output
         return sig_cube, var_cube  # (nlbda, ny, nx) [ADU, ADU²]
 
     def get_spectrum(self, switch_off=[], incl_error=False):
         """
         Get the target signal and variance (in ADU).
 
+        
         :param list switch_off: list of discarded scene elements
                                 (target, host, background) + thermal
         :param bool incl_error: should the signal be scattered by the error?
         :return: (nlbda,) signal and variance [ADU]
         """
-
         # (lbda, nx, ny) [ADU]
         sig_cube, var_cube = self.get_detected_cube(switch_off=switch_off)
 
@@ -472,24 +514,24 @@ class Simulation:
                       self.spectrograph.spatial_sigma /  # [arcsec]
                       self.spectrograph.spatial_scale)   # [arcsec/spx]
 
-        target_variance = self.spectrograph.point_source_variance(
+        spec_variance = self.spectrograph.point_source_variance(
             var_cube, position=self.scene.target_position, radius=radius)
 
         # Assume the spectrum is perfectly extracted
         if "target" not in switch_off:
             _, target_phflux = self.scene.get_element_spectrum('target') * self.spectrograph.flambda2photon
-            target_signal = target_phflux * self.detector.photonflux2ADU
+            spec_signal = target_phflux * self.detector.photonflux2ADU
         else:
-            target_signal = np.zeros_like(self.spectrograph.lbda)
+            spec_signal = np.zeros_like(self.spectrograph.lbda)
 
         if (nexp := self.extraction["nramp"]) > 1:  # Nb of exposures
-            target_signal *= nexp
-            target_variance *= nexp
+            spec_signal *= nexp
+            spec_variance *= nexp
 
         if incl_error:
-            target_signal += np.random.normal(loc=0, scale=np.sqrt(target_variance))
-
-        return self.spectrograph.lbda, target_signal, target_variance  # (nlbda,) [ADU, ADU²]
+            spec_signal += np.random.normal(loc=0, scale=np.sqrt(spec_variance))
+            
+        return self.spectrograph.lbda, spec_signal, spec_variance  # (nlbda,) [ADU, ADU²]
 
     def get_snr(self, switch_off=[]):
         """
@@ -544,22 +586,32 @@ class Simulation:
 
     def get_band_snr(self, lbda_range, frame="obs",
                      statistic=np.nanmean, **kwargs):
-        """
-        Compute mean SNR over a spectral domain.
+        """ Compute mean signal to noise ratio over a spectral domain.
+        (see get_band_flux)
 
-        See :meth:`get_band_flux`.
-        """
+        Parameters
+        ----------
+        lbda_range: (float, float)
+            (wmin, wmax) test wavelength range [Å] (or list of)
 
+        frame: str
+            wavelength frame ('obs' or 'rest')
+        
+        statistic: func
+            numpy.function to apply on test domain
+            
+        **kwargs goes to get_band_flux->get_spectrum (e.g. switch_off)
+
+        Returns
+        -------
+        signal_to_noise:
+            float or array (depending of lbda_range input)
+        """
         signal, variance = self.get_band_flux(lbda_range, frame,
-                                                statistic=statistic, **kwargs)
-
+                                              statistic=statistic,
+                                              **kwargs)
         return signal / variance**0.5
 
-
-        # df = pandas.concat(subdfs).reset_index(drop=True)
-        # df.attrs = self.meta    # Add meta-data
-
-        # return df
 
     def get_times(self):
         """ dict of the simulation detector times [in sec] """
@@ -586,20 +638,19 @@ class Simulation:
 
         prop = dict(statistic=statistic, frame=frame)
         signal, variance = self.get_band_flux(lbda_range, **prop)
-
+        
         # Detector elements
         # Dark
-        current_dark = self.detector.dark
-        self.detector.update(dark=0)             # Switch off dark
-        _, variance_nodark = self.get_band_flux(lbda_range, **prop)
-        self.detector.update(dark=current_dark)  # Switch it back
+        _, variance_nodark = self.get_band_flux(
+            lbda_range,
+            switch_off=["dark"], **prop)
         dark_contrib = variance - variance_nodark
 
+
         # RoN
-        current_ron = self.detector.ron
-        self.detector.update(ron=0)
-        _, variance_noron = self.get_band_flux(lbda_range, **prop)
-        self.detector.update(ron=current_ron)
+        _, variance_noron = self.get_band_flux(
+            lbda_range,
+            switch_off=["ron"], **prop)
         ron_contrib = variance - variance_noron
 
         # Scene elements
@@ -635,6 +686,25 @@ class Simulation:
             "frac_thermal": thermal_contrib / variance, # Thermal
         }
 
+    def estimate_variance_contribution_spectra(self, as_dataframe=True):
+        """ Estimate different noise contributions to the total variance 
+
+        Returns
+        -------
+        DataFrame
+        """
+        lbda, flux, variance = self.get_spectrum()
+        estimates = {"lbda": lbda, "flux": flux, "variance": variance}
+        
+        for effect in ["dark", "ron", "target", "background", "thermal"]:
+            _, _, variance_noeffect = self.get_spectrum( switch_off=[effect] )
+            estimates[effect] = variance - variance_noeffect
+    
+        if as_dataframe:
+            return pandas.DataFrame(estimates)
+        
+        return estimates # dict
+        
     # ---------- #
     #  Fetching  #
     # ---------- #
@@ -960,6 +1030,98 @@ class Simulation:
 
         return fig
 
+
+    def show_variance_sources(self, variance_contrib=None, flux_calibrated=True):
+        """ summary figure showing various variance contributions.
+
+        Parameters
+        ----------
+        variance_contrib: pandas.DataFrame
+            dataframe containing the variance contributions. 
+            variance_contrib = self.estimate_variance_contribution_spectra(as_dataframe=True)
+            If None, this grabs it.
+
+        flux_calibrated: bool
+            should spectra be shown flux calibrated of not ?
+
+        Returns
+        -------
+        fig
+        """
+        if variance_contrib is None:
+            variance_contrib = self.estimate_variance_contribution_spectra(as_dataframe=True)
+
+        if flux_calibrated:
+            _, norm = self.get_effective_transmission()
+        else:
+            norm = 1
+
+            
+        import matplotlib.pyplot as plt
+        fig, (ax, axsnr, axv) = plt.subplots(3,1, figsize=[7,7], 
+                                             gridspec_kw={"hspace":0.1})
+        
+
+        
+        flux = variance_contrib["flux"]/norm
+        variance = variance_contrib["variance"]
+        noise = np.sqrt(variance)/norm
+        snr = flux/noise
+        # Main plot
+        ax.plot(variance_contrib["lbda"], flux, lw=1, color=COLORS["target"])
+        ax.fill_between(variance_contrib["lbda"], flux+noise, flux-noise, alpha=0.3, 
+                       color=COLORS["target"], lw=0)
+        ax.axhline(0, color="0.5", lw=1, zorder=1)
+
+        # Loop over effects
+        in_effect = []
+        base = 0
+        for new_effect in ["dark", "ron", "target", "background", "thermal"]:
+            in_effect = in_effect+[new_effect]
+            
+            spectra_contrib = variance_contrib[in_effect].sum(axis=1)/variance
+            axsnr.fill_between(variance_contrib["lbda"], 
+                                 base*snr,
+                                 spectra_contrib*snr, 
+                                 facecolor=COLORS[new_effect],
+                                 edgecolor="0.5", lw=0., 
+                                 alpha=0.5)
+            
+            axv.fill_between(variance_contrib["lbda"], 
+                             base,
+                             spectra_contrib, 
+                             facecolor=COLORS[new_effect],
+                             edgecolor="0.5", lw=0.,
+                             label=new_effect)
+            
+            base = spectra_contrib
+
+            
+        axsnr.plot(variance_contrib["lbda"], snr, color="0.5", lw=1)
+        axsnr.plot(variance_contrib["lbda"], base*snr, color="k")
+        # Fancy
+        ax.set_xlim(variance_contrib["lbda"].values[0], variance_contrib["lbda"].values[-1])
+        axsnr.set_xlim(*ax.get_xlim())
+        axv.set_xlim(*ax.get_xlim())
+        axv.set_ylim(0)
+        
+        ax.set_xticklabels([])
+        axsnr.set_xticklabels([])
+        axsnr.set_ylim(0)
+        
+        axv.set_xlabel("Wavelength [A]", fontsize="large")
+        if flux_calibrated:
+            ax.set_ylabel("Flux [erg/s/cm2/A]", fontsize="large")
+        else:
+            ax.set_ylabel("Flux [ADU]", fontsize="large")
+        axsnr.set_ylabel("Signal / Noise", fontsize="large")
+        axv.set_ylabel("variance contrib.", fontsize="medium")
+        axv.legend(loc=[0.01, 1.5], fontsize="small")
+        
+        ax.set_title(f"z={self.get_parameter('redshift')} | c={self.get_parameter('c')}, x1={self.get_parameter('x1')} | t={self.get_times()['total_exptime']/60:.1f} min",
+                    color="k", fontsize="small", loc="right")
+        return fig
+        
     # ================= #
     #   Properties      #
     # ================= #
