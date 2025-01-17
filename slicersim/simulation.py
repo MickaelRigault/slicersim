@@ -20,13 +20,6 @@ from .scene import Scene
 from .spectrograph import Spectrograph
 from .detector import Detector
 
-# Use tqdm (fancy progress bar) if available
-try:
-    from tqdm.auto import tqdm
-except ModuleNotFoundError:
-    tqdm = lambda arg, **kwargs: arg
-
-
 __all__ = ["Simulation"]
 
 COLORS = {"target": "#283C48", 
@@ -35,13 +28,12 @@ COLORS = {"target": "#283C48",
           "background": "#B08630", 
           "dark": "#616B62", 
           "thermal":"#662515"
-              }
+          }
 
 
     
 class Simulation:
-    """
-    Simulation setup.
+    """ Simulation setup.
 
     A simulation enables you to interact with the scene, the
     spectrograph and the detector to study their relative impact on
@@ -208,7 +200,6 @@ class Simulation:
             else:
                 updates_extraction[k] = v
 
-
         # Update spectrograph 1st because it sets the wavelengths
         self.spectrograph.update(**updates_spectrograph)
         self.scene.update(**updates_scene)
@@ -221,9 +212,8 @@ class Simulation:
             spectral_sigma=self.spectrograph.spectral_sigma)
         
         self.extraction.update(**updates_extraction)
-
         # Do NOT update meta, so reset still works as expected.
-
+        
     def reset(self, which="*"):
         """ reset the simulation element at their initial config value.
 
@@ -779,7 +769,8 @@ class Simulation:
             test_config = {"nmd":nmd_ramp, "nramp":2}
             input_config = self.get_parameter( list(test_config.keys()) )
             self.update(**test_config)
-            tworamp_snr = self.get_band_snr(lbda_range=lbda_range, frame=frame, statistic=statistic)
+            tworamp_snr = self.get_band_snr(lbda_range=lbda_range,
+                                            frame=frame, statistic=statistic)
             if tworamp_snr<target_snr:
                 bypass=True
                 
@@ -801,11 +792,11 @@ class Simulation:
             self.update(nmd = nmd_ramp)
             
             read_config, snr, integration_time = self._fetch_snr(target_snr,
-                                                                      # This is changing.
-                                                                      free_parameter=used_free_parameter,
-                                                                      # make sure then at least 2 ramps.
-                                                                      ** (prop_fetch | {"min_value":2} )
-                                                                      )
+                                                                # This is changing.
+                                                                free_parameter=used_free_parameter,
+                                                                # make sure then at least 2 ramps.
+                                                                **(prop_fetch | {"min_value":2})
+                                                                )
             # reset back to initial nmd
             self.update(nmd = input_nmd)
         
@@ -1030,7 +1021,6 @@ class Simulation:
 
         return fig
 
-
     def show_variance_sources(self, variance_contrib=None, flux_calibrated=True):
         """ summary figure showing various variance contributions.
 
@@ -1056,13 +1046,11 @@ class Simulation:
         else:
             norm = 1
 
-            
+        # Figure definition
         import matplotlib.pyplot as plt
         fig, (ax, axsnr, axv) = plt.subplots(3,1, figsize=[7,7], 
-                                             gridspec_kw={"hspace":0.1})
-        
-
-        
+                                             gridspec_kw={"hspace":0.1})    
+        # Data of interest
         flux = variance_contrib["flux"]/norm
         variance = variance_contrib["variance"]
         noise = np.sqrt(variance)/norm
@@ -1096,9 +1084,9 @@ class Simulation:
             
             base = spectra_contrib
 
-            
         axsnr.plot(variance_contrib["lbda"], snr, color="0.5", lw=1)
         axsnr.plot(variance_contrib["lbda"], base*snr, color="k")
+        
         # Fancy
         ax.set_xlim(variance_contrib["lbda"].values[0], variance_contrib["lbda"].values[-1])
         axsnr.set_xlim(*ax.get_xlim())
@@ -1127,7 +1115,7 @@ class Simulation:
     # ================= #
     @property
     def meta(self):
-        """ """
+        """ concatenation of all element configurations (aka. meta) """
         return self._in_meta | {"scene": self.scene.meta,
                                 "spectrograph": self.spectrograph.meta,
                                 "detector": self.detector.meta,
@@ -1158,7 +1146,6 @@ class Simulation:
             
         return all_mutables
                 
-
     @property
     def _elements(self): # test structure
         """ internal list of elements """
