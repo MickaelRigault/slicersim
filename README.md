@@ -46,7 +46,7 @@ ax.set(xlabel=r"wavelength [$\AA$]", ylabel="flux [ADU]")
 ```
 ![readme example](docs/gallery/spectra_examples.png)
 
-
+***
 # Estimation Time Calculator
 
 Load your simulation
@@ -54,26 +54,57 @@ Load your simulation
 config = slicersim.iotools.get_config(scene='supernova.toml')
 sim = slicersim.Simulation.from_config(config)
 ```
-Create the SN Ia of interest and fetch the correct number of read-out mode "groups"
+Create the SN Ia of interest and fetch the correct configuration that leads to an averave SNR of 10 between rest-frame 4_000 and 7_000 A.
 ```python
 sim.update(target__redshift = 1, target__c=0.3, target__x1=-0.5)
-ngroup, snr = sim.fetch_snr(10, lbda_range= [4000, 7000], frame="rest")
-print(f"with {ngroup} groups you reach a snr of {snr:.2f}")
+new_config, snr, total_exptime = sim.fetch_snr(10, lbda_range= [4000, 7000], frame="rest")
+print(f"{new_config}")
 ```
 ```bash
-with 9 groups you reach a snr of 10.61
+{'nmd': (64, 8, 0), 'nramp': 2}
 ```
-so let's set the simulation to this ngroup and get the exposure times information
+And now let's set this configuration to the simulation
 ```python
-sim.update(ngroup=ngroup)
+sim.update(**new_config)
 sim.get_times()
 ```
 ```bash
-{'integration_time': 679.2,
- 'exposure_time': 724.48,
+{'integration_time': 1426.32,
+ 'exposure_time': 1448.96,
  'tframe': 2.83,
- 'tgroup': 45.28}
+ 'tgroup': 22.64,
+ 'total_exptime': 2897.92}
 ```
+***
+# Study origin of variance
 
+Once your simulator is loaded, you have several method to check the variance origin. 
+- `estimate_variance_contribution`: that probe the variance origin for a given wavelength rate
+- `estimate_variance_contribution_spectra`: similar but for whole spectrum
+- `show_variance_sources`: plotting function associated to `estimate_variance_contribution_spectra`
+
+```python
+import slicersim
+# load the correct simulator
+config = slicersim.iotools.get_config(instrument='lazuli.toml')
+sim = slicersim.Simulation.from_config(config)
+
+# Set the target you want
+sim.update(target__redshift=1., target__x1=0, target__c=0)
+
+# look for the config needed to get an average SNR of 20 in [4000, 6800] rest-frame
+new_config, snr, integration_time = sim.fetch_snr(20, lbda_range=[4000, 6800], frame='rest')
+sim.update(**new_config) # let's set it
+
+# get the expected spectrum (in ADU)
+lbda, flux, variance = sim.get_spectrum()
+
+# Show details
+fig = sim.show_variance_sources(flux_calibrated=False)
+```
+![readme example](docs/gallery/spectra_variance.png)
+
+
+***
 # Credits
 Developped by M. Rigault ; _adapted from the original MLAPerf v:0.18.0 developed by Y. Copin and M. Rigault_
