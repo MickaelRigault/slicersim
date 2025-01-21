@@ -340,8 +340,7 @@ def integ_gaussian2D_midpoint(xy_edges, sigma, mu=(0, 0), normed=True):
 
 
 def integ_gaussian2D_erf(xy_edges, sigma, mu=(0, 0), normed=True):
-    """
-    Return (axisymmetric) 2D-Gaussian integrated over pixels (exact).
+    """ Return (axisymmetric) 2D-Gaussian integrated over pixels (exact).
 
     :param xy_edges: x- and y-coordinates of pixel edges
                      (1, nx+1) and (ny+1, 1)
@@ -372,6 +371,7 @@ def integ_gaussian2D_erf(xy_edges, sigma, mu=(0, 0), normed=True):
     sqrt2sig = 1.4142135623730951 * sigma
     tmpx = erf((x_edges - mux) / sqrt2sig)  # sig.shape + (1, nx+1)
     tmpy = erf((y_edges - muy) / sqrt2sig)  # sig.shape + (ny+1, 1)
+    
     # Normalized Gaussian, sig.shape + (ny, nx)
     f = np.diff(tmpx, axis=-1) * np.diff(tmpy, axis=-2) / 4
     if not normed:
