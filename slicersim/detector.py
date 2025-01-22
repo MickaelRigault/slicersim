@@ -524,12 +524,12 @@ if __name__ == "__main__":
     print(f"  Rauscher+07: {sigr:.2f} ± {vsigr**0.5:.2f} ADU/px, "
           f"SNR: {SNR(sigr, vsigr):.2f}")
 
-    sigma = config["spectrograph"]["spectral_sigma"]        # [px]
+    sigma = config["spectrograph"]["spectral_xdisp_sigma"]        # [px]
     try:
         width = config["extraction"]["xdisp_width"]         # [px]
     except KeyError:
         width = (config["extraction"]["xdisp_width_insigma"] *
-                 config["spectrograph"]["spectral_sigma"])  # [px]
+                 config["spectrograph"]["spectral_xdisp_sigma"])  # [px]
 
     print(f"Incident flux: {flux:.1f} ph/s/spx, {sigma=} px, {width=} px")
     sig, vsig = detector.estimate_spx_spectrum(flux, sigma=sigma, width=width)

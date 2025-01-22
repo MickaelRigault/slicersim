@@ -6,6 +6,18 @@ __author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>", "Mickael Rigault <m.rigaul
 
 import numpy as np
 
+def recursive_get(dict_, key, default=None):
+    """ """
+    if key in dict_.keys():
+        return dict_.get(key)
+        
+    for key_, items in dict_.items():
+        if type(items) is dict:
+            out = recursive_get(items, key)
+            if out is not None:
+                return out
+                
+    return default
 
 def mesh_kwargs(**kwargs):
     """

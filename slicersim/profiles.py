@@ -3,6 +3,7 @@
 
 import numpy as np
 from scipy import stats
+from .utils import integ_gaussian2D_erf
 
 # ========================= #
 #                           #

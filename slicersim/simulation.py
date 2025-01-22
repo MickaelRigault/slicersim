@@ -39,7 +39,6 @@ class Simulation:
     spectrograph and the detector to study their relative impact on
     the resulting target Signal-to-Noise Ratio.
     """
-
     def __init__(self,
                  scene=None,
                  spectrograph=None,
@@ -61,7 +60,6 @@ class Simulation:
         :param dict meta: meta-data
         :param dict kwargs: elements to be added to meta-data
         """
-
         self.scene = scene                #: Scene instance
         self.spectrograph = spectrograph  #: Spectrograph instance
         self.detector = detector          #: Detector instance
@@ -165,7 +163,6 @@ class Simulation:
         >>> self.update(phase = -1)
 
         """
-
         updates_scene = {"reset_others": reset_others}
         updates_detector = {"reset_others": reset_others}
         updates_spectrograph = {"reset_others": reset_others}
@@ -205,12 +202,7 @@ class Simulation:
         self.scene.update(**updates_scene)
         self.detector.update(**updates_detector)
 
-        # Convert extraction parameters in relative units to absolute units
-        updates_extraction = self.spectrograph.rescale_parameters(
-            **updates_extraction,
-            spatial_sigma=self.spectrograph.spatial_sigma,
-            spectral_sigma=self.spectrograph.spectral_sigma)
-        
+        # Convert extraction parameters in relative units to absolute units        
         self.extraction.update(**updates_extraction)
         # Do NOT update meta, so reset still works as expected.
         
@@ -295,9 +287,8 @@ class Simulation:
             effective throughput (ADU/ (erg/s/cm^2/A) )
 
         """
-        eff_throughput = self.spectrograph.flambda2photon * self.detector.photonflux2ADU
-        
-        return self.spectrograph.lbda, eff_throughput
+        return self.spectrograph.lbda, \
+          self.spectrograph.flambda2photon * self.detector.photonflux2ADU
 
     def get_effective_waveresolution(self, npx=2, sigma=None):
         """ effective wavelength resolution
@@ -327,9 +318,44 @@ class Simulation:
             effective wavelength resolution 
 
         """
+        return self.spectrograph.lbda, \
+          self.spectrograph.effective_resolution(npx=npx, sigma=sigma)
 
-        eff_waveresolution = self.spectrograph.effective_resolution(npx=npx, sigma=sigma)
-        return self.spectrograph.lbda, eff_waveresolution    
+    def get_nea(self, nea_spatial=None, nea_pixel=None):
+        """ Noise effective area  (nea_spatial * nea_pixel)
+        """
+        from .profiles import get_1dnorm_nea, get_2dnorm_nea
+        
+        # NEA_Spatial PSF on the MLA (2D) / Slicer (1d) | in slice / spaxel
+        if nea_spatial is None:
+            # 
+            if self.spectrograph.spatial_psf["profile"] not in ("normal", "norm", "gaussian"):
+                raise NotImplementedError(f"only gaussian spatial PSF profile implemented, but: {self.spectrograph.spatial_psf['profile']=}")
+            
+            sigma_at_mla = self.spectrograph.get_psf_sigma_spectral(in_spaxels=True, xdims=2)
+            nea_spatial = get_2dnorm_nea(sigma_at_mla, 
+                                          mean = self.scene.target.position)
+        
+        # NEA_pixel of 1 spaxel / slice on the dectetor
+        if nea_pixel is None:
+            # 
+            if self.spectrograph.xdispersion["profile"] not in ("normal", "norm", "gaussian"):
+                raise NotImplementedError(f"only gaussian xdispersion PSF profile implemented, but: {self.spectrograph.xdispersion['profile']=}")
+            
+            sigma_xdisp_at_detector = self.spectrograph.get_xdisp_sigma_spectral() # in pixels 
+            nea_pixel = get_1dnorm_nea(sigma_xdisp_at_detector)
+    
+        return nea_spatial * nea_pixel
+    
+    def get_nea_variance(self, nea_spatial=None, nea_pixel=None):
+        """ get variance estimatation from the noise equivalent area. """
+        nea = self.get_nea(nea_spatial=None, nea_pixel=None)
+        
+        # "background" variance of a single pixels
+        _, pixel_var = self.detector.estimate_pixel_signal(0)
+        pixel_var *= self.extraction["nramp"] # incl. multi ramp approach.
+        
+        return  nea * pixel_var
     
     def get_parameter(self, which=None, default=None, as_dict=True):
         """ shortcut to get simulation parameter(s).
@@ -342,7 +368,6 @@ class Simulation:
         :param bool as_dict: return `{which: value}` rather than `value`
         :return: parameter value
         """
-
         if which is None:       # Get all of them
             which = [ item
                       for sublist in self._elements
@@ -396,7 +421,6 @@ class Simulation:
                                 (target, host, background) + thermal
         :return: (nlbda, ny, nx) cube
         """
-
         cube = np.zeros(self.cube_shape)  # (nlbda, ny, nx)
 
         # spectra (3, nlbda):
@@ -426,8 +450,7 @@ class Simulation:
         return cube  # (nlbda, ny, nx) | [ph/s] or [erg/cm²/Å/s]
 
     def get_detected_cube(self, switch_off=[]):
-        """
-        Get data cube as extracted from exposure [ADU].
+        """ get data cube as extracted from exposure [ADU].
 
         :param list switch_off: list of discarded scene elements
                                 (target, host, background) + thermal
@@ -455,14 +478,14 @@ class Simulation:
         # Scene effect
         cube = self.get_projected_scene(in_photons=True,
                                         switch_off=switch_off)  # (nlbda, ny, nx)
-        sigmas = self.spectrograph.get_spectral_sigma()   # (nlbda,)
+        sigmas = self.spectrograph.get_xdisp_sigma_spectral()   # (nlbda,)
 
         try:
             width = self.extraction["xdisp_width"]
         except KeyError:
             # See Spectrograph.rescale_parameters
             width = round(self.extraction["xdisp_width_insigma"] *
-                          self.spectrograph.spectral_sigma)
+                          self.spectrograph.xdisp_sigma_spectral)
 
         # This assumes optimal extraction, only the variance depends
         # on detector parameters.
@@ -484,10 +507,8 @@ class Simulation:
         return sig_cube, var_cube  # (nlbda, ny, nx) [ADU, ADU²]
 
     def get_spectrum(self, switch_off=[], incl_error=False):
-        """
-        Get the target signal and variance (in ADU).
+        """ get the target signal and variance [ADU].
 
-        
         :param list switch_off: list of discarded scene elements
                                 (target, host, background) + thermal
         :param bool incl_error: should the signal be scattered by the error?
@@ -501,8 +522,8 @@ class Simulation:
         except KeyError:
             # See Spectrograph.rescale_parameters
             radius = (self.extraction["aperture_radius_insigma"] *
-                      self.spectrograph.spatial_sigma /  # [arcsec]
-                      self.spectrograph.spatial_scale)   # [arcsec/spx]
+                      self.spectrograph.psf_sigma_spectral /  # [arcsec]
+                      self.spectrograph.spx_spatial_scale)   # [arcsec/spx]
 
         spec_variance = self.spectrograph.point_source_variance(
             var_cube, position=self.scene.target_position, radius=radius)
@@ -524,20 +545,20 @@ class Simulation:
         return self.spectrograph.lbda, spec_signal, spec_variance  # (nlbda,) [ADU, ADU²]
 
     def get_snr(self, switch_off=[]):
-        """
-        Compute SNR spectrum.
+        """ get signal to noise spectrum.
 
         See :meth:`get_spectrum`.
+        Returns
+        -------
+        array
         """
-
         _, signal, variance = self.get_spectrum(switch_off=switch_off)
-
         return signal / variance**0.5
 
-    def get_band_flux(self, lbda_range, frame="obs", statistic=np.nanmean,
+    def get_band_flux(self, lbda_range, frame="obs",
+                        statistic=np.nanmean,
                         squeeze=True, **kwargs):
-        """
-        Estimate mean signal and variance over a spectral domain.
+        """ Estimate mean signal and variance over a spectral domain.
 
         The photometry is computed assuming a top-hat filter and simply
         considering wavelength bins within the spectral domain (no
@@ -550,7 +571,6 @@ class Simulation:
         :param kwargs: goes to get_spectrum (e.g. switch_off)
         :return: signal and variance [ADU, ADU²]
         """
-
         # accepts multiple ranges
         lbda_range = np.atleast_2d(lbda_range) # [[wmin, wmax]]
 
@@ -1124,8 +1144,7 @@ class Simulation:
     def cube_shape(self):
         """ Shape of the generated 3d-cube (nlbda, ny, nx). """
         return (self.spectrograph.nlbda,
-                self.spectrograph.ny,
-                self.spectrograph.nx)
+                *self.spectrograph.spx_shape[::-1]) # y, x
 
     @property
     def observing_time(self):

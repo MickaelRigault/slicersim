@@ -22,7 +22,7 @@ import numpy as np
 
 import astropy.units as u
 
-from .utils import integ_gaussian2D_erf
+from .utils import integ_gaussian2D_erf, recursive_get
 from . import iotools
 from .mirrors import Mirror
 
@@ -41,7 +41,138 @@ class Camera:
 
         return f"Camera: {np.degree(self.acceptance)} deg, f/{self.speed:.0f}"
 
+# ================ #
+#                  #
+#   Spectrograph   #
+#                  #
+# ================ #
+def lbda_from_respow(spectral_range, res_power, npx=2):
+    r""" Compute wavelength ramp for constant n-px resolving power.
 
+    .. math::
+
+       \frac{\Delta\lambda}{\lambda} &= \frac{1}{n\mathcal{R}} &\\
+       &= \ln 10\,\Delta\log\lambda &\\
+       \log\lambda_i^e &= \log\lambda_0 + i\times \Delta\log\lambda
+       &\quad\text{(edges)} \\
+       \log\lambda_i &= (\log\lambda_i + \log\lambda_{i+1})/2
+       &\quad\text{(center)}
+
+    :param 2-tuple spectral_range: spectral domain
+    :param float res_power: resolving power R
+    :param float npx: n-px resolution (i.e. n px per spectral elements)
+    :return: mid and bin edge wavelengths [same units as input domain]
+    """
+
+    wmin, wmax = spectral_range
+    dlog = 1/(2.302585092994046 * res_power * npx)  # ln(10)=2.303...
+    npx = round((np.log10(wmax) - np.log10(wmin)) / dlog)
+    loglbda_edges = np.linspace(np.log10(wmin), np.log10(wmax), npx + 1)
+    loglbda_mid = (loglbda_edges[:-1] + loglbda_edges[1:])/2
+
+    return 10**loglbda_mid, 10**loglbda_edges
+
+def build_lbda(spectral_range, spectral_resolution=None, wsol=None, dsol=None):
+    """ set wavelength coordinates.
+
+    Set :attr:`lbda` (:attr:`nlbda` mid wavelengths) and :attr:`lbda_egdes`
+    (:attr:`nlbda` + 1 edge wavelengths).
+    """
+    if wsol is None:   # Compute from constant resolving power
+        lbda, lbda_edges = lbda_from_respow(spectral_range, spectral_resolution)
+    else:              # Compute from wavelength solution
+        wmin, wmax = spectral_range
+        npx = round(dsol(wmax) - dsol(wmin))    # Total nb of px
+        lbda = wsol(np.r_[:npx])                # λ at bin center
+        lbda_edges = wsol(np.r_[:npx+1] - 0.5)  # λ at bin edge
+        
+    return lbda, lbda_edges
+
+
+def build_lbda_from_config(config):
+    """ """
+    spectral_range = np.asarray(config["spectral_range"], dtype="float32")
+
+    dispersion_law = config.get("dispersion_law", None)
+    dispersion_scale = float(config.get("dispersion_scale", 1))
+    spectral_resolution = config.get("spectral_resolution", None)
+    # Set by dispersion law ?
+    if dispersion_law is not None:
+        # => ok, you have a dispersion law
+        wname, dname = 'wavelength', 'offset'
+        tab = iotools.read_ecsv( dispersion_law, colnames=[wname, dname])
+        assert tab[dname].unit == 'pix'
+        
+        # dispersion solution (wavelengths in Å, offset in pix)
+        dsol = iotools.chromatic_interpolator(
+            tab[wname].to(u.AA), tab[dname] * dispersion_scale,
+            ext='extrapolate')
+        
+        # wavelength solution (wavelengths in Å, offset in pix)
+        wsol = iotools.chromatic_interpolator(
+            tab[wname].to(u.AA), tab[dname] * dispersion_scale,
+            ext='extrapolate', inverse=True)
+        
+    elif spectral_resolution is None:
+        raise ValueError("'spectral_resolution' OR 'dispersion_law' should be set.")
+    else:
+        wsol = dsol = None
+        dispersion_scale = float(dispersion_scale)
+
+    lbda, lbda_edges = build_lbda(spectral_range, wsol=wsol, dsol=dsol, spectral_resolution=spectral_resolution)
+    return lbda, lbda_edges
+
+
+def build_spaxels_from_config(config, 
+                              psf_sigma_spectral=None,
+                              spx_spatial_scale=None):
+    """ spaxel coordinates [spx] from MLA shape.
+
+    Set `self.(x,y)[_edges]` from :attr:`spatial_shape`.
+    """
+    if (spatial_shape:= config.get("spatial_shape", None)) is None:
+        spatial_shape_insigma = config.get("spatial_shape_insigma", None)
+        if spatial_shape_insigma is None:
+            raise ValueError("'spatial_shape' OR 'spatial_shape_insigma' should be set.")
+
+        spatial_shape_insigma = np.asarray(spatial_shape_insigma, dtype="float")
+        if psf_sigma_spectral is None:
+            psf_sigma_spectral = recursive_get(config, "psf_sigma_spectral")
+        if spx_spatial_scale is None:
+            spx_spatial_scale = recursive_get(config, "spatial_scale")
+        
+        spatial_shape = np.round(spatial_shape_insigma * psf_sigma_spectral / spx_spatial_scale)
+    
+    ny, nx = spatial_shape = np.asarray(spatial_shape, dtype="int")
+    hnx, hny = (nx - 1)/2, (ny - 1)/2
+    y, x = np.ogrid[-hny:hny:ny*1j,
+                              -hnx:hnx:nx*1j]  # Central coord. grids [spx]
+    y_edges, x_edges = np.ogrid[
+        -hny - 0.5:hny + 0.5:(ny + 1)*1j,
+        -hnx - 0.5:hnx + 0.5:(nx + 1)*1j]      # Edge coord. grids [spx]
+            
+    return {"shape": (nx, ny), "centroids": (x, y), "edges": (x_edges, y_edges),
+            "spatial_scale": spx_spatial_scale}
+
+def build_throughput_from_config(config):
+    """ """
+    try:
+        # throughput is a constant
+        throughput = float(config["throughput"])
+        throughput_name = self.throughput_name_interp = None
+            
+    except ValueError:
+        # throughput is a filename
+        throughput_name = config["throughput"]  #: Throughput filename
+        wname, tname = 'wavelength', 'throughput'
+        tab = iotools.read_ecsv(throughput_name,
+                                colnames=[wname, tname])
+        #: Throughput interpolator (wavelengths in Å)
+        throughput = iotools.chromatic_interpolator(
+            tab[wname].to(u.AA), tab[tname], ext='zeros')
+        
+    return throughput
+            
 class Spectrograph:
     """
     Spectrograph simulation.
@@ -51,161 +182,94 @@ class Spectrograph:
     """
 
     #: Mutable parameters (list)
-    mutable_parameters = ['spectral_range', 'spectral_resolution',
-                          'spectral_sigma', 'xdisp_sigma',
-                          'spatial_sigma', 'guiding_sigma',
-                          'spatial_scale', 'spatial_scale_insigma',
+    mutable_parameters = ['spectral_range', 'spectral_resolution', # lbda
+                          'xdisp_sigma_spectral', 'xdisp_sigma', # xdisp_profile,
+                          'psf_sigma_spectral', 'guiding_sigma', # psf_profile
+                          'spatial_scale', 'spatial_scale_insigma', # spaxels
                           'spatial_shape', 'spatial_shape_insigma',
-                          'camera.acceptance', 'camera.speed',
+                          #'camera.acceptance', 'camera.speed',
                           ]
 
-    def __init__(self, config, verbose=False):
+    
+    def __init__(self, lbda, mirror,
+                 spaxels={}, throughput=None,
+                 xdispersion={}, spatial_psf={},
+                 lbda_edges=None,
+                 meta={}):
         """
         Initialize the spectrograph properties from `config` dictionary.
 
         :param dict config: spectrograph configuration dictionary
         :param bool verbose: verbose mode
         """
+        # wavelength
+        self.lbda = lbda
+        self.lbda_edges = lbda_edges
 
-        config = self.rescale_parameters(**config)
+        # mirror
+        self.mirror = mirror
 
-        #: Spectrograph name
-        self.name = config["name"]
+        # Spaxels
+        self._spaxels = spaxels
 
-        # First set the spectral domain, which is needed for all
-        # chromatic quantities
-        #: Wavelength domain `[wmin, wmax]` [Å]
-        self.spectral_range = [float(w) for w in config["spectral_range"] ]
-        #: Constant input spectral resolution (actually resolving power)
-        self.spectral_resolution = float(config.get("spectral_resolution", 0))
-        #: Dispersion law filename (physical offset as a function of wavelength)
-        self.dispersion_law = config.get("dispersion_law", '')
-        #: Dispersion law scale
-        self.dispersion_scale = float(config.get("dispersion_scale", 1))
-        if self.spectral_resolution and self.dispersion_law:       # both: error
-            raise ValueError("Cannot set 'spectral_resolution' AND "
-                             "'dispersion_law' simultaneously.")
-        if not (self.spectral_resolution or self.dispersion_law):  # none: error
-            raise ValueError(
-                "'spectral_resolution' OR 'dispersion_law' should be set.")
-        if self.dispersion_law:                                 # dispersion law
-            wname, dname = 'wavelength', 'offset'
-            tab = iotools.read_ecsv(
-                self.dispersion_law, colnames=[wname, dname],
-                description='dispersion law' if verbose else '')
-            assert tab[dname].unit == 'pix'
-            #: Dispersion solution (wavelengths in Å, offset in pix)
-            self.dsol = iotools.chromatic_interpolator(
-                tab[wname].to(u.AA), tab[dname] * self.dispersion_scale,
-                ext='extrapolate')
-            #: Wavelength solution (wavelengths in Å, offset in pix)
-            self.wsol = iotools.chromatic_interpolator(
-                tab[wname].to(u.AA), tab[dname] * self.dispersion_scale,
-                ext='extrapolate', inverse=True)
-        elif self.spectral_resolution:                          # spectral res.
-            self.dsol = self.wsol = None
+        # Throughput
+        if callable(throughput): # this is a function
+            self._throughput_interp = throughput
+            self.throughput = self._throughput_interp(self.lbda)
+        else:
+            self._throughput_interp = None
+            self.throughput = throughput
 
-        # Spectral domain: self.lbda[_edges]
-        self.lbda = None        #: Wavelength at bin center (nlbda,)
-        self.lbda_edges = None  #: Wavelength at bin edges (nlbda+1,)
-        self.load_lbda()
-
-        #: Chromatic (optical) spectral PSF on detector [px] (∝ λ at 1 µm)
-        self.spectral_sigma = float(config["spectral_sigma"])
-        #: Achromatic cross-dispersion width [px]
-        self.xdisp_sigma = float(config["xdisp_sigma"])
-
-        # Spatial domain: self.(nx,ny), self.(x,y)[_edges]
-        #: MLA shape (nx, ny) [spx]
-        self.ny, self.nx = self.spatial_shape = [
-            int(_) for _ in config["spatial_shape"] ]
-        self.y = self.x = None              #: Central coord. grids [spx] (ny, nx)
-        self.y_edges = self.x_edges = None  #: Edge coord. grids [spx] (ny, nx)
-        self.set_spaxels()
-
-        #: Chromatic (optical) spatial PSF on MLA [arcsec] (∝ λ at 1 µm)
-        self.spatial_sigma = float(config["spatial_sigma"])
-        #: Achromatic (guiding) spatial PSF on MLA [arcsec]
-        self.guiding_sigma = float(config["guiding_sigma"])
-        #: MLA sampling [arcsec/spx]
-        self.spatial_scale = float(config["spatial_scale"])
-
-        # Throughput (constant or interpolated from file)
-        try:
-            # throughput is a constant
-            self.throughput = float(config["throughput"])
-            self.throughput_name = self.throughput_name_interp = None
-            
-        except ValueError:
-            # throughput is a filename
-            self.throughput_name = config["throughput"]  #: Throughput filename
-            wname, tname = 'wavelength', 'throughput'
-            tab = iotools.read_ecsv(self.throughput_name,
-                                    colnames=[wname, tname],
-                                    description='throughput' if verbose else '')
-            #: Throughput interpolator (wavelengths in Å)
-            self.throughput_interp = iotools.chromatic_interpolator(
-                tab[wname].to(u.AA), tab[tname], ext='zeros')
-            #: Throughput [% ph]
-            self.throughput = self.throughput_interp(self.lbda)
-            # This will be updated in update_lbda when needed
-
-        #: Mirror
-        self.mirror = Mirror.from_config(config['mirror'])
+        self.xdispersion = xdispersion
+        self.spatial_psf = spatial_psf
+        
+        # affect the instance
         self.mutable_parameters = self.mutable_parameters + [f"mirror.{k}" for k in self.mirror.mutable_parameters]
         
-        self._meta_in = config.copy()      #: Meta-parameters as input
-        self._meta = config.copy()         #: Meta-parameters as used
-
+        self._meta_in = meta.copy()      #: Meta-parameters as input
+        self._meta = meta.copy()         #: Meta-parameters as used
+        
     @classmethod
-    def from_config(cls, config, verbose=False):
-        """ Initialize from spectrograph config.
+    def from_config(cls, config):
+        """ """
+        # wavelengths
+        lbda, lbda_edges = build_lbda_from_config(config)
 
-        Added for consistency between classes as an alternative to
-        :meth:`__init__`.
+        # Mirror
+        mirror = Mirror.from_config(config['mirror'])
+        
+        # Spaxels
+        spaxels = build_spaxels_from_config(config)
+        
+        # throughput
+        throughput = build_throughput_from_config(config)
+        
+        # PSF at the detector level
+        xdispersion = {"sigma_spectral": float(config["psf"]["detector"]["xdisp_sigma_spectral"]),
+                      "sigma": float(config["psf"]["detector"]["xdisp_sigma"]),
+                      "profile": config["psf"]["detector"]["xdisp_profile"]}
 
-        Parameters
-        ----------
-        config: dict
-            spectrograph configuration dictionary
-            
-        verbose: bool
-            verbose mode
+        # in coming PSF
+        psf = {"sigma_spectral": float(config["psf"]["spatial"]["psf_sigma_spectral"]),
+               "guiding_sigma": float(config["psf"]["spatial"]["guiding_sigma"]),
+               "profile": config["psf"]["spatial"]["psf_profile"]}
 
-        Returns
-        -------
-        instance
-        """
-
-        return cls(config, verbose=verbose)
-
+        
+        init_prop = {"lbda":lbda, 
+                     "lbda_edges":lbda_edges, 
+                     "mirror": mirror,
+                     "spaxels":spaxels,
+                     "throughput": throughput, 
+                     "xdispersion":xdispersion, 
+                     "spatial_psf": psf,
+                     "meta": config
+                    }
+        return cls(**init_prop)
+        
     @staticmethod
-    def lbda_from_respow(spectral_range, res_power, npx=2):
-        r""" Compute wavelength ramp for constant n-px resolving power.
-
-        .. math::
-
-           \frac{\Delta\lambda}{\lambda} &= \frac{1}{n\mathcal{R}} &\\
-           &= \ln 10\,\Delta\log\lambda &\\
-           \log\lambda_i^e &= \log\lambda_0 + i\times \Delta\log\lambda
-           &\quad\text{(edges)} \\
-           \log\lambda_i &= (\log\lambda_i + \log\lambda_{i+1})/2
-           &\quad\text{(center)}
-
-        :param 2-tuple spectral_range: spectral domain
-        :param float res_power: resolving power R
-        :param float npx: n-px resolution (i.e. n px per spectral elements)
-        :return: mid and bin edge wavelengths [same units as input domain]
-        """
-
-        wmin, wmax = spectral_range
-        dlog = 1/(2.302585092994046 * res_power * npx)  # ln(10)=2.303...
-        npx = round((np.log10(wmax) - np.log10(wmin)) / dlog)
-        loglbda_edges = np.linspace(np.log10(wmin), np.log10(wmax), npx + 1)
-        loglbda_mid = (loglbda_edges[:-1] + loglbda_edges[1:])/2
-
-        return 10**loglbda_mid, 10**loglbda_edges
-
+    def build_lbda_from_config(config):
+        return build_lbda_from_config(config)
+        
     def __str__(self):
 
         wmin, wmax = self.spectral_range
@@ -221,14 +285,14 @@ class Spectrograph:
                 f"{self.dispersion_law!r} ×{self.dispersion_scale} (R0~{avwres0:.0f})"
         else:
             s += f"\n  Fixed resolving power (2 px): {avwres0:.0f}"
-        s += f"\n  Spectral PSF: chromatic σ={self.spectral_sigma:.2f} px at 1 µm, "
+        s += f"\n  Spectral PSF: chromatic σ={self.xdisp_sigma_spectral:.2f} px at 1 µm, "
         s += f"x-disp. σ={self.xdisp_sigma:.2f} px"
         s += "\n  Resolving power (2-px + σ): " \
             f"R~{avwres:.0f} (λ-average), " \
             f"min={wres[imin]:.0f} at {self.lbda[imin]:_.0f} Å"
         shape = "×".join([ str(i) for i in self.spatial_shape ])
-        s += f"\n  MLA: {shape} spx of {self.spatial_scale*1e3:.0f} mas"
-        s += f"\n  Spatial PSF: chromatic σ={self.spatial_sigma*1e3:.0f} mas at 1 µm, "
+        s += f"\n  MLA: {shape} spx of {self.spx_spatial_scale*1e3:.0f} mas"
+        s += f"\n  Spatial PSF: chromatic σ={self.psf_sigma_spectral*1e3:.0f} mas at 1 µm, "
         s += f"guiding σ={self.guiding_sigma*1e3:.0f} mas"
 
         if self.throughput_name:
@@ -241,69 +305,17 @@ class Spectrograph:
 
         return s
 
-    def rescale_parameters(self, **kwargs):
-        """ Convert parameters in relative units to absolute units.
-
-        .. Warning:: if needed, the reference parameters
-           (e.g. :attr:`spatial_sigma`) should be updated
-           simultaneously to the normalized parameters (not during a
-           subsequent call).
-        """
-
-        # Get sigma from kwargs, or self, or raise.
-        def _get_sigma(name):        # 'spatial_sigma' or 'spectral_sigma'
-            if hasattr(self, name):  # Initialized spectrograph
-                return kwargs.get(name, getattr(self, name))
-            else:                    # Config dictionary
-                return kwargs[name]
-
-        spatial_sigma = _get_sigma("spatial_sigma")
-        spectral_sigma = _get_sigma('spectral_sigma')
-
-        new_kw = {}             # native or rescaled parameters
-
-        # treat spatial_scale first, as it will impact some other parameters
-        if 'spatial_scale_insigma' in kwargs:
-            # spatial_scale in units of spatial_sigma
-            spatial_scale = new_kw["spatial_scale"] = (
-                kwargs['spatial_scale_insigma'] * spatial_sigma)
-            # print("Rescaling spatial_scale: "
-            #       f"{v}×{spatial_sigma}={new_kw['spatial_scale']}")
-        else:
-            spatial_scale = _get_sigma("spatial_scale")  # initial value
-
-        for k, v in kwargs.items():
-            if not k.endswith('_insigma'):  # Parameter in absolute units
-                new_kw[k] = v               # Left untouched
-            elif k == "spatial_scale_insigma":  # see above
-                continue
-            elif k == "spatial_shape_insigma":
-                # convert spatial_shape in units of spatial_sigma to spx
-                new_kw["spatial_shape"] = [
-                    round(vv * spatial_sigma / spatial_scale) for vv in v ] # (ny, nx)
-                # print("Rescaling spatial_shape: "
-                #       f"{v}×{spatial_sigma}/{spatial_scale}={new_kw['spatial_shape']}")
-            elif k == "aperture_radius_insigma":
-                # convert aperture_radius in units of spatial_sigma to spx
-                new_kw["aperture_radius"] = v * spatial_sigma / spatial_scale
-                # print("Rescaling aperture_radius: "
-                #       f"{v}×{spatial_sigma}/{spatial_scale}={new_kw['aperture_radius']}")
-            elif k == "xdisp_width_insigma":
-                # xdisp_width in units of spectral_sigma
-                new_kw["xdisp_width"] = round(v * spectral_sigma)
-                # print("Rescaling xdisp_width: "
-                #       f"{v}×{spectral_sigma}={new_kw['xdisp_width']}")
-            else:
-                raise KeyError("Unknown relative parameter", k)
-
-        return new_kw
-
     def update(self, reset_others=False, **kwargs):
         """ Update any mutable attribute of the spectrograph. """
-        kwargs = self.rescale_parameters(**kwargs)
-
+    
         updates = {}
         mirror_updates = {}
+        lbda_updates = {}
+        xdisp_updates = {}
+        psf_updates = {}
+        spaxel_updates = {}      
+        
+        # == Filling the update == #
         for k, v in kwargs.items():
             if k not in self.mutable_parameters:
                 warnings.warn(f"Parameter {k!r} is not mutable.")
@@ -312,87 +324,76 @@ class Spectrograph:
             if v is None:        # Skip
                 continue
 
+            # mirror
             if k.startswith("mirror."):
                 mirror_updates[k.replace("mirror.", "")] = v
                 continue
 
-            
-            if '.' not in k:         # Simple key
-                setattr(self, k, v)  # Update attribute
-            else:                    # Chained key: key1.key2
-                k1, k2 = k.split('.')
-                setattr(getattr(self, k1), k2, v)
-
-            if k in ('spectral_range', 'spectral_resolution'):
+            # lbda
+            elif k in ('spectral_range', 'spectral_resolution'):
+                
                 # Simulation.update is in charge of updating other chromatic
                 # quantities if 'spectral_range' or 'spectral_resolution' are
                 # modified.
                 if k == "spectral_resolution" and self.wsol is not None:
                     warnings.warn("Switching to constant resolving power.")
-                    updates['dispersion_law'] = ''
-                    self.wsol = self.dsol = None
-                self.update_lbda()  # Update spectral attributes
+                    lbda_updates['dispersion_law'] = None
+                    
+                lbda_updates[k] = v
 
-            if k == 'spatial_shape':
-                self.set_spaxels()  # update spatial attributes
+            # change PSF
+            elif k in config["psf"]["spatial"].keys():
+                psf_updates[k.replace("psf_","")] = v
 
-            if '.' not in k:    # Simple key
-                updates[k] = v  # Keep track of updated parameters
-            else:               # Chained key: key1.key2
-                k1, k2 = k.split('.')
-                updates[k1] = {k2:v}
-
+            # change PSF xdisp
+            elif k in config["psf"]["detector"].keys():
+                xdisp_updates[k.replace("xdisp_","")] = v
+                
+            # spaxels
+            elif k in ('spatial_scale', 'spatial_scale_insigma', 
+                     'spatial_shape', 'spatial_shape_insigma'):
+                spaxel_updates[k] = k
+            else:
+                warning.warn(f"{k=} is unparsed")
+            
+        
         # update mirror
         self.mirror.update(**mirror_updates, reset_others=reset_others)
         
-        # Update the metadata
+        # psf
+        self.spatial_psf = self.spatial_psf | psf_updates
+        self.xdispersion = self.xdispersion | xdisp_updates
+        
+        # lbda
+        if spaxel_updates:
+            self._spaxels = self.build_spaxels_from_config( self._meta | spaxel_updates )
+            
+        if lbda_updates:
+            self.update_lbda(*build_lbda_from_config(lbda_updates),
+                             update_throughput=True)
+        
+        # the rest if any
         if reset_others:
             self._meta = self._meta_in |updates
         else:
-            self._meta = self._meta | updates
+            self._meta = self._meta | spaxel_updates
 
-    def update_lbda(self):
-        """
-        Update wavelength and chromatic components.
-        """
-
-        self.load_lbda()         # Update wavelengths
-        # Update throughput if needed
-        if self.throughput_interp is not None:
+    def update_lbda(self, lbda, lbda_edges, update_throughput=True):
+        """ """
+        self.lbda = lbda
+        self.lbda_edges = lbda_edges
+        if update_throughput:
+            self._update_throughput()
+            
+    def _update_throughput(self):
+        """ """
+        if self._throughput_interp is not None:
             self.throughput = self.throughput_interp(self.lbda)
-
-    # - setter
-    def load_lbda(self):
-        """ set wavelength coordinates.
-
-        Set :attr:`lbda` (:attr:`nlbda` mid wavelengths) and :attr:`lbda_egdes`
-        (:attr:`nlbda` + 1 edge wavelengths).
-        """
-        if self.wsol is None:   # Compute from constant resolving power
-            self.lbda, self.lbda_edges = self.lbda_from_respow(
-                self.spectral_range, self.spectral_resolution)
-        else:                   # Compute from wavelength solution
-            wmin, wmax = self.spectral_range
-            npx = round(self.dsol(wmax) - self.dsol(wmin))    # Total nb of px
-            self.lbda = self.wsol(np.r_[:npx])                # λ at bin center
-            self.lbda_edges = self.wsol(np.r_[:npx+1] - 0.5)  # λ at bin edge
-            
-    def set_spaxels(self):
-        """
-        Set spaxel coordinates [spx] from MLA shape.
-
-        Set `self.(x,y)[_edges]` from :attr:`spatial_shape`.
-        """
-
-        hnx, hny = (self.nx - 1)/2, (self.ny - 1)/2
-        self.y, self.x = np.ogrid[-hny:hny:self.ny*1j,
-                                  -hnx:hnx:self.nx*1j]  # Central coord. grids [spx]
-        self.y_edges, self.x_edges = np.ogrid[
-            -hny - 0.5:hny + 0.5:(self.ny + 1)*1j,
-            -hnx - 0.5:hnx + 0.5:(self.nx + 1)*1j]      # Edge coord. grids [spx]
-            
-    # - getter    
-    def get_spectral_sigma(self, xdims=0, xdisp_sigma=None):
+    
+    #            
+    # - getter
+    #    
+    def get_xdisp_sigma_spectral(self, xdims=0, xdisp_sigma=None):
         """ Get spectral PSF stddev [px].
 
         The total (Gaussian) spectral PSF is made of two components:
@@ -410,14 +411,16 @@ class Spectrograph:
         :return: total sigma [px]
         """
         if xdisp_sigma is None:
-            xdisp_sigma = self.xdisp_sigma
+            xdisp_sigma = self.xdispersion["sigma"]
 
         return self._get_chromatic_sigma(self.lbda,
-                                        self.spectral_sigma,
-                                        xdisp_sigma,
-                                        wref=10_000, xdims=xdims)
+                                         chromatic_sigma = self.xdispersion["sigma_spectral"],
+                                         constant_sigma = xdisp_sigma,
+                                         wref = self.lbda_ref,
+                                         xdims = xdims)
 
-    def get_spatial_sigma(self, xdims=0, guiding_sigma=None):
+    def get_psf_sigma_spectral(self, xdims=0, guiding_sigma=None,
+                              in_spaxels=False):
         """ Get spatial PSF stddev [arcsec].
 
         The total (Gaussian) spatial PSF is made of two components:
@@ -436,13 +439,18 @@ class Spectrograph:
         """
 
         if guiding_sigma is None:
-            guiding_sigma = self.guiding_sigma
+            guiding_sigma = self.spatial_psf["guiding_sigma"]
 
-        return self._get_chromatic_sigma(self.lbda,
-                                        self.spatial_sigma,
-                                        guiding_sigma,
-                                        wref=10_000, xdims=xdims)
-
+        sigma = self._get_chromatic_sigma(self.lbda,
+                                        chromatic_sigma = self.spatial_psf["sigma_spectral"],
+                                        constant_sigma = guiding_sigma,
+                                        wref = self.lbda_ref,
+                                        xdims=xdims)
+        if in_spaxels:
+            sigma /= self.spx_spatial_scale
+            
+        return sigma
+    
     def get_spatial_psf(self, position=(0, 0)):
         """ Get normalized 2D spatial PSF on the MLA.
 
@@ -452,12 +460,11 @@ class Spectrograph:
         :return: normalized PSF (nlbda, ny, nx)
         """
 
-        sigmas = self.get_spatial_sigma(xdims=2) / self.spatial_scale
-        psf = integ_gaussian2D_erf(
-            (self.x_edges, self.y_edges),  # ((1, nx), (ny, 1)) [spx]
-            sigmas,                        # (nlbda, 1, 1) [spx]
-            position,                      # [spx]
-            normed=True)                   # sum(axis=(1, 2)) = 1
+        sigmas = self.get_psf_sigma_spectral(xdims=2) / self.spx_spatial_scale
+        psf = integ_gaussian2D_erf(self.spx_edges,  # ((1, nx), (ny, 1)) [spx]
+                                   sigmas,          # (nlbda, 1, 1) [spx]
+                                   position,        # [spx]
+                                   normed=True)     # sum(axis=(1, 2)) = 1
 
         return psf                         # (nlbda, ny, nx)
 
@@ -493,7 +500,7 @@ class Spectrograph:
                                                 temperature=temperature,
                                                 emissivity=emissivity)
         if as_cube:
-            signal = np.full((self.nlbda, self.ny, self.nx),
+            signal = np.full((self.nlbda, *self.spx_shape[::-1]),
                                  signal[:, np.newaxis, np.newaxis])  # (nlbda, ny, nx)
             
         return signal                              # [ph/s/spx/Δλ]
@@ -521,7 +528,8 @@ class Spectrograph:
 
         # Aperture
         x0, y0 = position
-        r = np.hypot(self.x - x0, self.y - y0)  # (ny, nx) [spx]
+        x, y = self.spx_centroids
+        r = np.hypot(x - x0, y - y0)  # (ny, nx) [spx]
         aper = (r <= radius)
         nspx = np.count_nonzero(aper)           # Selected spx
         if verbose:
@@ -553,7 +561,7 @@ class Spectrograph:
                  (as a function of wavelength or averaged)
         """
         if sigma is None:
-            sigma = self.get_spectral_sigma()  # (nlbda,)
+            sigma = self.get_xdisp_sigma_spectral()  # (nlbda,)
         sigma = np.maximum(sigma, 1)
 
         dlbda = np.diff(self.lbda_edges)
@@ -572,7 +580,6 @@ class Spectrograph:
         :param 2-tuple position: point source position in MLA [spx]
         :return: (nlbda, ny, nx) photon flux cube [ph/s/spx]
         """
-
         # Spatial PSF
         psf = self.get_spatial_psf(position=position)      # (nlbda, ny, nx)
 
@@ -588,11 +595,10 @@ class Spectrograph:
         :param spectrum: uniform scene background spectrum [erg/s/cm²/Å/arcsec²]
         :return: (nlbda, ny, nx) photon flux cube [ph/s/spx]
         """
-
         # erg/s/cm²/Å/arcsec² * cm² * Å / erg/ph * arcsec² = ph/s/spx
-        flux = spectrum * self.flambda2photon * self.spatial_scale**2
+        flux = spectrum * self.flambda2photon * self.spx_spatial_scale**2
 
-        return np.full((self.nlbda, self.ny, self.nx),
+        return np.full((self.nlbda, *self.spx_shape[::-1]), # y, x
                        flux[:, np.newaxis, np.newaxis])  # (nlbda, ny, nx)
 
     #
@@ -610,8 +616,10 @@ class Spectrograph:
     # - Internal
     #
     @staticmethod
-    def _get_chromatic_sigma(lbda, chromatic_sigma, constant_sigma,
-                             wref=10_000., xdims=0):
+    def _get_chromatic_sigma(lbda, chromatic_sigma,
+                                 constant_sigma,
+                                 wref,
+                                 xdims=0):
         """
         Get total PSF, including chromatic and constant components.
 
@@ -650,7 +658,7 @@ class Spectrograph:
     @property
     def mla_extent(self):
         """ MLA extent [spx]."""
-        hx, hy = self.nx / 2, self.ny / 2  # Half total width [spx]
+        hx, hy = self.spx_shape / 2  # Half total width [spx]
         return [-hx, hx, -hy, hy]
     
     @property
@@ -662,7 +670,33 @@ class Spectrograph:
         # erg/s/cm²/Å * (cm² * throughput * Å / erg/ph) = ph/s
         return (self.mirror.surface * 1e4 *
                 self.throughput * dlbda / hnu)  # (nlbda,) [ph/s]
-                
+
+    # Spaxels
+    @property
+    def spaxels(self):
+        """ """
+        return self._spaxels
+
+    @property
+    def spx_shape(self):
+        """ """
+        return self._spaxels["shape"]
+
+    @property
+    def spx_centroids(self):
+        """ """
+        return self._spaxels["centroids"]
+        
+    @property
+    def spx_edges(self):
+        """ """
+        return self._spaxels["edges"]
+
+    @property
+    def spx_spatial_scale(self):
+        """ """
+        return self._spaxels["spatial_scale"]
+        
     @property
     def nlbda(self):
         """ number of spectral pixels. """
@@ -674,12 +708,33 @@ class Spectrograph:
         return self._meta
 
     @property
+    def name(self):
+        """ name of the spectrograph (if any) """
+        return self.meta.get("name", "")
+
+    @property
+    def lbda_ref(self):
+        """ reference wavelength """
+        # 1micron by default
+        return self.meta.get("lbda_ref", 10_000) 
+    
+    @property
     def omega(self):
         """ spaxel solid angle [sr]. """
-        hspx = self.spatial_scale / 2  # [arcsec]
+        hspx = self.spx_spatial_scale / 2  # [arcsec]
         hspx *= 4.84813681109536e-06   # [rad]
         return np.pi * np.sin(hspx)**2
-    
+
+    @property
+    def psf_sigma_spectral(self):
+        """ """
+        return self.spatial_psf["sigma_spectral"]
+
+    @property
+    def xdisp_sigma_spectral(self):
+        """ """
+        return self.xdispersion["sigma_spectral"]
+        
     
 
 def plot_spectral_resolution(spectro, ax=None):
@@ -690,7 +745,7 @@ def plot_spectral_resolution(spectro, ax=None):
     wres = spectro.effective_resolution(npx=2)
     mwres = spectro.effective_resolution(npx=2, average=True)
     dlbda = np.diff(spectro.lbda_edges)           # [Å]
-    sigma = spectro.get_spectral_sigma() * dlbda  # [Å]
+    sigma = spectro.get_xdisp_sigma_spectral() * dlbda  # [Å]
 
     lbda_mu = spectro.lbda / 1e4  # [µm]
 
@@ -714,7 +769,7 @@ def plot_spectral_resolution(spectro, ax=None):
     ax2.plot(lbda_mu, dlbda, c='C01', ls=':',
              label=f"Δλ ({spectro.dispersion_law!r}×{spectro.dispersion_scale})")
     ax2.plot(lbda_mu, sigma, c='C01', ls='--',
-             label=f"σ ({spectro.spectral_sigma} λ/µm & {spectro.xdisp_sigma} px)")
+             label=f"σ ({spectro.xdisp_sigma_spectral} λ/µm & {spectro.xdisp_sigma} px)")
     ax2.set_ylabel("δλ [Å]", color='C01')
     ax2.tick_params(axis='y', labelcolor='C01');
     ax2.legend()
