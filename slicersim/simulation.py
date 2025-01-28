@@ -322,20 +322,41 @@ class Simulation:
           self.spectrograph.effective_resolution(npx=npx, sigma=sigma)
 
     def get_nea(self, nea_spatial=None, nea_pixels=None):
-        """ Noise effective area  (nea_spatial * nea_pixel)
-        """
+        """ Noise effective area  (nea_spatial * nea_pixel) """
         return self.spectrograph.get_nea(position = self.scene.target.position,
                                           nea_spatial=nea_spatial, nea_pixels=nea_pixels)
             
-    def get_nea_variance(self, nea_spatial=None, nea_pixels=None):
-        """ get variance estimatation from the noise equivalent area. """
+    def get_nea_variance(self, spectrum=None, nea_spatial=None, nea_pixels=None):
+        """ get variance estimatation from the noise equivalent area. 
+
+        Parameters
+        ----------
+        spectrum: None
+            * limited to test config...*
+            Provide a spectrum in [erg/s/cm2/A]. 
+        """
         nea = self.get_nea(nea_spatial=nea_spatial, nea_pixels=nea_pixels)
     
         # "background" variance of a single pixels
         _, pixel_var = self.detector.estimate_pixel_signal(0)
         pixel_var *= self.extraction["nramp"] # incl. multi ramp approach.
+        variance_pixels = nea * pixel_var
+
+        # adding spectrum. But very inclear if correct...
+        if spectrum is not None: # 
+            # test default tests case:
+            right_config = self.get_parameter(["spatial_scale", "psf_sigma_spectral"])
+            if right_config != {'spatial_scale': 0.04, 'psf_sigma_spectral': 0.03}:
+                warnings.warn("inclusion of spectrum variance has been validated for {'spatial_scale': 0.04, 'psf_sigma_spectral': 0.03} only. Likely wrong if too far.")
+                
+            spec_adu = self.flambda_to_adu(spectrum)
+            # This is an approximation that seem to work, not clear why... (so the above warning)
+            poisson_adu_to_variance = np.sqrt(self.spectrograph.get_nea_spatial()  / self.spectrograph.get_nea_pixels() )
+            var_source = spec_adu * poisson_adu_to_variance
+        else:
+            var_source = 0
         
-        return  nea * pixel_var
+        return variance_pixels + var_source
     
     def get_parameter(self, which=None, default=None, as_dict=True):
         """ shortcut to get simulation parameter(s).
@@ -695,7 +716,19 @@ class Simulation:
             return pandas.DataFrame(estimates)
         
         return estimates # dict
-        
+
+    # ----------- #
+    #  Conversion #
+    # ----------- #
+    def flambda_to_adu(self, flux=1.):
+        """ convert input spectrum in [erg/s/cm2/A] into ADU (including nramp) """
+        _, transmission = self.get_effective_transmission()
+        return flux * transmission * self.get_parameter("nramp")
+
+    def adu_to_flambda(self, flux=1.):
+        """ convert input spectrum in ADU (including nramp) into [erg/s/cm2/A]"""
+        _, transmission = self.get_effective_transmission()
+        return flux_adu / (transmission * self.get_parameter("nramp"))
     # ---------- #
     #  Fetching  #
     # ---------- #
