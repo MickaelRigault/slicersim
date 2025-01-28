@@ -105,7 +105,8 @@ fig = sim.show_variance_sources(flux_calibrated=False)
 ![readme example](docs/gallery/spectra_variance.png)
 
 ***
-PSF & Noise equivalent area
+#PSF & Noise equivalent area
+
 by default, the code assumes gaussian PSF both for spatial (at the slicer/mla) and cross-dispersion (at pixels) level.
 
 `slicersim.profiles` contains additional PSF model (from (astropy.modeling)[https://docs.astropy.org/en/latest/modeling/predef_models2D.html] 
