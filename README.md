@@ -109,9 +109,10 @@ fig = sim.show_variance_sources(flux_calibrated=False)
 
 by default, the code assumes gaussian PSF both for spatial (at the slicer/mla) and cross-dispersion (at pixels) level.
 
-`slicersim.profiles` contains additional PSF model (from (astropy.modeling)[https://docs.astropy.org/en/latest/modeling/predef_models2D.html] 
+`slicersim.profiles` contains additional PSF model (from [astropy.modeling](https://docs.astropy.org/en/latest/modeling/predef_models2D.html) 
 that can be used to build 2D model or estimate the PSF noise equivalent area (nea).
-*(more to come..., see: slicersim.profiles.get_2dpsf_nea())*
+
+*(more to come..., see: `slicersim.profiles.get_2dpsf_nea()`)*
 
 ***
 # Credits
