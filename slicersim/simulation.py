@@ -321,36 +321,16 @@ class Simulation:
         return self.spectrograph.lbda, \
           self.spectrograph.effective_resolution(npx=npx, sigma=sigma)
 
-    def get_nea(self, nea_spatial=None, nea_pixel=None):
+    def get_nea(self, nea_spatial=None, nea_pixels=None):
         """ Noise effective area  (nea_spatial * nea_pixel)
         """
-        from .profiles import get_1dnorm_nea, get_2dnorm_nea
-        
-        # NEA_Spatial PSF on the MLA (2D) / Slicer (1d) | in slice / spaxel
-        if nea_spatial is None:
-            # 
-            if self.spectrograph.spatial_psf["profile"] not in ("normal", "norm", "gaussian"):
-                raise NotImplementedError(f"only gaussian spatial PSF profile implemented, but: {self.spectrograph.spatial_psf['profile']=}")
+        return self.spectrograph.get_nea(position = self.scene.target.position,
+                                          nea_spatial=nea_spatial, nea_pixels=nea_pixels)
             
-            sigma_at_mla = self.spectrograph.get_psf_sigma_spectral(in_spaxels=True, xdims=2)
-            nea_spatial = get_2dnorm_nea(sigma_at_mla, 
-                                          mean = self.scene.target.position)
-        
-        # NEA_pixel of 1 spaxel / slice on the dectetor
-        if nea_pixel is None:
-            # 
-            if self.spectrograph.xdispersion["profile"] not in ("normal", "norm", "gaussian"):
-                raise NotImplementedError(f"only gaussian xdispersion PSF profile implemented, but: {self.spectrograph.xdispersion['profile']=}")
-            
-            sigma_xdisp_at_detector = self.spectrograph.get_xdisp_sigma_spectral() # in pixels 
-            nea_pixel = get_1dnorm_nea(sigma_xdisp_at_detector)
-    
-        return nea_spatial * nea_pixel
-    
-    def get_nea_variance(self, nea_spatial=None, nea_pixel=None):
+    def get_nea_variance(self, nea_spatial=None, nea_pixels=None):
         """ get variance estimatation from the noise equivalent area. """
-        nea = self.get_nea(nea_spatial=None, nea_pixel=None)
-        
+        nea = self.get_nea(nea_spatial=nea_spatial, nea_pixels=nea_pixels)
+    
         # "background" variance of a single pixels
         _, pixel_var = self.detector.estimate_pixel_signal(0)
         pixel_var *= self.extraction["nramp"] # incl. multi ramp approach.
@@ -456,9 +436,9 @@ class Simulation:
                                 (target, host, background) + thermal
         :return: (nlbda, ny, nx) cube signal and variance [ADU]
         """
+        AVAILABLE_SWITCHOFF = ["dark", "ron", "target", "host", "background","thermal"]
         switch_off = np.atleast_1d(switch_off).tolist() # as list
         
-        AVAILABLE_SWITCHOFF = ["dark", "ron", "target", "host", "background","thermal"]
         if np.any(effect_bool := [effect not in AVAILABLE_SWITCHOFF for effect in switch_off]):
             unknown_effect = np.asarray(switch_off)[effect_bool]
             warnings.warn(f"unknown switch off effect(s) {unknown_effect}.")
@@ -469,9 +449,10 @@ class Simulation:
             self.update(detector__dark=0)            # Switch off dark
         else:
             current_dark = None
+            
         if "ron" in switch_off:
             current_ron = self.get_parameter("ron")
-            self.update(detector__ron=0)             # Switch off dark
+            self.update(detector__ron=0)             # Switch off ron
         else:
             current_ron = None
 
@@ -523,7 +504,7 @@ class Simulation:
             # See Spectrograph.rescale_parameters
             radius = (self.extraction["aperture_radius_insigma"] *
                       self.spectrograph.psf_sigma_spectral /  # [arcsec]
-                      self.spectrograph.spx_spatial_scale)   # [arcsec/spx]
+                      self.spectrograph.spx_spatial_scale)    # [arcsec/spx]
 
         spec_variance = self.spectrograph.point_source_variance(
             var_cube, position=self.scene.target_position, radius=radius)
@@ -721,9 +702,10 @@ class Simulation:
     def fetch_snr(self, target_snr,
                       free_parameter="default",
                       #
-                      longest_ramp=1800,
+                      max_group=64,
                       nmd_ramp=(64,8,0),
                       allow_bypass=True,
+                      restart_ramp=True,
                       #
                       lbda_range=[4000, 6800], frame="rest",
                       statistic=np.nanmean,
@@ -742,9 +724,9 @@ class Simulation:
             30min exposures, nramp for more.
             otherwise, forces single free_parameter: nframe, ngroup, nramp
         
-        longest_ramp: float
+        max_group: int
             = ignored if free_parameter is not 'default' =
-            longest accept ramp before breaking in multiple ramps.
+            larger number of group accepted.
             
         lbda_range: list
             (wmin, wmax) test wavelength range [Å]
@@ -759,6 +741,11 @@ class Simulation:
             should the intput simulation be back to initial value (True)
             or that of the reached snr (False)
             
+        restart_ramp: bool
+            if free_parameter is not nramp, should this restart from nramp=1 to move the freeparameter ?
+            if not, it will assume current nramp.
+
+
         Returns
         -------
         int, float
@@ -767,26 +754,26 @@ class Simulation:
             - integration_time
         """
         prop_fetch = dict(lbda_range=lbda_range, frame=frame,
-                          statistic=statistic, reset_param=reset_param, guess=guess,
+                          statistic=statistic,
+                          reset_param=reset_param, guess=guess,
                           maxiter=maxiter,
                           tol=tol, iterstep=iterstep)
 
-        
         if free_parameter is None:
             free_parameter = "default"
 
         if free_parameter == "default": # observation strategy
-            used_free_parameter = "ngroup"
+            used_free_parameter = "ngroup" # start by moving groups
             check_if_too_long = True
         else:
             used_free_parameter = free_parameter
             check_if_too_long = False
 
-
         # fast check:
         bypass = False # do not bypass 
         if check_if_too_long and allow_bypass:
-            test_config = {"nmd":nmd_ramp, "nramp":2}
+#            print("check_if_too_long and allow_bypass")
+            test_config = {"nmd": nmd_ramp, "nramp": 2}
             input_config = self.get_parameter( list(test_config.keys()) )
             self.update(**test_config)
             tworamp_snr = self.get_band_snr(lbda_range=lbda_range,
@@ -796,21 +783,26 @@ class Simulation:
                 
             self.update(**input_config)
                 
-            
-            
         if not bypass:
+#            print("no bypass")
+            if used_free_parameter != "nramp" and restart_ramp:
+                self.update( nramp = 1 )
+                
             read_config, snr, integration_time = self._fetch_snr(target_snr,
                                                             # This is changing.
                                                             free_parameter=used_free_parameter,
                                                             #
                                                             **prop_fetch)
                                                             
-        # single ramp too long: let's loop over ramps.
-        if bypass or (check_if_too_long and integration_time>longest_ramp):
+            # single ramp too long: let's loop over ramps.
+            new_ngroup = read_config.get("nmd")[0]
+            is_too_long = new_ngroup>max_group
+            
+        if bypass or (check_if_too_long and is_too_long):
+#            print("scanning nramp")
             used_free_parameter = "nramp"
             input_nmd = self.get_parameter("nmd")
             self.update(nmd = nmd_ramp)
-            
             read_config, snr, integration_time = self._fetch_snr(target_snr,
                                                                 # This is changing.
                                                                 free_parameter=used_free_parameter,
@@ -880,7 +872,11 @@ class Simulation:
             new_value = value + coefs*iterstep
             if new_value <=0 :
                 new_value = 1
-                warnings.warn(f"requested value lower than 0 old value {value} + iterstep {iterstep}")                
+                # warnings.warn(f"requested value lower than 0: old value {value} + iterstep {iterstep}")                
+
+            if new_value < min_value:
+                new_value = min_value
+                # warnings.warn(f"requested value lower than min_value: old value {value} + iterstep {iterstep}")
                 
             _ = self.update(**{free_parameter: new_value})
             new_snr = self.get_band_snr(**prop_snr)
@@ -895,7 +891,6 @@ class Simulation:
                 new_iterstep = 1
 
             return new_value, new_snr, new_iterstep        
-
 
         # ---------------------- #
         # Parsing input uptions  #
@@ -930,21 +925,21 @@ class Simulation:
         # while loop
         counter = 0        
         while np.abs(current_snr-target_snr)>tol and counter<maxiter:
+            if np.isnan(current_value) or current_value<=min_value: # moving to too small value
+                current_value = min_value # reset to minimum 
+                self.update(**{free_parameter: current_value })
+                current_snr = self.get_band_snr(**prop_snr) # and get corresponding SNR
+                
             if current_value<=min_value and current_snr>=target_snr: # means lowest is already enough
-                break            
-            current_value, current_snr, iterstep = change(current_value, current_snr, iterstep)
-            counter += 1
+                break
 
-        # make sure it is at least the minimum
-        if current_value < min_value:
-            current_value = min_value
-            self.update(**{free_parameter: current_value })
-            current_snr = self.get_band_snr(**prop_snr)
+            current_value, current_snr, iterstep = change(current_value, current_snr, iterstep)
+            counter += 1            
+
 
         # return used nmd
         used_config = {"nmd": self.get_parameter("nmd"),
                        "nramp": self.get_parameter("nramp")}
-                           
             
         total_exptime = self.observing_time # includes nramps
         if reset_param: # reset if needed

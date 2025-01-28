@@ -119,7 +119,8 @@ def build_lbda_from_config(config):
         wsol = dsol = None
         dispersion_scale = float(dispersion_scale)
 
-    lbda, lbda_edges = build_lbda(spectral_range, wsol=wsol, dsol=dsol, spectral_resolution=spectral_resolution)
+    lbda, lbda_edges = build_lbda(spectral_range, wsol=wsol, dsol=dsol,
+                                    spectral_resolution=spectral_resolution)
     return lbda, lbda_edges
 
 
@@ -342,17 +343,17 @@ class Spectrograph:
                 lbda_updates[k] = v
 
             # change PSF
-            elif k in config["psf"]["spatial"].keys():
+            elif k in self.meta["psf"]["spatial"].keys():
                 psf_updates[k.replace("psf_","")] = v
 
             # change PSF xdisp
-            elif k in config["psf"]["detector"].keys():
+            elif k in self.meta["psf"]["detector"].keys():
                 xdisp_updates[k.replace("xdisp_","")] = v
                 
             # spaxels
             elif k in ('spatial_scale', 'spatial_scale_insigma', 
                      'spatial_shape', 'spatial_shape_insigma'):
-                spaxel_updates[k] = k
+                spaxel_updates[k] = v
             else:
                 warning.warn(f"{k=} is unparsed")
             
@@ -366,7 +367,7 @@ class Spectrograph:
         
         # lbda
         if spaxel_updates:
-            self._spaxels = self.build_spaxels_from_config( self._meta | spaxel_updates )
+            self._spaxels = build_spaxels_from_config( self._meta | spaxel_updates )
             
         if lbda_updates:
             self.update_lbda(*build_lbda_from_config(lbda_updates),
@@ -504,6 +505,81 @@ class Spectrograph:
                                  signal[:, np.newaxis, np.newaxis])  # (nlbda, ny, nx)
             
         return signal                              # [ph/s/spx/Δλ]
+
+    
+    def get_nea(self, position=(0,0), nea_spatial=None, nea_pixels=None):
+        """ noise effective area (PSF => Spaxel => detector (through x-dispersion)
+
+        Parameters
+        ----------
+        nea_spatial: float, array
+            noise equivalent area of the spatial PSF (in unit of spaxel / slice).
+            If None, self.get_nea_spatial() is used.
+            (array size must broadcast with self.lbda)
+
+        nea_spatial: float, array
+            noise equivalent area of a spaxel / slice caused by x-dispersion (in pixels)
+            If None, self.get_nea_pixels() is used.
+            (array size must broadcast with self.lbda)
+        
+        position: (float, float)
+            # ignored if nea_spatial is given #
+            position of the PSF in unit of spaxel / slicer.
+            
+        Returns
+        -------
+        array
+        """
+        
+        # NEA_Spatial PSF on the MLA (2D) / Slicer (1d) | in slice / spaxel
+        if nea_spatial is None:
+           nea_spatial = self.get_nea_spatial(position = position)
+        
+        # NEA_pixel of 1 spaxel / slice on the dectetor
+        if nea_pixels is None:
+            nea_pixels = self.get_nea_pixels()
+    
+        return nea_spatial * nea_pixels
+    
+    def get_nea_spatial(self, position=(0,0)):
+        """ noise equivalent area in unit of slice/spaxels 
+
+        i.e., how many "spaxel noise")
+        
+        Parameters
+        ----------
+        position: (float, float)
+            position of the PSF in unit of spaxel / slicer
+
+        Returns
+        -------
+        array
+        """
+        from .profiles import get_2dnorm_nea
+        
+        if self.spatial_psf["profile"] not in ("normal", "norm", "gaussian"):
+            raise NotImplementedError(f"only gaussian spatial PSF profile implemented, but: {self.spatial_psf['profile']=}")
+            
+        sigma_at_mla = self.get_psf_sigma_spectral(in_spaxels=True, xdims=2)
+        return get_2dnorm_nea(sigma_at_mla, mean = position)
+
+    def get_nea_pixels(self):
+        """ noise equivalent area of a spaxel /slice in unit of pixels
+
+        Returns
+        -------
+        array
+        """
+        from .profiles import get_1dnorm_nea
+        if self.xdispersion["profile"] not in ("normal", "norm", "gaussian"):
+            raise NotImplementedError(f"only gaussian xdispersion PSF profile implemented, but: {self.xdispersion['profile']=}")
+            
+        sigma_xdisp_at_detector = self.get_xdisp_sigma_spectral()  # in pixels 
+        return get_1dnorm_nea(sigma_xdisp_at_detector)
+
+    # ------------- #
+    #   Others      #
+    # ------------- #
     
     def point_source_variance(self, varcube, position=(0, 0), radius=5,
                                   optimal=True, verbose=False):

@@ -316,6 +316,7 @@ class Detector:
         # Variance estimate in [ADU²]
         if self.variance_model == "Rauscher+07":
             variance = self._estimate_variance_rauscher07(**variance_prop)
+            
         elif self.variance_model == "Kubik20":
             variance = self._estimate_variance_kubik20(**variance_prop)
         else:
