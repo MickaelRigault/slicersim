@@ -321,6 +321,12 @@ class Simulation:
         return self.spectrograph.lbda, \
           self.spectrograph.effective_resolution(npx=npx, sigma=sigma)
 
+    def get_pixel_variance(self, flux=0):
+        """ get variance associated to 1 pixel on the detector. """
+        _, pixel_var = self.detector.estimate_pixel_signal(flux)
+        pixel_var *= self.extraction["nramp"] # incl. multi ramp approach.
+        return pixel_var
+        
     def get_nea(self, nea_spatial=None, nea_pixels=None):
         """ Noise effective area  (nea_spatial * nea_pixel) """
         return self.spectrograph.get_nea(position = self.scene.target.position,
@@ -338,8 +344,7 @@ class Simulation:
         nea = self.get_nea(nea_spatial=nea_spatial, nea_pixels=nea_pixels)
     
         # "background" variance of a single pixels
-        _, pixel_var = self.detector.estimate_pixel_signal(0)
-        pixel_var *= self.extraction["nramp"] # incl. multi ramp approach.
+        pixel_var = self.get_pixel_variance(0)
         variance_pixels = nea * pixel_var
 
         # adding spectrum. But very inclear if correct...
@@ -1178,13 +1183,20 @@ class Simulation:
         [ax_.set_yticks([]) for ax_ in fig.axes]#[axb,axg, axr]]
         [ax_.set_xticks([]) for ax_ in fig.axes]#    
 
-    def show_nea(self, position=None):
+    def show_nea_fwhm(self, figsize=(4,7)):
         """ """
-        if position is None:
-            position = self.scene.target.position
-            
-        return self.spectrograph.show_nea(position=position)
-            
+        import matplotlib.pyplot as plt
+        
+        fig, (axnea, axneaspatial, axfwhm) = plt.subplots(ncols=1, nrows=3, figsize=figsize,
+                                                         gridspec_kw={"hspace":0.05})
+        self.spectrograph.show_nea(ax=axnea);
+        axnea.set_xticklabels([])
+        self.spectrograph.show_nea_spatial(ax=axneaspatial, legend=False);
+        axneaspatial.set_xticklabels([])
+        self.spectrograph.show_fwhm(ax=axfwhm, legend=False);
+
+        return fig
+    
     def show_variance_sources(self, variance_contrib=None, flux_calibrated=True):
         """ summary figure showing various variance contributions.
 
@@ -1288,7 +1300,7 @@ class Simulation:
     def cube_shape(self):
         """ Shape of the generated 3d-cube (nlbda, ny, nx). """
         return (self.spectrograph.nlbda,
-                *self.spectrograph.spx_shape[::-1]) # y, x
+                *self.spectrograph.spx_shape) # y, x
 
     @property
     def observing_time(self):

@@ -183,8 +183,7 @@ class Spectrograph:
     mutable_parameters = ['spectral_range', 'spectral_resolution', # lbda
                           'xdisp_sigma_spectral', 'xdisp_sigma', # xdisp_profile,
                           'psf_sigma_spectral', 'guiding_sigma', # psf_profile
-                          'spatial_scale', 'spatial_scale_insigma', # spaxels
-                          'spatial_shape', 'spatial_shape_insigma',
+                          'spatial_scale','spatial_shape' , # spaxels
                           #'camera.acceptance', 'camera.speed',
                           ]
 
@@ -327,7 +326,10 @@ class Spectrograph:
 
     def update(self, reset_others=False, **kwargs):
         """ Update any mutable attribute of the spectrograph. """
-    
+        NAME_ALT = {"spx_shape": "spatial_shape",
+                    "spx_scale": "spatial_scale",
+                    }
+        
         updates = {}
         mirror_updates = {}
         lbda_updates = {}
@@ -337,6 +339,9 @@ class Spectrograph:
         
         # == Filling the update == #
         for k, v in kwargs.items():
+            print(f"requested {k=}")
+            k = NAME_ALT.get(k, k)
+            print(f"so => {k=}")
             if k not in self.mutable_parameters:
                 warnings.warn(f"Parameter {k!r} is not mutable.")
                 continue
@@ -386,7 +391,8 @@ class Spectrograph:
         
         # lbda
         if spaxel_updates:
-            self._spaxels = build_spaxels_from_config( self._meta | spaxel_updates )
+            spaxels = build_spaxels_from_config( self._meta | spaxel_updates )
+            self.set_spaxels(**spaxels)
             
         if lbda_updates:
             self.update_lbda(*build_lbda_from_config(lbda_updates),
@@ -526,7 +532,7 @@ class Spectrograph:
                                                 temperature=temperature,
                                                 emissivity=emissivity)
         if as_cube:
-            signal = np.full((self.nlbda, *self.spx_shape[::-1]),
+            signal = np.full((self.nlbda, *self.spx_shape),
                                  signal[:, np.newaxis, np.newaxis])  # (nlbda, ny, nx)
             
         return signal                              # [ph/s/spx/Δλ]
@@ -711,7 +717,7 @@ class Spectrograph:
         # erg/s/cm²/Å/arcsec² * cm² * Å / erg/ph * arcsec² = ph/s/spx
         flux = spectrum * self.flambda2photon * self.spx_spatial_scale**2
 
-        return np.full((self.nlbda, *self.spx_shape[::-1]), # y, x
+        return np.full((self.nlbda, *self.spx_shape), # y, x
                        flux[:, np.newaxis, np.newaxis])  # (nlbda, ny, nx)
 
     #
@@ -763,39 +769,88 @@ class Spectrograph:
             sigma = sigma.reshape(sigma.shape + (1,) * xdims)
 
         return sigma
-    
-    def show_nea(self, figsize=(9, 3), position=(0,0) ):
+
+    def show_nea(self, ax=None, position=(0,0), legend=True ):
         """ """
-        import matplotlib.pyplot as plt
-        fig, (axnea, axfwhm) = plt.subplots(ncols=2, nrows=1, figsize=figsize)
+        if ax is None:
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots()
+        else:
+            fig = ax.figure
+            
+        # data
+        nea_spatial = self.get_nea_spatial(in_spaxels=True, position=position)
+        nea_no_guiding = self.get_nea_spatial(guiding_sigma=0, in_spaxels=True, position=position)
+        nea_mirror = self.get_nea_mirror_airy(in_spaxels=True, position=position)
+
+
+        
+        ax.plot(self.lbda, self.get_nea(position = position, nea_spatial=nea_spatial),
+                    color="#194D80", label="total")
+        ax.plot(self.lbda, self.get_nea(position = position, nea_spatial=nea_no_guiding),
+                    color="#194D80", ls="--", label="without guiding")
+        ax.plot(self.lbda, self.get_nea(position = position, nea_spatial=nea_mirror),
+                    color="#F8AD05", label="airy from mirror")
+        ax.legend(fontsize="small", frameon=False)
+
+        ax.set_xlabel(f"wavelength [$\AA$]", fontsize="large")
+        ax.set_ylabel("NEA [in pixels]", fontsize="large")
+        if legend:
+            ax.legend(fontsize="small", frameon=False)
+        
+        return fig
+    
+    def show_nea_spatial(self, ax=None, position=(0,0), legend=True ):
+        """ """
+        if ax is None:
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots()
+        else:
+            fig = ax.figure
+            
         # data
         nea = self.get_nea_spatial(in_spaxels=True, position=position)
         nea_no_guiding = self.get_nea_spatial(guiding_sigma=0, in_spaxels=True, position=position)
         nea_mirror = self.get_nea_mirror_airy(in_spaxels=True, position=position)
         
-        axnea.plot(self.lbda, nea, color="#194D80", label="@spaxel")
-        axnea.plot(self.lbda, nea_no_guiding, color="#194D80", ls="--", label="without guiding")
-        axnea.plot(self.lbda, nea_mirror, color="#F8AD05", label="airy from mirror")
-        axnea.legend(fontsize="small", frameon=False)
-        axnea.set_ylabel("NEA [in spaxels]", fontsize="large")
+        ax.plot(self.lbda, nea, color="#194D80", label="total")
+        ax.plot(self.lbda, nea_no_guiding, color="#194D80", ls="--", label="without guiding")
+        ax.plot(self.lbda, nea_mirror, color="#F8AD05", label="airy from mirror")
+
+        ax.set_xlabel(f"wavelength [$\AA$]", fontsize="large")
+        ax.set_ylabel("NEA [in spaxels]", fontsize="large")
+        if legend:
+            ax.legend(fontsize="small", frameon=False)
         
+        return fig
+
+
+    def show_fwhm(self, ax=None, legend=True):
+        """ """
+        if ax is None:
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots()
+        else:
+            fig = ax.figure
+
         # sigma
         sigma_at_mla = self.get_psf_sigma_spectral(in_spaxels=True)
         sigma_at_mla_no_guiding = self.get_psf_sigma_spectral(in_spaxels=True, guiding_sigma=0)
         radius = self.mirror.get_airy_radius(self.lbda, norm_scale=self.spx_spatial_scale)
         
-        axfwhm.plot(self.lbda, 2.35*sigma_at_mla, color="#194D80", label="total sigma")
-        axfwhm.plot(self.lbda, 2.35*sigma_at_mla_no_guiding, color="#194D80", ls="--", label="without guiding")
-        axfwhm.plot(self.lbda, 0.8*radius, color="#F8AD05", label="airy from mirror")
-        axfwhm.axhspan(2, 2.35, color="tab:orange", alpha=0.05, lw=0)
-        _ylow, _ = axfwhm.get_ylim()
-        axfwhm.axhline(2, color="tab:red", alpha=1, ls="--", lw=0.5)
-        axfwhm.axhspan(0, 2, color="tab:red", alpha=0.05, lw=0)
-        axfwhm.set_ylim(_ylow)
-        axfwhm.set_ylabel("FWHM [in spaxels]", fontsize="large")
-    
-        [ax_.set_xlabel(f"wavelength [$\AA$]", fontsize="large") for ax_ in [axnea, axfwhm]]
-        fig.tight_layout()
+        ax.plot(self.lbda, 2.35*sigma_at_mla, color="#194D80", label="total scatter")
+        ax.plot(self.lbda, 2.35*sigma_at_mla_no_guiding, color="#194D80", ls="--", label="without guiding")
+        ax.plot(self.lbda, 0.8*radius, color="#F8AD05", label="airy from mirror")
+        ax.axhspan(2, 2.35, color="tab:orange", alpha=0.05, lw=0)
+        _ylow, _ = ax.get_ylim()
+        ax.axhline(2, color="tab:red", alpha=1, ls="--", lw=0.5)
+        ax.axhspan(0, 2, color="tab:red", alpha=0.05, lw=0)
+        ax.set_ylim(_ylow)
+        ax.set_xlabel(f"wavelength [$\AA$]", fontsize="large")
+        ax.set_ylabel("FWHM [in spaxels]", fontsize="large")
+        if legend:
+            ax.legend(fontsize="small", frameon=False)
+            
         return fig
         
     # ================= #
@@ -804,7 +859,7 @@ class Spectrograph:
     @property
     def mla_extent(self):
         """ MLA extent [spx]."""
-        hx, hy = np.asarray(self.spx_shape) / 2  # Half total width [spx]
+        hy, hx = np.asarray(self.spx_shape) / 2  # Half total width [spx]
         return [-hx, hx, -hy, hy]
     
     @property
@@ -837,7 +892,7 @@ class Spectrograph:
     @property
     def spx_shape(self):
         """ """
-        return self.spaxels["shape"]
+        return self.spaxels["shape"][::-1]
 
     @property
     def spx_centroids(self):

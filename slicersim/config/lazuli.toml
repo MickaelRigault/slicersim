@@ -32,7 +32,7 @@ dispersion_scale = 1.3                     # Dispersion law scaling
 
 # ---- Spaxel structure
 spatial_scale = 0.040      	    # MLA sampling (spaxel scale) [arcsec/spx]
-spatial_shape = [20, 20]   	    # MLA shape (ny, nx) [spatial]
+spatial_shape = [58, 116]   	    # MLA shape (ny, nx) [spatial]
 # mla_fill_factor = 0.9: not implemented (to be incorporated in throughput)
 # scattered light: not implemented
 
