@@ -31,17 +31,14 @@ dispersion_scale = 1.3                     # Dispersion law scaling
 # spectral_resolution = 100   # Constant 2-px resolving power (log sampling)
 
 # ---- Spaxel structure
-spatial_scale = 0.040       	    # MLA sampling (spaxel scale) [arcsec/spx]
-spatial_shape_insigma = [20, 21]    # MLA shape (ny, nx) [spatial_sigma]
+spatial_scale = 0.040      	    # MLA sampling (spaxel scale) [arcsec/spx]
+spatial_shape = [20, 20]   	    # MLA shape (ny, nx) [spatial]
 # mla_fill_factor = 0.9: not implemented (to be incorporated in throughput)
 # scattered light: not implemented
-# spatial_shape = [10, 11]    	    # MLA shape (ny, nx) [spx]
-# spatial_scale_insigma = 1.0       # MLA sampling [spatial_sigma/spx]
 
 # ---- Throughput
 throughput = "throughput_baseline.ecsv"  # Total throughput, but QE (wavelength, throughput)
 # throughput = 0.7            		 # Total throughput (but QE) [% ph]
-
 
 #
 # Point Spread Function ---------------------
@@ -54,7 +51,7 @@ xdisp_sigma = 0.3      		# Achromatic cross-dispersion PSF [px]
 
 [spectrograph.psf.spatial]
 psf_profile = "normal"		# Chromatic PSF profile
-psf_sigma_spectral = 0.030      # Chromatic (∝ λ) spatial PSF on MLA [arcsec] at {lbda_ref}
+psf_sigma_spectral = "default"  # Chromatic (∝ λ) spatial PSF on MLA [arcsec] at {lbda_ref}
 guiding_profile = "normal"      # Achromatic guiding/jitter/aberrations profile
 guiding_sigma = 0.010       	# Achromatic guiding/jitter/aberrations on MLA [arcsec]
 

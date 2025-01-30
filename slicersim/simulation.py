@@ -451,11 +451,24 @@ class Simulation:
         return cube  # (nlbda, ny, nx) | [ph/s] or [erg/cm²/Å/s]
 
     def get_detected_cube(self, switch_off=[]):
+        """ DEPRECATED, use get_cube instead
+        """
+        warnings.warn("DEPRECATED: get_detected_cube is deprecated, use get_cube() instead")
+        return self.get_cube(switch_off=switch_off)
+    
+    def get_cube(self, switch_off=[]):
         """ get data cube as extracted from exposure [ADU].
 
-        :param list switch_off: list of discarded scene elements
-                                (target, host, background) + thermal
-        :return: (nlbda, ny, nx) cube signal and variance [ADU]
+        Parameters
+        ----------
+        switch_off: list
+            name of variance sources to switch off.
+            (dark, ron, target, host, background, thermal)
+
+        Returns:
+        --------
+        cube_signal, cube_variance: 
+            (nlbda, ny, nx) in [ADU].
         """
         AVAILABLE_SWITCHOFF = ["dark", "ron", "target", "host", "background","thermal"]
         switch_off = np.atleast_1d(switch_off).tolist() # as list
@@ -508,6 +521,52 @@ class Simulation:
         # output
         return sig_cube, var_cube  # (nlbda, ny, nx) [ADU, ADU²]
 
+
+    def get_slice(self, lbda_range, frame="obs", switch_off=[], incl_error=False, 
+                  squeeze=False,
+                  **kwargs):
+        """ get slices of the cube.
+        
+        Parameters
+        ----------
+        lbda_range: (float, float), or list of.
+            lbda_range to use (lbda_min, lbda_max) [n-slice=1] or 
+            ((lbda_min, lbda_max), (lbda_min, lbda_max), ...)  [n-slice].
+            unit: that of self.spectrograph.lbda.
+            
+        Returns
+        -------
+        signal, variance: (nslice, ny, nx)
+            signal [ADU] and variance [ADU^2]
+            
+        """
+        lbda_range = np.atleast_2d(lbda_range) # [[wmin, wmax]]
+    
+        if frame not in ["obs", "rest"]:
+            raise ValueError(f"Unknown wavelength frame {frame!r}.")
+    
+        if frame == "rest" and self.scene.target.redshift is not None:
+            lbda_range = lbda_range * (1 + self.scene.target.redshift)
+    
+        cube_signal, cube_variance = self.get_cube(switch_off=switch_off, **kwargs)
+    
+        band_sigs, band_vars = [], []
+        for wmin, wmax in lbda_range:
+            flag_lbda = ((self.spectrograph.lbda >= wmin) & (self.spectrograph.lbda <= wmax))
+            band_sigs.append( np.nansum(cube_signal[flag_lbda], axis=0) )
+            band_vars.append( np.nansum(cube_variance[flag_lbda], axis=0) )
+    
+        band_sigs = np.asarray(band_sigs)
+        band_vars = np.asarray(band_vars) 
+        if len(lbda_range) == 1 and squeeze:
+            band_sigs = band_sigs[0] 
+            band_vars = band_vars[0]
+    
+        if incl_error:
+            band_sigs = np.random.normal(loc=band_sigs, scale=np.sqrt(band_vars)) # normal noise
+            
+        return band_sigs, band_vars        
+    
     def get_spectrum(self, switch_off=[], incl_error=False):
         """ get the target signal and variance [ADU].
 
@@ -517,7 +576,7 @@ class Simulation:
         :return: (nlbda,) signal and variance [ADU]
         """
         # (lbda, nx, ny) [ADU]
-        sig_cube, var_cube = self.get_detected_cube(switch_off=switch_off)
+        sig_cube, var_cube = self.get_cube(switch_off=switch_off)
 
         try:
             radius = self.extraction["aperture_radius"]  # [spx]
@@ -743,7 +802,7 @@ class Simulation:
                       lbda_range=[4000, 6800], frame="rest",
                       statistic=np.nanmean,
                       reset_param=True, guess=None,
-                      maxiter=100, tol=1, iterstep=1):
+                      maxiter=100, tol=0.5, iterstep=1):
         """ vary the free_parameter to reach the target SNR.
     
         Parameters
@@ -850,9 +909,10 @@ class Simulation:
         
         
     def _fetch_snr(self, target_snr, free_parameter="ngroup", 
-                  lbda_range=[4000, 6800], frame="rest", statistic=np.nanmean,
-                  reset_param=True, guess=None, min_value=None,
-                  maxiter=100, tol=1, iterstep=1):
+                   lbda_range=[4000, 6800], frame="rest", statistic=np.nanmean,
+                   reset_param=True, guess=None, min_value=None,
+                   maxiter=100, tol=0.5, iterstep=1,
+                   verbose=False):
         """ vary the free_parameter to reach the target SNR.
     
         = internal function that has fixed free_parameters; see self.fetch_snr() = 
@@ -889,7 +949,6 @@ class Simulation:
         if min_value is None:
             min_value = minimal_values.get(free_parameter)
 
-            
         # internal function that perform the fit steps
         def change(value, current_snr, iterstep):
             """ """    
@@ -952,10 +1011,12 @@ class Simulation:
             current_snr = self.get_band_snr(**prop_snr)
         else:
             current_value = guess
-            self.update(**{free_parameter: current_value})
+            self.update( **{free_parameter: current_value} )
             current_snr = self.get_band_snr(**prop_snr)
-            
+
+        #
         # while loop
+        #
         counter = 0        
         while np.abs(current_snr-target_snr)>tol and counter<maxiter:
             if np.isnan(current_value) or current_value<=min_value: # moving to too small value
@@ -967,7 +1028,9 @@ class Simulation:
                 break
 
             current_value, current_snr, iterstep = change(current_value, current_snr, iterstep)
-            counter += 1            
+            if verbose:
+                print(f"{current_value=}, {current_snr=}, {iterstep=}")
+            counter += 1      
 
 
         # return used nmd
@@ -986,7 +1049,7 @@ class Simulation:
     # ---------- #
     #  Plotting  #
     # ---------- # 
-    def plot_spectrum(self, ax=None, switch_off=[], snr=False, **kwargs):
+    def show_spectrum(self, ax=None, switch_off=[], snr=False, **kwargs):
         """
         Plot the detected spectrum.
 
@@ -1026,7 +1089,7 @@ class Simulation:
 
         return ax
 
-    def plot_cube(self, in_photons=True, switch_off=[], spec_prop={}, **kwargs):
+    def show_cube(self, in_photons=True, switch_off=[], spec_prop={}, **kwargs):
         """
         Display the cube generated by :meth:`get_projected_scene`.
 
@@ -1069,6 +1132,59 @@ class Simulation:
 
         return fig
 
+    def show_scene(self, incl_error=True, fig=None,
+                   rest_lbda_range = [4000, 7000],
+                   obs_lbda_ranges = [[4000, 6000], [9000, 11_000], [14_000, 16_000]],
+                  **kwargs):
+        """ 
+        """
+
+        if fig is None:
+            import matplotlib.pyplot as plt            
+            fig = plt.figure(figsize=(7,5))
+    
+        ncols = len(obs_lbda_ranges)
+        # 
+        from matplotlib.gridspec import GridSpec
+        gs = GridSpec(nrows=2, ncols=ncols, figure=fig, 
+                      height_ratios=(ncols,1),
+                      hspace=0.0, wspace=0.05)
+        
+        ax1 = fig.add_subplot(gs[0, :])
+        # identical to ax1 = plt.subplot(gs.new_subplotspec((0, 0), colspan=3))
+        
+        
+        flux, variance = self.get_slice(obs_lbda_ranges, frame="obs", 
+                                         incl_error=incl_error)
+        flux_rest,_ = self.get_slice(rest_lbda_range, frame="rest", 
+                                         incl_error=incl_error)
+        # Rest frame top panel
+        ax1.imshow(flux_rest[0], 
+                        cmap="cividis", 
+                        **kwargs)
+        ax1.text(1, 1, r"$\lambda \in$"+f"[{rest_lbda_range[0]}, {rest_lbda_range[1]}] rest", 
+                 va="top", ha="right",
+                 transform=ax1.transAxes, color="w")
+    
+        # Obs frame bottom panel
+        for i, (obs_, cmap_) in enumerate(zip(flux, ["Blues", "Greens", "Reds"])):
+            ax_ = fig.add_subplot(gs[1, i])
+            ax_.imshow(obs_, cmap=cmap_, **kwargs)
+            ax_.text(1, 1, 
+                     r"$\lambda \in$"+f"[{obs_lbda_ranges[i][0]}, {obs_lbda_ranges[i][1]}] obs", 
+                     va="top", ha="right",fontsize="small",
+                     transform=ax_.transAxes, color="k")
+        
+        [ax_.set_yticks([]) for ax_ in fig.axes]#[axb,axg, axr]]
+        [ax_.set_xticks([]) for ax_ in fig.axes]#    
+
+    def show_nea(self, position=None):
+        """ """
+        if position is None:
+            position = self.scene.target.position
+            
+        return self.spectrograph.show_nea(position=position)
+            
     def show_variance_sources(self, variance_contrib=None, flux_calibrated=True):
         """ summary figure showing various variance contributions.
 

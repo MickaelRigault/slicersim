@@ -13,7 +13,7 @@ __author__ = "Mickael Rigault <m.rigault@ip2i.in2p3.fr>"
 
 import warnings
 import numpy as np
-
+from astropy import units
 
 
 class Mirror():
@@ -52,7 +52,7 @@ class Mirror():
         return cls(surface=surface, temperature=temperature, emissivity=emissivity,
                     meta=config # core information stored in meta
                     )
-        
+    
     def __str__(self):
 
         s = f"Primary Mirror: {self.surface:.0f} m²"
@@ -66,7 +66,10 @@ class Mirror():
             s += ", no thermal emission"
 
         return s
-
+    
+    # ================ #
+    #   Methods        #
+    # ================ #
     def update(self, reset_others=False, **kwargs):
         """ """
         updates = {}
@@ -91,9 +94,11 @@ class Mirror():
             self._meta = self._meta | updates
 
 
+    # --------- #
+    #  GETTER   #
+    # --------- #
     def get_thermal_signal(self, domains, solid_angle,
-                               temperature=None, emissivity=None
-                               ):
+                               temperature=None, emissivity=None):
         """ Mirror thermal signal [ph/s/spx/Δλ].
 
         Parameters
@@ -138,9 +143,65 @@ class Mirror():
                             ], axis=0)
 
         return signal                              # [ph/s/spx/Δλ]
-    
 
-            
+    def get_airy_radius(self, lbda, norm_scale=1):
+        """ returns the airy disk first radius caused by the primary mirror 
+        
+        radius [radian] = 1.22 * lambda [meter] / diameter [meter]
+        
+        Parameters
+        ----------
+        lbda: float, array
+            wavelength in Angstrom.
+
+        Returns
+        -------
+        radius: array
+             radius of the first minimum in arcsec.
+        """
+        return 1.22 * lbda * units.angstrom.to("m") / self.diameter_ext * units.radian.to("arcsec") / norm_scale
+    
+    def get_nea_airy(self, lbda, norm_scale=1, padding=5, position=(0 ,0), **kwargs):
+        """ 
+        
+        """
+        from .nea import get_2dpsf_nea
+        radius = self.get_airy_radius(lbda, norm_scale=norm_scale)[:,None, None] 
+        padding_sigma = int(radius.mean()*padding)
+        xx = f"{-padding_sigma}:{padding_sigma}:50j"
+        yy = f"{-padding_sigma}:{padding_sigma}:50j"
+        
+        return get_2dpsf_nea("airy", radius=radius, xx=xx, yy=yy,
+                                 position=position, **kwargs)
+    
+    def to_poppy(self, opticalsys=None):
+        """ add component to a poppy opitcal system 
+        
+        Parameters
+        ----------
+        opticalsys: poppy.OpticalSystem
+            optical system this optical element should be added to.
+
+        Returns
+        -------
+        opticalsys (careful: inplace the input)
+        """
+        import poppy
+        from astropy import units
+        if opticalsys is None:
+            opticalsys = poppy.OpticalSystem()
+
+        primary_radius = self.diameter_ext * units.m /2 
+
+        opticslist = []
+        ap = poppy.CircularAperture(name="primary mirror", radius=primary_radius) # primary mirror
+        # sec = poppy.SecondaryObscuration(secondary_radius=0.1, n_supports=3, support_width=0.05) # secondary with spiders
+        mirror = poppy.CompoundAnalyticOptic( opticslist=[ap], name='telescope mirror')           # combine into one optic
+
+        opticalsys.add_pupil( mirror )
+        return opticalsys
+
+    
     # ============= #
     #   Properties  #
     # ============= #

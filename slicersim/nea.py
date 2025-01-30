@@ -1,6 +1,6 @@
 """ function that manage PSF profile at the lenses/slicer and at the detector """
 
-
+import warnings
 import numpy as np
 from scipy import stats
 
@@ -125,6 +125,23 @@ def get_2dpsf_nea(name, xx="-7:7:15j", yy="-7:7:15j", norm_by_step=True,
 #   Noise Equivalent Area   #
 #                           #
 # ========================= #
+def pixels_to_nea(pixels, norm=1):
+    """ apply the NEA calculation on input pixels
+    nea = sum(pixel)**2 / sum( pixel**2).
+    
+    here the sum is done on the last dimension (ndim=2) or last 2 dimensions (ndim>=3)
+
+    """
+    if np.ndim(pixels) == 2:
+        nea = np.nansum(pixels, axis=1)**2 / np.nansum(pixels**2, axis=1) * norm
+    else:
+        if np.ndim(pixels) > 3:
+            warnings.warn("input pixels dimension greater than 3... integration over last 2 used.")
+        
+        nea = np.nansum(pixels, axis=(-2,-1))**2 / np.nansum(pixels**2, axis=(-2,-1)) * norm
+        
+    return nea
+
 def get_1d_nea(func, xx="-7:7:15j", norm_by_step=True, **kwargs):
     """ get the noise equivalent area of a 1d function
 
@@ -156,7 +173,7 @@ def get_1d_nea(func, xx="-7:7:15j", norm_by_step=True, **kwargs):
         norm = 1
         
     pixels = func(xx, **kwargs)
-    return np.nansum(pixels, axis=1)**2 / np.nansum(pixels**2, axis=1) * norm
+    return pixels_to_nea(pixels, norm=norm)
 
 def get_2d_nea(func, xx="-7:7:15j", yy="-7:7:15j",
                   norm_by_step=True, **kwargs):
@@ -195,7 +212,7 @@ def get_2d_nea(func, xx="-7:7:15j", yy="-7:7:15j",
         norm = 1
 
     pixels = func(xx[None,:], yy[:,None], **kwargs)
-    return np.nansum(pixels, axis=(-2,-1))**2 / np.nansum(pixels**2, axis=(-2,-1)) * norm
+    return pixels_to_nea(pixels, norm=norm)
         
 # ------------------ #
 #  Gaussian Shortcut #

@@ -19,14 +19,14 @@ __author__ = "Mickael Rigault <m.rigault@ip2i.in2p3.fr>, Yannick Copin <y.copin@
 import warnings
 from dataclasses import dataclass
 import numpy as np
-
+from copy import deepcopy
 import astropy.units as u
 
 from .utils import integ_gaussian2D_erf, recursive_get
 from . import iotools
 from .mirrors import Mirror
 
-
+_fwhm_ratio_airynorm = 2.35/0.8
 
 @dataclass
 class Camera:
@@ -124,35 +124,32 @@ def build_lbda_from_config(config):
     return lbda, lbda_edges
 
 
-def build_spaxels_from_config(config, 
-                              psf_sigma_spectral=None,
-                              spx_spatial_scale=None):
+def build_spaxels_from_config(config):
     """ spaxel coordinates [spx] from MLA shape.
 
     Set `self.(x,y)[_edges]` from :attr:`spatial_shape`.
     """
-    if (spatial_shape:= config.get("spatial_shape", None)) is None:
-        spatial_shape_insigma = config.get("spatial_shape_insigma", None)
-        if spatial_shape_insigma is None:
-            raise ValueError("'spatial_shape' OR 'spatial_shape_insigma' should be set.")
+    # Spaxel spatial scale (size of a single spaxel in arcsec)
+    spatial_shape = recursive_get(config, "spatial_shape")
+    spx_spatial_scale = recursive_get(config, "spatial_scale")
+    
+    return {"shape": spatial_shape,
+            "spx_scale": spx_spatial_scale}
 
-        spatial_shape_insigma = np.asarray(spatial_shape_insigma, dtype="float")
-        if psf_sigma_spectral is None:
-            psf_sigma_spectral = recursive_get(config, "psf_sigma_spectral")
-        if spx_spatial_scale is None:
-            spx_spatial_scale = recursive_get(config, "spatial_scale")
-        
-        spatial_shape = np.round(spatial_shape_insigma * psf_sigma_spectral / spx_spatial_scale)
+def derive_spaxel_properties(spatial_shape, spx_spatial_scale):
+    """ """
     
     ny, nx = spatial_shape = np.asarray(spatial_shape, dtype="int")
     hnx, hny = (nx - 1)/2, (ny - 1)/2
     y, x = np.ogrid[-hny:hny:ny*1j,
-                              -hnx:hnx:nx*1j]  # Central coord. grids [spx]
+                    -hnx:hnx:nx*1j]  # Central coord. grids [spx]
     y_edges, x_edges = np.ogrid[
         -hny - 0.5:hny + 0.5:(ny + 1)*1j,
         -hnx - 0.5:hnx + 0.5:(nx + 1)*1j]      # Edge coord. grids [spx]
             
-    return {"shape": (nx, ny), "centroids": (x, y), "edges": (x_edges, y_edges),
+    return {"shape": (nx, ny),
+            "centroids": (x, y),
+            "edges": (x_edges, y_edges),
             "spatial_scale": spx_spatial_scale}
 
 def build_throughput_from_config(config):
@@ -197,8 +194,29 @@ class Spectrograph:
                  xdispersion={}, spatial_psf={},
                  lbda_edges=None,
                  meta={}):
-        """
-        Initialize the spectrograph properties from `config` dictionary.
+        """ Initialize the spectrograph. 
+        You likely want to create it using the .from_config() constructor
+
+        Parameters
+        ----------
+        lbda: array
+            wavelengths in Angstrom
+            
+        mirror: slicersim.Mirror
+            Mirror object
+
+        spaxels: dict
+            spaxel information: 
+            {shape: (N,M), spx_scale: float [in arcsec]}
+            
+        throughput: array, func
+            throughput of the spectrograph. 
+            if func => throughput = func(lbda)
+
+        xdispersion: dict
+        
+
+        
 
         :param dict config: spectrograph configuration dictionary
         :param bool verbose: verbose mode
@@ -211,8 +229,8 @@ class Spectrograph:
         self.mirror = mirror
 
         # Spaxels
-        self._spaxels = spaxels
-
+        self.set_spaxels(**spaxels)
+        
         # Throughput
         if callable(throughput): # this is a function
             self._throughput_interp = throughput
@@ -233,6 +251,7 @@ class Spectrograph:
     @classmethod
     def from_config(cls, config):
         """ """
+        input_config = deepcopy(config)
         # wavelengths
         lbda, lbda_edges = build_lbda_from_config(config)
 
@@ -251,7 +270,7 @@ class Spectrograph:
                       "profile": config["psf"]["detector"]["xdisp_profile"]}
 
         # in coming PSF
-        psf = {"sigma_spectral": float(config["psf"]["spatial"]["psf_sigma_spectral"]),
+        psf = {"sigma_spectral": config["psf"]["spatial"]["psf_sigma_spectral"],
                "guiding_sigma": float(config["psf"]["spatial"]["guiding_sigma"]),
                "profile": config["psf"]["spatial"]["psf_profile"]}
 
@@ -375,7 +394,7 @@ class Spectrograph:
         
         # the rest if any
         if reset_others:
-            self._meta = self._meta_in |updates
+            self._meta = self._meta_in | updates
         else:
             self._meta = self._meta | spaxel_updates
 
@@ -390,7 +409,12 @@ class Spectrograph:
         """ """
         if self._throughput_interp is not None:
             self.throughput = self.throughput_interp(self.lbda)
-    
+
+    def set_spaxels(self, shape, spx_scale):
+        """ """
+        self._spaxels = {"shape": shape, "spx_scale": spx_scale}
+        self._spaxel_prop = {}
+
     #            
     # - getter
     #    
@@ -443,7 +467,7 @@ class Spectrograph:
             guiding_sigma = self.spatial_psf["guiding_sigma"]
 
         sigma = self._get_chromatic_sigma(self.lbda,
-                                        chromatic_sigma = self.spatial_psf["sigma_spectral"],
+                                        chromatic_sigma = self.psf_sigma_spectral,
                                         constant_sigma = guiding_sigma,
                                         wref = self.lbda_ref,
                                         xdims=xdims)
@@ -452,7 +476,7 @@ class Spectrograph:
             
         return sigma
     
-    def get_spatial_psf(self, position=(0, 0)):
+    def get_spatial_psf(self, position=(0, 0), guiding_sigma=None):
         """ Get normalized 2D spatial PSF on the MLA.
 
         This uses the exact 2D Gaussian PSF integration over the spx.
@@ -461,7 +485,8 @@ class Spectrograph:
         :return: normalized PSF (nlbda, ny, nx)
         """
 
-        sigmas = self.get_psf_sigma_spectral(xdims=2) / self.spx_spatial_scale
+        sigmas = self.get_psf_sigma_spectral(xdims=2, guiding_sigma=guiding_sigma)
+        sigmas /= self.spx_spatial_scale
         psf = integ_gaussian2D_erf(self.spx_edges,  # ((1, nx), (ny, 1)) [spx]
                                    sigmas,          # (nlbda, 1, 1) [spx]
                                    position,        # [spx]
@@ -506,7 +531,6 @@ class Spectrograph:
             
         return signal                              # [ph/s/spx/Δλ]
 
-    
     def get_nea(self, position=(0,0), nea_spatial=None, nea_pixels=None):
         """ noise effective area (PSF => Spaxel => detector (through x-dispersion)
 
@@ -540,8 +564,15 @@ class Spectrograph:
             nea_pixels = self.get_nea_pixels()
     
         return nea_spatial * nea_pixels
-    
-    def get_nea_spatial(self, position=(0,0)):
+
+    def get_nea_mirror_airy(self, position=(0,0), in_spaxels=True):
+        """ """
+        if in_spaxels:
+            norm_scale = self.spx_spatial_scale
+        
+        return self.mirror.get_nea_airy(self.lbda, norm_scale=norm_scale, position=position)
+            
+    def get_nea_spatial(self, position=(0,0), in_spaxels=True, guiding_sigma=None):
         """ noise equivalent area in unit of slice/spaxels 
 
         i.e., how many "spaxel noise")
@@ -551,16 +582,22 @@ class Spectrograph:
         position: (float, float)
             position of the PSF in unit of spaxel / slicer
 
+        in_spaxels: bool
+            shall the unit of the area be in spaxels**2 ? 
+            If False => arcsec**2
+
         Returns
         -------
         array
         """
-        from .profiles import get_2dnorm_nea
+        from .nea import get_2dnorm_nea
         
         if self.spatial_psf["profile"] not in ("normal", "norm", "gaussian"):
             raise NotImplementedError(f"only gaussian spatial PSF profile implemented, but: {self.spatial_psf['profile']=}")
             
-        sigma_at_mla = self.get_psf_sigma_spectral(in_spaxels=True, xdims=2)
+        sigma_at_mla = self.get_psf_sigma_spectral(in_spaxels=in_spaxels,
+                                                   guiding_sigma=guiding_sigma,
+                                                   xdims=2)
         return get_2dnorm_nea(sigma_at_mla, mean = position)
 
     def get_nea_pixels(self):
@@ -570,7 +607,7 @@ class Spectrograph:
         -------
         array
         """
-        from .profiles import get_1dnorm_nea
+        from .nea import get_1dnorm_nea
         if self.xdispersion["profile"] not in ("normal", "norm", "gaussian"):
             raise NotImplementedError(f"only gaussian xdispersion PSF profile implemented, but: {self.xdispersion['profile']=}")
             
@@ -727,14 +764,47 @@ class Spectrograph:
 
         return sigma
     
+    def show_nea(self, figsize=(9, 3), position=(0,0) ):
+        """ """
+        import matplotlib.pyplot as plt
+        fig, (axnea, axfwhm) = plt.subplots(ncols=2, nrows=1, figsize=figsize)
+        # data
+        nea = self.get_nea_spatial(in_spaxels=True, position=position)
+        nea_no_guiding = self.get_nea_spatial(guiding_sigma=0, in_spaxels=True, position=position)
+        nea_mirror = self.get_nea_mirror_airy(in_spaxels=True, position=position)
+        
+        axnea.plot(self.lbda, nea, color="#194D80", label="@spaxel")
+        axnea.plot(self.lbda, nea_no_guiding, color="#194D80", ls="--", label="without guiding")
+        axnea.plot(self.lbda, nea_mirror, color="#F8AD05", label="airy from mirror")
+        axnea.legend(fontsize="small", frameon=False)
+        axnea.set_ylabel("NEA [in spaxels]", fontsize="large")
+        
+        # sigma
+        sigma_at_mla = self.get_psf_sigma_spectral(in_spaxels=True)
+        sigma_at_mla_no_guiding = self.get_psf_sigma_spectral(in_spaxels=True, guiding_sigma=0)
+        radius = self.mirror.get_airy_radius(self.lbda, norm_scale=self.spx_spatial_scale)
+        
+        axfwhm.plot(self.lbda, 2.35*sigma_at_mla, color="#194D80", label="total sigma")
+        axfwhm.plot(self.lbda, 2.35*sigma_at_mla_no_guiding, color="#194D80", ls="--", label="without guiding")
+        axfwhm.plot(self.lbda, 0.8*radius, color="#F8AD05", label="airy from mirror")
+        axfwhm.axhspan(2, 2.35, color="tab:orange", alpha=0.05, lw=0)
+        _ylow, _ = axfwhm.get_ylim()
+        axfwhm.axhline(2, color="tab:red", alpha=1, ls="--", lw=0.5)
+        axfwhm.axhspan(0, 2, color="tab:red", alpha=0.05, lw=0)
+        axfwhm.set_ylim(_ylow)
+        axfwhm.set_ylabel("FWHM [in spaxels]", fontsize="large")
     
+        [ax_.set_xlabel(f"wavelength [$\AA$]", fontsize="large") for ax_ in [axnea, axfwhm]]
+        fig.tight_layout()
+        return fig
+        
     # ================= #
     #  Properties       #
     # ================= #
     @property
     def mla_extent(self):
         """ MLA extent [spx]."""
-        hx, hy = self.spx_shape / 2  # Half total width [spx]
+        hx, hy = np.asarray(self.spx_shape) / 2  # Half total width [spx]
         return [-hx, hx, -hy, hy]
     
     @property
@@ -749,29 +819,45 @@ class Spectrograph:
 
     # Spaxels
     @property
-    def spaxels(self):
-        """ """
+    def _hspaxels(self):
+        """ spaxel properties {shape: (N,M), spx_scale: float [in arcsec]} """
+        # 
         return self._spaxels
 
     @property
+    def spaxels(self):
+        """ """
+        # build from self._spaxels
+        if self._spaxel_prop is None or len(self._spaxel_prop) == 0:
+            self._spaxel_prop = derive_spaxel_properties(spatial_shape=self._spaxels["shape"],
+                                                         spx_spatial_scale=self._spaxels["spx_scale"])
+            
+        return self._spaxel_prop
+    
+    @property
     def spx_shape(self):
         """ """
-        return self._spaxels["shape"]
+        return self.spaxels["shape"]
 
     @property
     def spx_centroids(self):
         """ """
-        return self._spaxels["centroids"]
+        return self.spaxels["centroids"]
         
     @property
     def spx_edges(self):
         """ """
-        return self._spaxels["edges"]
+        return self.spaxels["edges"]
 
     @property
     def spx_spatial_scale(self):
         """ """
-        return self._spaxels["spatial_scale"]
+        spx_spatial_scale = self._spaxels.get("spx_scale", None)
+        if spx_spatial_scale is None:
+            print("Setting spaxels scale from airy")
+            spx_spatial_scale = self.mirror.get_airy_radius(self.lbda_ref) / _fwhm_ratio_airynorm
+            
+        return spx_spatial_scale 
         
     @property
     def nlbda(self):
@@ -804,7 +890,12 @@ class Spectrograph:
     @property
     def psf_sigma_spectral(self):
         """ """
-        return self.spatial_psf["sigma_spectral"]
+        if self.spatial_psf["sigma_spectral"] is None or \
+          self.spatial_psf["sigma_spectral"] in ["default"]:
+            # 2.9 is the airy equivalent.
+            self.spatial_psf["sigma_spectral"] = self.mirror.get_airy_radius(self.lbda_ref) / _fwhm_ratio_airynorm
+            
+        return float(self.spatial_psf["sigma_spectral"])
 
     @property
     def xdisp_sigma_spectral(self):
@@ -813,50 +904,5 @@ class Spectrograph:
         
     
 
-def plot_spectral_resolution(spectro, ax=None):
-    """
-    Plot effective spectral resolution.
-    """
-
-    wres = spectro.effective_resolution(npx=2)
-    mwres = spectro.effective_resolution(npx=2, average=True)
-    dlbda = np.diff(spectro.lbda_edges)           # [Å]
-    sigma = spectro.get_xdisp_sigma_spectral() * dlbda  # [Å]
-
-    lbda_mu = spectro.lbda / 1e4  # [µm]
-
-    if ax is None:
-        import matplotlib.pyplot as plt
-
-        fig, ax = plt.subplots(tight_layout=True)
-
-    ax.plot(lbda_mu, wres, c='C00')
-    ax.set(xlabel="Wavelength [µm]",
-           title="Resolving power (2 δλ): " +
-           f"λ-mean={mwres:.0f}, min={wres.min():.0f}")
-    ax.axhline(mwres, ls='--', c='C00')
-    ax.set_ylabel(r"Resolving power $\mathcal{R} = \lambda/(2\delta\lambda)$",
-                  c='C00')
-    ax.tick_params(axis='y', labelcolor='C00');
-    ax.grid()
-
-    ax2 = ax.twinx()
-    ax2.plot(lbda_mu, np.maximum(dlbda, sigma), c='C01')
-    ax2.plot(lbda_mu, dlbda, c='C01', ls=':',
-             label=f"Δλ ({spectro.dispersion_law!r}×{spectro.dispersion_scale})")
-    ax2.plot(lbda_mu, sigma, c='C01', ls='--',
-             label=f"σ ({spectro.xdisp_sigma_spectral} λ/µm & {spectro.xdisp_sigma} px)")
-    ax2.set_ylabel("δλ [Å]", color='C01')
-    ax2.tick_params(axis='y', labelcolor='C01');
-    ax2.legend()
-
-    return ax
 
 
-if __name__ == "__main__":
-
-    from mlaperf.iotools import get_config
-    config = get_config("instrument.toml")
-
-    spectro = Spectrograph(config["spectrograph"])
-    print(spectro)
