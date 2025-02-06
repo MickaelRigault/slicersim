@@ -159,7 +159,7 @@ class Mirror():
         radius: array
              radius of the first minimum in arcsec.
         """
-        return 1.22 * lbda * units.angstrom.to("m") / self.diameter_ext * units.radian.to("arcsec") / norm_scale
+        return 1.22 * np.atleast_1d(lbda) * units.angstrom.to("m") / self.diameter_ext * units.radian.to("arcsec") / norm_scale
     
     def get_nea_airy(self, lbda, norm_scale=1, padding=5, position=(0 ,0), **kwargs):
         """ 
@@ -201,6 +201,135 @@ class Mirror():
         opticalsys.add_pupil( mirror )
         return opticalsys
 
+    def get_psfprofile(self, lbda, profile="airy", shape=None,
+                           normal_scatter=None,
+                           oversampling=10, **kwargs):
+        """ get the psf profile. 
+
+        Parameters
+        ---------
+        lbda: float, array
+            wavelengths used to get the first airy radius
+
+        profile: str
+            - airy
+            - gaussian: if so, sigma obtained from airy-radius equivalent.
+
+        shape: (float, float)
+            shape of the psf image (in arcsec)
+
+        normal_scatter: float
+            sigma of an additional normal convolution scatter (in arcsec)
+
+        oversampling: int
+            number of sub-pixel per pixel element (given by shape)
+        
+        Returns
+        -------
+        psf, centroid_in_imagecoord, pixels_sampling, oversampling
+        """
+        from .profiles import get_profilepsf
+        radius = self.get_airy_radius(lbda)
+        norm_pixels = 1/np.min(radius) # for corrected sampling
+        if shape is None:
+            shape = ( int(radius*15), int(radius*15) )
+        
+        shape = np.asarray(shape) * norm_pixels
+        radius_eff = radius * norm_pixels
+        if normal_scatter is not None:
+            normal_scatter_eff = normal_scatter * norm_pixels
+        else:
+            normal_scatter_eff = None
+
+        # properties of PSF
+        prop = {"normal_scatter":normal_scatter_eff,
+                "oversampling":oversampling,
+                "shape": shape} | kwargs
+            
+        if profile in ["airy"]:
+            prop["radius"] = radius_eff
+        elif profile in ["gaussian", "gauss", "norm", "normal"]:
+            from .profiles import airyradius_to_gaussiansigma
+            prop["sigma"] = airyradius_to_gaussiansigma(radius_eff)
+
+        psf, centroid, pixelarea = get_profilepsf(profile, **prop)
+        arcsec_to_pixels = oversampling * norm_pixels
+        return psf, pixelarea, arcsec_to_pixels, radius
+
+    def get_encircled_energy(self, lbda, radius, profile="airy",
+                                 normal_scatter=None,
+                                 size=2, **kwargs):
+        """ 
+        Parameters
+        ----------
+        size: float
+        """
+        from .profiles import psfimage_to_encircledenergy
+        
+        radius = np.atleast_1d(radius)
+        size = np.max([radius.max()*1.01, size]) # 1.01 just to make sure
+        psf, pixelarea, arcsec_to_pixel, _ = \
+          self.get_psfprofile(lbda, profile=profile, 
+                                normal_scatter=normal_scatter,
+                                position=(0, 0), # force the center
+                                shape=(size, size),
+                                norm_pixels=False, # we do it after
+                                  **kwargs)
+        # psf.sum() => 1
+        psf *= pixelarea
+        
+        centroid = np.asarray(psf.shape)/2 - 0.5
+        radius_eff = radius * arcsec_to_pixel
+        return psfimage_to_encircledenergy(psf, radius_eff, position=centroid)
+
+    def get_encircled_energy_radius(self, lbda, ee,
+                                        profile="airy", normal_scatter=None,
+                                        max_radius=2, nbins=1_000, **kwargs):
+        """ """
+        ee_radius = np.linspace(0, max_radius, nbins)
+        encirle_energy = self.get_encircled_energy(lbda, ee_radius, profile=profile,
+                                                   normal_scatter=normal_scatter,
+                                                   **kwargs)
+        ee = np.atleast_1d(ee)
+        return ee_radius[np.argmin( (encirle_energy-ee[:,None])**2, axis=1)]
+    
+    # --------- #
+    #  Plotting #
+    # --------- #
+    def show_psfprofile(self, lbda, ax=None, profile="airy",
+                            oversampling=10,
+                          show_radius=False, shape=None, 
+                          normal_scatter=None,
+                          **kwargs):
+        """ """
+        from matplotlib.colors import LogNorm
+        
+
+        if ax is None:
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots()
+        else:
+            fig = ax.figure
+
+        psf, pixelarea, arcsec_to_pixel, radius = self.get_psfprofile(lbda,
+                                                                      profile=profile,
+                                                                       shape=shape,
+                                                                       normal_scatter=normal_scatter,
+                                                                       oversampling=oversampling)
+        norm_pixels = arcsec_to_pixel/oversampling
+        shape = np.asarray(psf.shape)/oversampling
+        hy, hx = np.asarray(shape) / 2  # Half total width [spx]
+        extent = np.asarray([-hx-0.5, hx+0.5, -hy-0.5, hy+0.5]) / norm_pixels
+            
+        ax.imshow(psf, origin="lower", norm=LogNorm(), extent=extent, zorder=5, **kwargs)
+        if show_radius:            
+            prop = dict(color="k", alpha=0.5, lw=1, ls="-", zorder=6)
+            ax.axvline(radius, **prop)
+            ax.axvline(-radius, **prop)
+            ax.axhline(radius, **prop)
+            ax.axhline(-radius, **prop)
+
+        return fig
     
     # ============= #
     #   Properties  #

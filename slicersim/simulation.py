@@ -91,6 +91,58 @@ class Simulation:
 
     def __repr__(self):
         return self.__str__()
+
+    @classmethod
+    def from_pointing(cls, redshift, snr=20,
+                          lbda_range=[4000, 6800], frame='rest',
+                          scene='supernova.toml', instrument='lazuli.toml',
+                          **kwargs):
+        """ load the simulation setting the config to acquire the pointed target
+
+        Parameters
+        ----------
+        redshift: float
+            redshift of the target
+
+        snr: float, None
+            targeted average SNR per wavelength bin. 
+            (See lbda_range and frame).
+            If None, no parameter update to reach a SNR.
+
+        lbda_range: list
+            (wmin, wmax) wavelength range where the SNR will be estimated [Å]
+    
+        frame: str
+            wavelength frame ('obs', 'rest')
+
+        scene: str
+            scene configuration file
+
+        instrument: str
+            instrument configuration file
+        
+        **kwargs goes to update() to change any default configuration
+
+        Returns
+        -------
+        simulation
+        """
+        
+        from .iotools import get_config
+        
+        # create the simulator
+        config = get_config(instrument=instrument, scene=scene)
+        this = cls.from_config(config)
+
+        # update to expecting target
+        this.update(target__redshift=redshift, **kwargs)
+
+        if snr is not None:
+            # fetch the config respecting the target SNR
+            new_config, snr, integration_time = this.fetch_snr(snr, lbda_range=lbda_range, frame=frame)
+            this.update(**new_config)
+        
+        return this
         
     @classmethod
     def from_config(cls, config):
@@ -419,7 +471,10 @@ class Simulation:
 
         return {which: default} if as_dict else default
 
-    def get_projected_scene(self, in_photons=True, switch_off=[]):
+    def get_projected_scene(self, in_photons=True, switch_off=[],
+                                psf_profile="default",
+                                as_oversampled=False, oversampling=None,
+                                **kwargs):
         """ project the scene through spectrograph and get flux cube [ph or flambda].
 
         :param bool in_photons: cube in photon/s (default: flambda)
@@ -427,7 +482,10 @@ class Simulation:
                                 (target, host, background) + thermal
         :return: (nlbda, ny, nx) cube
         """
-        cube = np.zeros(self.cube_shape)  # (nlbda, ny, nx)
+        if not as_oversampled:
+            oversampling = None
+            
+        cube = np.zeros( (self.spectrograph.nlbda, *self.spectrograph.get_spectrograph_shape(oversampling=oversampling)) )  # (nlbda, ny, nx)
 
         # spectra (3, nlbda):
         # * point source spectrum [erg/s/cm²/Å]
@@ -437,31 +495,30 @@ class Simulation:
 
         # Fill the cube with scene elements in photons/s/spx
         if "target" not in switch_off:
-            cube += self.spectrograph.generate_point_source(
-                target, position=self.scene.target_position)
+            cube += self.spectrograph.generate_point_source(target,
+                                                            position=self.scene.target_position,
+                                                            psf_profile=psf_profile, oversampling=oversampling,
+                                                            as_oversampled=as_oversampled,
+                                                            **kwargs)
 
         if "host" not in switch_off:      
             if np.any(host):
                 warnings.warn("Host cube not implemented.")
 
         if "background" not in switch_off:                    
-            cube += self.spectrograph.generate_background(background)
+            cube += self.spectrograph.generate_background(background, oversampling=oversampling)
 
         if "thermal" not in switch_off:
-            cube += self.spectrograph.get_thermal_signal(as_cube=True) # [ph/s]
+            cube += self.spectrograph.get_thermal_signal(as_cube=True, oversampling=oversampling) # [ph/s]
 
         if not in_photons:      # Convert back to flambda
             cube /= self.spectrograph.flambda2photon[:, np.newaxis, np.newaxis]
             
         return cube  # (nlbda, ny, nx) | [ph/s] or [erg/cm²/Å/s]
-
-    def get_detected_cube(self, switch_off=[]):
-        """ DEPRECATED, use get_cube instead
-        """
-        warnings.warn("DEPRECATED: get_detected_cube is deprecated, use get_cube() instead")
-        return self.get_cube(switch_off=switch_off)
     
-    def get_cube(self, switch_off=[]):
+    def get_cube(self, switch_off=[], psf_profile="default",
+                     as_oversampled=False, oversampling=None,
+                     **kwargs):
         """ get data cube as extracted from exposure [ADU].
 
         Parameters
@@ -497,8 +554,13 @@ class Simulation:
 
         # Scene effect
         cube = self.get_projected_scene(in_photons=True,
-                                        switch_off=switch_off)  # (nlbda, ny, nx)
-        sigmas = self.spectrograph.get_xdisp_sigma_spectral()   # (nlbda,)
+                                        switch_off=switch_off,
+                                        psf_profile=psf_profile,
+                                        as_oversampled=as_oversampled,
+                                        oversampling=oversampling,
+                                        **kwargs)  # (nlbda, ny, nx)
+                                        
+        xdisp_sigmas = self.spectrograph.get_xdisp_sigma_spectral()   # (nlbda,)
 
         try:
             width = self.extraction["xdisp_width"]
@@ -511,7 +573,7 @@ class Simulation:
         # on detector parameters.
         sig_cube, var_cube = self.detector.estimate_spx_spectrum(
             cube,               # (nlbda, ny, nx) [ph/s]
-            sigma=sigmas,       # (nlbda,) [px]
+            sigma=xdisp_sigmas,       # (nlbda,) [px]
             width=width)
 
         #
@@ -526,9 +588,9 @@ class Simulation:
         # output
         return sig_cube, var_cube  # (nlbda, ny, nx) [ADU, ADU²]
 
-
     def get_slice(self, lbda_range, frame="obs", switch_off=[], incl_error=False, 
-                  squeeze=False,
+                  squeeze=False, psf_profile="default",
+                  as_oversampled=False, oversampling=None,
                   **kwargs):
         """ get slices of the cube.
         
@@ -552,27 +614,22 @@ class Simulation:
     
         if frame == "rest" and self.scene.target.redshift is not None:
             lbda_range = lbda_range * (1 + self.scene.target.redshift)
-    
-        cube_signal, cube_variance = self.get_cube(switch_off=switch_off, **kwargs)
-    
-        band_sigs, band_vars = [], []
-        for wmin, wmax in lbda_range:
-            flag_lbda = ((self.spectrograph.lbda >= wmin) & (self.spectrograph.lbda <= wmax))
-            band_sigs.append( np.nansum(cube_signal[flag_lbda], axis=0) )
-            band_vars.append( np.nansum(cube_variance[flag_lbda], axis=0) )
-    
-        band_sigs = np.asarray(band_sigs)
-        band_vars = np.asarray(band_vars) 
-        if len(lbda_range) == 1 and squeeze:
-            band_sigs = band_sigs[0] 
-            band_vars = band_vars[0]
+
+            
+        cube_signal, cube_variance = self.get_cube(switch_off=switch_off,
+                                                   psf_profile=psf_profile,
+                                                   as_oversampled=as_oversampled,
+                                                   oversampling=oversampling,
+                                                   **kwargs)
+        band_sigs = self.spectrograph.cube_to_slice(cube_signal, lbda_range, func=np.nansum, squeeze=squeeze)
+        band_vars = self.spectrograph.cube_to_slice(cube_variance, lbda_range, func=np.nansum, squeeze=squeeze)
     
         if incl_error:
             band_sigs = np.random.normal(loc=band_sigs, scale=np.sqrt(band_vars)) # normal noise
             
         return band_sigs, band_vars        
     
-    def get_spectrum(self, switch_off=[], incl_error=False):
+    def get_spectrum(self, switch_off=[], incl_error=False, psf_profile="default"):
         """ get the target signal and variance [ADU].
 
         :param list switch_off: list of discarded scene elements
@@ -581,7 +638,8 @@ class Simulation:
         :return: (nlbda,) signal and variance [ADU]
         """
         # (lbda, nx, ny) [ADU]
-        sig_cube, var_cube = self.get_cube(switch_off=switch_off)
+        sig_cube, var_cube = self.get_cube(switch_off=switch_off,
+                                               psf_profile=psf_profile)
 
         try:
             radius = self.extraction["aperture_radius"]  # [spx]
@@ -590,9 +648,10 @@ class Simulation:
             radius = (self.extraction["aperture_radius_insigma"] *
                       self.spectrograph.psf_sigma_spectral /  # [arcsec]
                       self.spectrograph.spx_spatial_scale)    # [arcsec/spx]
-
+            # radius is used to limit where PSF and variance are considered, see point_source_variance()
         spec_variance = self.spectrograph.point_source_variance(
-            var_cube, position=self.scene.target_position, radius=radius)
+            var_cube, position=self.scene.target_position, radius=radius,
+            psf_profile=psf_profile)
 
         # Assume the spectrum is perfectly extracted
         if "target" not in switch_off:
@@ -687,7 +746,6 @@ class Simulation:
                                               statistic=statistic,
                                               **kwargs)
         return signal / variance**0.5
-
 
     def get_times(self):
         """ dict of the simulation detector times [in sec] """
@@ -1094,7 +1152,8 @@ class Simulation:
 
         return ax
 
-    def show_cube(self, in_photons=True, switch_off=[], spec_prop={}, **kwargs):
+    def show_cube(self, in_photons=True, switch_off=[], spec_prop={},
+                      psf_profile="default", **kwargs):
         """
         Display the cube generated by :meth:`get_projected_scene`.
 
@@ -1112,7 +1171,8 @@ class Simulation:
         """
 
         cube = self.get_projected_scene(in_photons=in_photons,
-                                  switch_off=switch_off)
+                                            switch_off=switch_off,
+                                            psf_profile=psf_profile)
 
         unit = "ph/s" if in_photons else "erg/cm²/Å/s"
 
@@ -1140,6 +1200,7 @@ class Simulation:
     def show_scene(self, incl_error=True, fig=None,
                    rest_lbda_range = [4000, 7000],
                    obs_lbda_ranges = [[4000, 6000], [9000, 11_000], [14_000, 16_000]],
+                   psf_profile="default", oversampling=None, prop_slice={},
                   **kwargs):
         """ 
         """
@@ -1157,12 +1218,16 @@ class Simulation:
         
         ax1 = fig.add_subplot(gs[0, :])
         # identical to ax1 = plt.subplot(gs.new_subplotspec((0, 0), colspan=3))
-        
-        
+
+        if oversampling is not None:
+            prop_slice["oversampling"] = oversampling
+            prop_slice["as_oversampled"] = True
         flux, variance = self.get_slice(obs_lbda_ranges, frame="obs", 
-                                         incl_error=incl_error)
+                                         incl_error=incl_error, psf_profile=psf_profile,
+                                        **prop_slice)
         flux_rest,_ = self.get_slice(rest_lbda_range, frame="rest", 
-                                         incl_error=incl_error)
+                                         incl_error=incl_error, psf_profile=psf_profile,
+                                         **prop_slice)
         # Rest frame top panel
         ax1.imshow(flux_rest[0], 
                         cmap="cividis", 
