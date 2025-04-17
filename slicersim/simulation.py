@@ -93,10 +93,92 @@ class Simulation:
         return self.__str__()
 
     @classmethod
-    def from_pointing(cls, redshift, snr=20,
-                          lbda_range=[4000, 6800], frame='rest',
-                          scene='supernova.toml', instrument='lazuli.toml',
-                          **kwargs):
+    def from_source(cls, lbda, flux, mag=None, band="bessellb", position=(0, 0),
+                        instrument="lazuli.toml",
+                        background="zodi",
+                        host=None,
+                        snr=None, lbda_range=[4000, 6800], frame='obs',
+                        **kwargs
+                     ):
+        """ load the simulation observing a known source (like a star)
+
+        Parameters
+        ----------
+        lbda: array
+            (high resolution) wavelength of the source (in Angstrom)
+        
+        flux: array
+            flux of the input source
+
+        mag: float, None
+            requested magnitude of the source (overwrite flux's amplitude)
+
+        band: string
+            name of the band used to compute the magnitude 
+            (should be known by sncosmo)
+
+        position: (float, float)
+            location of the target within the IFU
+
+        intrument: string, dict, list
+            configuration of the instrument.
+        
+        background: string, dict, list 
+            configuration of the (spatially flat) scene background 
+            (e.g. "zodi")
+        host: string, dict, list 
+            configuration of the (spatially structured) scene background
+            (e.g. "zodi")
+        
+        snr: float, None
+            should the simulation try to reach this SNR per wavelength element 
+            while loading ?
+
+        lbda_range: (float, float)
+            = ignored if snr is None =
+            wavelength range for averaging to SNR.
+
+        frame: string
+            = ignored if snr is None =
+            frame of the lbda_range ('obs' or 'rest')
+
+        **kwargs goes to .update()
+
+        Returns
+        -------
+        Simulation
+        """
+        # build the scene config
+        scene_config = [{"scene":
+                            {"point_source":
+                                 {"source": [lbda, flux],
+                                  "mag": mag,
+                                  "band": band,
+                                  "position":position},
+                            }
+                        }]
+            
+        if background is not None:
+            scene_config += [background]
+            
+        if host is not None:
+            scene_config += [host]
+
+        # now let's use it to load the scene.
+        return cls.from_scene(scene=scene_config, instrument=instrument,
+                              snr=snr, lbda_range=lbda_range, frame=frame,
+                            **kwargs)
+        
+    @classmethod
+    def from_pointing(cls, *args, **kwargs):
+        """ """
+        warnings.warn("DEPRECATION: 'Simulation.from_pointing' is deprecated, used 'from_scene' instead (see also 'from_source').")
+        return cls.from_scene(*args, **kwargs)
+    @classmethod
+    def from_scene(cls, redshift=None, snr=20,
+                       lbda_range=[4000, 6800], frame='rest',
+                       scene='supernova.toml', instrument='lazuli.toml',
+                       **kwargs):
         """ load the simulation setting the config to acquire the pointed target
 
         Parameters
@@ -135,7 +217,11 @@ class Simulation:
         this = cls.from_config(config)
 
         # update to expecting target
-        this.update(target__redshift=redshift, **kwargs)
+        if redshift is not None:
+            this.update(target__redshift=redshift)
+            
+        if kwargs:
+            this.update(**kwargs)
 
         if snr is not None:
             # fetch the config respecting the target SNR
@@ -471,6 +557,82 @@ class Simulation:
 
         return {which: default} if as_dict else default
 
+
+    def get_background_spectrum(self, unit="adu", skyarea=None, per_ramp=False):
+        """ get the (flat) background flux
+        """
+        if skyarea is None:
+            skyarea = self.spectrograph.spx_spatial_scale**2
+            
+        # erg/s/cm²/Å / erg/ph * cm² * Å = ph/s
+        background_flux = self.scene.background.get_spectrum(self.spectrograph.lbda)[1]
+        flux = background_flux * skyarea
+        if unit in "flambda":
+            coef = 1
+        elif unit in ["ph", "photon", "photons"]:
+            coef = self.spectrograph.flambda2photon
+        elif unit in ["adu"]:
+            coef = self.spectrograph.flambda2photon * self.detector.photonflux2ADU
+        else:
+            raise ValueError(f"unknown {unit=}")
+            
+        if not per_ramp:
+            coef *= self.get_parameter("nramp")
+    
+        return flux*coef
+    
+    def get_scene_cubes(self, unit="adu", psf_profile="default",
+                            as_oversampled=False, oversampling=None,
+                            as_dict=True, per_ramp=False,
+                            **kwargs):
+        """ """
+        lbda, (target, host, background) = self.scene.get_stacked_spectra(fillna=0)
+
+        # by default spectrograph. give flux in ph/s.
+        
+        # target
+        target_cube = self.spectrograph.generate_point_source(target,
+                                                            position=self.scene.target_position,
+                                                            psf_profile=psf_profile,
+                                                            oversampling=oversampling,
+                                                            as_oversampled=as_oversampled,
+                                                            **kwargs)
+        # background
+        background_cube = self.spectrograph.generate_background(background, oversampling=oversampling)
+
+        # host | empty
+        host_cube = np.zeros( (self.spectrograph.nlbda, *self.spectrograph.get_spectrograph_shape(oversampling=oversampling)) )  # (nlbda, ny, nx)
+        
+        # thermal
+        thermal_cube = self.spectrograph.get_thermal_signal(as_cube=True, oversampling=oversampling) # [ph/s]
+
+        # changing the unit.
+        if unit.lower() in ["ph", "photons", "photon"]:
+            coef = 1
+        elif unit.lower() in "flambda":
+            coef = 1/self.spectrograph.flambda2photon[:, np.newaxis, np.newaxis]
+            
+        elif unit.lower() in ["adu", "default"]:
+            coef = self.detector.photonflux2ADU[:, np.newaxis, np.newaxis]
+        else:
+            raise ValueError(f"cannot parse requested unit {unit=}, flambda, photons, adu available.")
+        
+        if not per_ramp:
+            coef *= self.get_parameter("nramp")
+        
+
+        target_cube *= coef
+        background_cube *= coef
+        host_cube *= coef
+        thermal_cube *= coef
+
+        if as_dict:
+            return {"target": target_cube,
+                        "background": background_cube,
+                        "host_cube": host_cube,
+                        "thermal_cube": thermal_cube}
+        return np.stack([target_cube, background_cube, host_cube, thermal_cube])
+        
     def get_projected_scene(self, in_photons=True, switch_off=[],
                                 psf_profile="default",
                                 as_oversampled=False, oversampling=None,
@@ -518,6 +680,7 @@ class Simulation:
     
     def get_cube(self, switch_off=[], psf_profile="default",
                      as_oversampled=False, oversampling=None,
+                     per_ramp=False,
                      **kwargs):
         """ get data cube as extracted from exposure [ADU].
 
@@ -584,6 +747,11 @@ class Simulation:
             
         if current_ron is not None:
             self.update(detector__ron=current_ron)
+
+        if not per_ramp:
+            nramp = self.get_parameter("nramp")
+            sig_cube *= nramp
+            var_cube *= nramp
             
         # output
         return sig_cube, var_cube  # (nlbda, ny, nx) [ADU, ADU²]
@@ -639,6 +807,7 @@ class Simulation:
         """
         # (lbda, nx, ny) [ADU]
         sig_cube, var_cube = self.get_cube(switch_off=switch_off,
+                                               per_ramp=True, # see later.
                                                psf_profile=psf_profile)
 
         try:
@@ -649,6 +818,7 @@ class Simulation:
                       self.spectrograph.psf_sigma_spectral /  # [arcsec]
                       self.spectrograph.spx_spatial_scale)    # [arcsec/spx]
             # radius is used to limit where PSF and variance are considered, see point_source_variance()
+            
         spec_variance = self.spectrograph.point_source_variance(
             var_cube, position=self.scene.target_position, radius=radius,
             psf_profile=psf_profile)
@@ -851,20 +1021,19 @@ class Simulation:
         """ convert input spectrum in ADU (including nramp) into [erg/s/cm2/A]"""
         _, transmission = self.get_effective_transmission()
         return flux_adu / (transmission * self.get_parameter("nramp"))
+    
     # ---------- #
     #  Fetching  #
     # ---------- #
     def fetch_snr(self, target_snr,
-                      free_parameter="default",
-                      #
                       max_group=64,
-                      nmd_ramp=(64,8,0),
-                      allow_bypass=True,
-                      restart_ramp=True,
+                      nframe_per_group=None,
+                      ndrop=None,
+                      guess=None,
                       #
                       lbda_range=[4000, 6800], frame="rest",
                       statistic=np.nanmean,
-                      reset_param=True, guess=None,
+                      reset_param=True, 
                       maxiter=100, tol=0.5, iterstep=1):
         """ vary the free_parameter to reach the target SNR.
     
@@ -908,74 +1077,63 @@ class Simulation:
             - reached SNR.
             - integration_time
         """
+        # store current ramp and nmd
+        input_nmd = self.get_parameter("nmd")
+        input_nramp = self.get_parameter("nramp")
+        
+        # default values are these from the current config.
+        if nframe_per_group is None:
+            nframe_per_group = input_nmd[1]
+        if ndrop is None:
+            ndrop = input_nmd[2]
+            
+        # How do we compute the snr
         prop_fetch = dict(lbda_range=lbda_range, frame=frame,
                           statistic=statistic,
-                          reset_param=reset_param, guess=guess,
                           maxiter=maxiter,
                           tol=tol, iterstep=iterstep)
 
-        if free_parameter is None:
-            free_parameter = "default"
+        # this is one max ramp
+        full_singleramp_config = {"nmd": (max_group, nframe_per_group, ndrop),
+                                  "nramp": 1}
+        self.update(**full_singleramp_config)
 
-        if free_parameter == "default": # observation strategy
-            used_free_parameter = "ngroup" # start by moving groups
-            check_if_too_long = True
-        else:
-            used_free_parameter = free_parameter
-            check_if_too_long = False
-
-        # fast check:
-        bypass = False # do not bypass 
-        if check_if_too_long and allow_bypass:
-#            print("check_if_too_long and allow_bypass")
-            test_config = {"nmd": nmd_ramp, "nramp": 2}
-            input_config = self.get_parameter( list(test_config.keys()) )
-            self.update(**test_config)
-            tworamp_snr = self.get_band_snr(lbda_range=lbda_range,
-                                            frame=frame, statistic=statistic)
-            if tworamp_snr<target_snr:
-                bypass=True
-                
-            self.update(**input_config)
-                
-        if not bypass:
-#            print("no bypass")
-            if used_free_parameter != "nramp" and restart_ramp:
-                self.update( nramp = 1 )
-                
-            read_config, snr, integration_time = self._fetch_snr(target_snr,
-                                                            # This is changing.
-                                                            free_parameter=used_free_parameter,
-                                                            #
-                                                            **prop_fetch)
-                                                            
-            # single ramp too long: let's loop over ramps.
-            new_ngroup = read_config.get("nmd")[0]
-            is_too_long = new_ngroup>max_group
+        # compute the snr for 1 ramp.
+        single_fullramp_snr = self.get_band_snr(lbda_range=lbda_range,
+                                                frame=frame,
+                                                statistic=statistic)
+        
+        # is one ramp enought ?
+        if single_fullramp_snr >= (target_snr-tol):
+            # yes ? do 1 ramp and loop over ngroup
+            if guess is None:
+                guess = int(max_group/2)
+            free_parameter = "ngroup"
+            self.update( nramp = 1, nmd=(guess, nframe_per_group, ndrop) ) # e.g., 1* (n, 8, 0)
             
-        if bypass or (check_if_too_long and is_too_long):
-#            print("scanning nramp")
-            used_free_parameter = "nramp"
-            input_nmd = self.get_parameter("nmd")
-            self.update(nmd = nmd_ramp)
-            read_config, snr, integration_time = self._fetch_snr(target_snr,
-                                                                # This is changing.
-                                                                free_parameter=used_free_parameter,
-                                                                # make sure then at least 2 ramps.
-                                                                **(prop_fetch | {"min_value":2})
-                                                                )
-            # reset back to initial nmd
-            self.update(nmd = input_nmd)
-        
-        return read_config, snr, integration_time
+        else:
+             # yes ? fix nmd at fullramp and  loop over ngroup
+            free_parameter = "nramp"
+            if guess is None:
+                guess = 4 # we expect less than, say, 20 ramps and at least 2.
+            self.update( nramp=guess, nmd=(max_group, nframe_per_group, ndrop) )
+            prop_fetch |= {"min_value":2}
+            
+        read_config, snr, integration_time = self._fetch_snr(target_snr,
+                                                             free_parameter=free_parameter,
+                                                             **prop_fetch)
+                                                                        
+        # reset back to initial nmd
+        if reset_param:
+            self.update(nmd = input_nmd, nramp=input_nramp)
 
-        
-        
-    def _fetch_snr(self, target_snr, free_parameter="ngroup", 
+        # return what you where looking for.
+        return read_config, snr, integration_time
+                
+    def _fetch_snr(self, target_snr, free_parameter,
                    lbda_range=[4000, 6800], frame="rest", statistic=np.nanmean,
-                   reset_param=True, guess=None, min_value=None,
-                   maxiter=100, tol=0.5, iterstep=1,
-                   verbose=False):
+                   min_value=None,
+                   maxiter=100, tol=0.5, iterstep=1):
         """ vary the free_parameter to reach the target SNR.
     
         = internal function that has fixed free_parameters; see self.fetch_snr() = 
@@ -996,11 +1154,7 @@ class Simulation:
         
         statistic: func
             function to apply on test domain to compute the snr.
-        
-        reset_param: bool
-            should the intput simulation be back to initial value (True)
-            or that of the reached snr (False)
-            
+                    
         Returns
         -------
         int, float
@@ -1066,47 +1220,40 @@ class Simulation:
             input_nmd = None
 
 
-        # initial values
-        init_value = self.get_parameter(free_parameter)
-        
-        if guess is None:
-            current_value = init_value
-            current_snr = self.get_band_snr(**prop_snr)
-        else:
-            current_value = guess
-            self.update( **{free_parameter: current_value} )
-            current_snr = self.get_band_snr(**prop_snr)
-
-        #
+        # initial state
+        current_value = self.get_parameter(free_parameter)
+        current_snr = self.get_band_snr(**prop_snr)
+        break_at_next = False
         # while loop
-        #
-        counter = 0        
-        while np.abs(current_snr-target_snr)>tol and counter<maxiter:
+        counter = 0
+        value_history = []
+        while np.abs(current_snr - target_snr) > tol and counter < maxiter:
+            value_history.append(current_value)
             if np.isnan(current_value) or current_value<=min_value: # moving to too small value
                 current_value = min_value # reset to minimum 
                 self.update(**{free_parameter: current_value })
                 current_snr = self.get_band_snr(**prop_snr) # and get corresponding SNR
                 
-            if current_value<=min_value and current_snr>=target_snr: # means lowest is already enough
+            if break_at_next or (current_value<=min_value and current_snr>=target_snr): # means lowest is already enough
                 break
-
+            
             current_value, current_snr, iterstep = change(current_value, current_snr, iterstep)
-            if verbose:
-                print(f"{current_value=}, {current_snr=}, {iterstep=}")
-            counter += 1      
+                
+            if len(value_history)>3 and value_history[-2] == current_value:
+                # we are stuck in a loop,
+                if current_value > value_history[-1]: # we are above the target SNR
+                    break
+                else:
+                    # do one more round.
+                    break_at_next = True            
 
+            counter += 1
 
-        # return used nmd
+        # So this is what is used.
         used_config = {"nmd": self.get_parameter("nmd"),
                        "nramp": self.get_parameter("nramp")}
-            
+        
         total_exptime = self.observing_time # includes nramps
-        if reset_param: # reset if needed
-            if input_nmd is not None:
-                self.update(nmd = input_nmd)
-            else:
-                self.update(**{free_parameter: init_value})
-    
         return used_config, current_snr, total_exptime
     
     # ---------- #

@@ -3,6 +3,7 @@ import inspect
 import numpy as np
 
 from astropy.cosmology import Planck18 as cosmology
+from astropy import units
 from .base import SceneElement
 
 try:
@@ -152,8 +153,13 @@ def source_to_modelfunc(source):
     """ """
     if "salt" in source:
         model_func = get_saltmodel_flux
+        
     elif source == 'twins-embedding':
         model_func = get_twins_embedding_flux
+
+    elif source == "blackbody":
+        model_func = get_blackbody_flux
+        
     else:
         raise NotImplementedError(f"no model_func defined for source: {source}")
 
@@ -227,6 +233,45 @@ def get_saltmodel(redshift=0.1,
 #   Models       #
 #                #
 # ============== #
+_FLAMBDA_units = units.erg / (units.cm**2 * units.s * units.AA)
+def get_blackbody_flux(lbda, temperature, mag, 
+                       band="sdssr", magsys="ab"):
+    """ 
+    Parameters
+    ----------
+    temperature: float
+        temperature of the black body in Kelvin
+    
+    mag: float
+        target magnitude integrated over the 'band'
+
+    band: string
+        name of the band (from sncosmo)
+
+    magsys: string
+        name of the magnitude system (see sncosmo.)
+    """
+    from sncosmo import Spectrum
+    from astropy.modeling.models import BlackBody
+    
+    if not hasattr(lbda, 'unit'): # assumed Angstrom
+        lbda = units.Quantity(lbda, units.AA)
+        
+    blackbody = BlackBody(temperature=temperature*units.K)
+    flux_nu = blackbody(lbda) * units.sr # rm sr in unit
+
+    # flux with whatever magnitude.
+    flux = flux_nu.to(_FLAMBDA_units, units.spectral_density(lbda))
+
+    # let's get it to the target mag using sncosmo
+    spec_in = Spectrum(wave=lbda.value, flux=flux.value)
+    # the "whatever mag"
+    native_mag = spec_in.bandmag(band, magsys)
+    # conver the flux to the good amplitude
+    fluxcoef_for_target_mag = 10**(-0.4*(mag-native_mag))
+    
+    return flux.value * fluxcoef_for_target_mag # numpy array
+    
 # explicit here the parameters to enable mutable_parameters parsing
 def get_saltmodel_flux(lbda, phase,
                         abmag=None, # extra 
@@ -245,7 +290,6 @@ def get_saltmodel_flux(lbda, phase,
                           x1=x1, c=c, alpha=alpha, beta=beta)
 
     return model.get_flux(lbda, phase)
-
 
 def get_twins_embedding_flux(lbda, phase, redshift=0.05,
                              magnitude=0., color=0., coordinates=(0., 0., 0.),
@@ -298,8 +342,12 @@ def get_twins_embedding_flux(lbda, phase, redshift=0.05,
     return np.interp(lbda, wl_obs, flux_obs, left=np.nan, right=np.nan)
 
 
+# ============= #
+#               #
+#  PointSource  #
+#               #
+# ============= #
 class PointSource( SceneElement ):
-    
     """ A SceneElement with a position """
     def __init__(self, model_func, position, lbda=None, meta={}):
         """ """
@@ -317,19 +365,29 @@ class PointSource( SceneElement ):
         Parameters
         ----------
         config: dict
-            configuration dictionary
-
+            configuration dictionary.
+            Config must contain:
+            - position: (0, 0)
+            - model_func [func] or source [string]
         """
         position = config.get("position", (0, 0))
         model_func = config.get("model_func", None)
         # look for one
         if model_func is None: 
             if "source" in config:
-                model_func = source_to_modelfunc(config["source"])
+                source_ = config["source"]
+                if type(source_) in [str, np.str_]:
+                    model_func = source_to_modelfunc(config["source"])
+                else: # assume it's a spectrum
+                    mag = config.get("mag", None)
+                    band = config.get("band", None)
+                    lbda_, flux_ = source_
+                    return cls.from_spectrum(lbda_, flux_,
+                                              mag=mag, band="bessellb",
+                                             position=position, meta=config.copy() ) 
             else:
-                raise ValueError("no model_func not source in the config. one is needed.")
+                raise ValueError("neither 'model_func' nor 'source' in the config. One is needed.")
 
-        
         return cls(model_func=model_func, position=position,
                        meta=config.copy())
 
@@ -377,9 +435,13 @@ class PointSource( SceneElement ):
         # internal function 
         def _internal_get_flux(lbda, mag, band):
             """ """
-            in_mag = Spectrum(meta["lbda_ref"], meta["flux_ref"]
-                             ).bandmag(band, "ab")
-            flux_ratio = 10**( -0.4*(mag - in_mag) )
+            if mag is None:
+                flux_ratio = 1
+            else:
+                in_mag = Spectrum(meta["lbda_ref"], meta["flux_ref"]
+                                      ).bandmag(band, "ab")
+                flux_ratio = 10**( -0.4*(mag - in_mag) )
+                
             flux_ = np.interp(lbda, meta["lbda_ref"], meta["flux_ref"],
                                   left=np.nan, right=np.nan)
             return flux_ * flux_ratio

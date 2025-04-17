@@ -157,11 +157,13 @@ def get_2d_nea(func, xx="-7:7:15j", yy="-7:7:15j",
 # ------------------ #
 def get_1dnorm_nea(sigma, xx="-7:7:15j", mean=0):
     """ """
+    from .profiles import get_gaussian1d
     return get_1d_nea(get_gaussian1d, xx=xx, sigma=sigma, mean=mean)
 
 def get_2dnorm_nea(sigma, xx="-7:7:15j", yy="-7:7:15j", mean=(0,0),
                   norm_by_step = True):
     """ """
+    from .profiles import get_gaussian2d    
     return get_2d_nea( get_gaussian2d, xx=xx, yy=yy, norm_by_step=True,
                        sigma=sigma, mean=mean)
     

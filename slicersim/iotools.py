@@ -11,6 +11,7 @@ Access package data files.
 
 import os
 import sys
+import numpy as np
 
 from scipy.interpolate import UnivariateSpline
 import astropy.units as u
@@ -47,6 +48,24 @@ def expand_path(filename):
 
     return fname
 
+def merge_dicts(d1, d2):
+    """ recursively merges d2 into (a copy of) d1 and returns the result.
+    Values in d2 will override values in d1 in case of conflicts.
+    """
+    from copy import deepcopy
+    d1 = deepcopy(d1) # do not change input d1.
+    
+    for key in d2:
+        if key in d1:
+            if isinstance(d1[key], dict) and isinstance(d2[key], dict):
+                d1[key] = merge_dicts(d1[key], d2[key])
+            else:
+                d1[key] = d2[key]  # Override value
+        else:
+            d1[key] = d2[key]
+            
+    return d1
+
 
 def get_config(scene="supernova.toml", instrument="lazuli.toml"):
     """
@@ -62,13 +81,20 @@ def get_config(scene="supernova.toml", instrument="lazuli.toml"):
        'extraction': {...},
       }
 
-    :param str instrument: intrument configuration file name
-    :param str scene: scene configuration file name
-    :return dict: configuration (nested dictionary)
+    Parameters
+    ----------
+    scene: string, dict
+        filename of the scene, or list of filename as dict 
+        e.g.: scene="supernovae", or {"pointsource": "supernovae", "background": "zodi", etc.}
+    
+    instrument: string, dict
+        filename defining the instrument (or dict giving details)
+        
+    Return
+    ------
+    dict
     """
-
-    return {**read_config(scene),
-            **read_config(instrument)}
+    return read_config(scene) | read_config(instrument)
 
 
 def read_config(filename, verbose=False):
@@ -79,17 +105,48 @@ def read_config(filename, verbose=False):
       looked for in the default :data:`MLAPERF_PATH` directory.
     * As for now, only `toml` configuration files are supported.
 
+    Parameters
+    ----------
+    filename: str, list
+        filename of the config file. If no extension, .toml is assumed
+        such that filename="supernova" is equivalent to filename="supernova.toml".
+        
+        filename could be a list of names or names and dict. 
+        These nested dictonary are merged from left to right, such that
+        filename = ["supernova", "zodi"], config from "zodi" will overwrite
+        the corresponding (nested) entry from supernova.
+        if an element of the list is a dict, it will be assumed to be a config.
+        e.g., ["supernova", {"scene": {"point_source": {"source": [lbda_ref, flux_ref]}}}]
+        any scene__point_source__source from supernovae will be overwriten.
+        
+
     :param str filename: configuration file name
     :param bool verbose: verbose mode
     :return dict: configuration (nested dictionary)
     :raise NotImplementedError: unknown configuration extension
     """
-
+    # dict structure
+    if type(filename) is dict:
+        return filename
+        
+    # list / array structure
+    if hasattr(filename, "__iter__") and type(filename) not in (str, np.string_):
+        d = {}
+        for filename_ in filename:
+            d = merge_dicts(d, read_config(filename_))
+            
+        return d
+    
+    # core
     fname = expand_path(filename)
     if verbose:
         print(f"Reading configuration from {fname!r}...")
 
     _, extension = os.path.splitext(fname)
+    if extension is None or len(extension) ==0:
+        extension = ".toml"
+        fname = f"{fname}{extension}"
+        
     if extension.lower() == ".toml":
         config = tomllib.load(open(fname, "rb"))
     else:

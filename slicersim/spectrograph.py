@@ -490,7 +490,7 @@ class Spectrograph:
         return sigma
     
     def get_spatial_psf(self, profile="default", position=(0, 0),
-                            guiding_sigma=None, oversampling=5,
+                            guiding_sigma=None, oversampling=None,
                             as_oversampled=False,
                             **kwargs):
         """ Get normalized 2D spatial PSF on the MLA.
@@ -524,21 +524,23 @@ class Spectrograph:
         """
         from . import profiles
         if oversampling is None:
-            oversampling = 5
+            oversampling = 1
             
         # Gaussian        
         if profile in ["gaussian", "default", "normal", "norm"]:
             sigmas = self.get_psf_sigma_spectral(xdims=2, guiding_sigma=guiding_sigma)
             sigmas /= self.spx_spatial_scale
-            if not as_oversampled: # no need to oversample as this uses exact erf functions.
-                (xx, yy), oversampling = self.get_spaxel_centroids(in_arcsec=False, squeeze=False)    
-            else:
-                (xx, yy), oversampling = self.get_spaxel_centroids(in_arcsec=False, squeeze=False,
-                                                                    oversampling=oversampling)
+            prop = dict(in_arcsec=False, squeeze=False, oversampling=1)
+            if as_oversampled: # no need to oversample as this uses exact erf functions.
+                print(f"changin oversampling to {oversampling=}")
+                prop["oversampling"] = oversampling
+
+            (xx, yy), oversampling = self.get_spaxel_centroids(**prop)
                  
             psf = profiles.get_gaussian2d(xx, yy, sigma=sigmas, mean = position, **kwargs)
             if as_oversampled:
                 psf *= oversampling**2 # to conserve energy
+                
             return psf
 
         #
@@ -1073,14 +1075,14 @@ class Spectrograph:
         """ """
         # build from self._spaxels
         if self._spaxel_coords is None or len(self._spaxel_coords) == 0:
-            self._spaxel_coords = build_pixels(self._spaxels["shape"])
+            self._spaxel_coords = build_pixels(self._spaxels["shape"], oversampling=1)
             
         return self._spaxel_coords
     
     @property
     def spx_shape(self):
         """ """
-        return self.spaxels["shape"][::-1]
+        return self.spaxels["shape"]
 
     @property
     def spx_centroids(self):
@@ -1131,6 +1133,11 @@ class Spectrograph:
         hspx = self.spx_spatial_scale / 2  # [arcsec]
         hspx *= 4.84813681109536e-06   # [rad]
         return np.pi * np.sin(hspx)**2
+
+    @property
+    def skyarea(self):
+        """ full sky area (nspaxel * spaxel area) """
+        pass
 
     @property
     def psf_sigma_spectral(self):
