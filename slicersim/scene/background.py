@@ -1,6 +1,4 @@
 import numpy as np
-from astropy.modeling.models import GeneralSersic2D
-from scipy.special import gamma
 from .base import SceneElement
 
 
@@ -60,6 +58,9 @@ def zodiacal_spectrum(lbda, scale=1, model="Aldering01.BB5800"):
         raise NotImplementedError(f"Unknown model {model!r}.")
 
     return scale * zodi         # Account for scale factor
+
+
+
 
 # ================ #
 #                  #
