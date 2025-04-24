@@ -183,7 +183,7 @@ class Scene:
         spectra = [s_.get_spectrum(lbda)[1] if s_ is not None else np.full_like(lbda, fillna)
                     for s_ in [self.target, self.host, self.background]]
 
-        return lbda, np.stack(spectra)
+        return lbda, np.stack(spectra)        
 
     def plot_background(self, ax=None, in_log=True, **kwargs):
         """
