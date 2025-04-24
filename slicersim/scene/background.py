@@ -60,14 +60,6 @@ def zodiacal_spectrum(lbda, scale=1, model="Aldering01.BB5800"):
         raise NotImplementedError(f"Unknown model {model!r}.")
 
     return scale * zodi         # Account for scale factor
-      
-
-#def normalizedSersic(surfMag=22, r_eff=1, n=4, x_0=0, y_0=0, ellip=0, theta=0.0, c = 0):
-#    
-#    mod = GeneralSersic2D(amplitude=amplitude, r_eff=r_eff, n=n, x_0=x_0, y_0=y_0, ellip=ellip, theta=theta, c=c)
-#    
-#    return normProfile
-
 
 # ================ #
 #                  #
