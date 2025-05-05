@@ -56,7 +56,7 @@ def zodiacal_spectrum(lbda, scale=1, model="Aldering01.BB5800"):
         zodi[lbda < 6100] = 10**(-17.755)
         
     else:
-        raise NotImplementedError(f"Unknow model {model!r}.")
+        raise NotImplementedError(f"Unknown model {model!r}.")
 
     return scale * zodi         # Account for scale factor
 
