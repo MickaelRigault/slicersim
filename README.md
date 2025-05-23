@@ -88,7 +88,20 @@ ax.legend(frameon=False, fontsize="small")
 ax.set(xlabel=r"wavelength [$\AA$]", ylabel="flux [ADU]")
 ```
 ![readme example](docs/gallery/spectra_examples.png)
+***
+# LazuliObject
 
+The following Lazuli-objects are top level classes that ease simulation manipulation. 
+
+You can retreive simulated spectrum, compute the etc, change the target properties or the detector read-out mode.
+
+For more tools, you are invited to change the `.simulation` attribute that is the backbone of all slicersim simulations.
+
+- `LazuliSN(redshift, phase, [...])` : access the dedicate Supernovae Lazuli simulator
+- `LazuliCalSpec(name, [...])` : access the dedicate CalSpec star Lazuli simulator
+- `LazuliTarget(lbda, flux, [...])` : access a Lazuli simulator for any input spectrum.
+
+  
 ***
 # Details on ETC
 
