@@ -8,9 +8,29 @@ git clone https://github.com/MickaelRigault/slicersim.git
 cd slicersims
 pip install .
 ```
+***
+# Top level ETC
+```python
+import slicersim
+import numpy as np
+
+# provide your spectrum
+lbda_ref = np.linspace(3000, 20_000, 500) # larger than lazuli bandpass
+flux_ref = np.ones(lbda_ref.shape) # flat spectrum
+
+# compute the exposure time needed
+exptime, lazulitarget = slicersim.lazuli_etc(lbda_ref, flux_ref, snr=20, mag=21, band="bessellb")
+print(exptime)
+```
+```bash
+407.52
+```
 
 ***
 # Quick look
+
+**warning:** new simplified format on the way. documentation to be updated.
+
 
 ```python
 import slicersim
