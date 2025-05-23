@@ -407,7 +407,6 @@ class LazuliCalSpec( _LazuliScene_ ):
                                                 **kwargs)
         super().__init__(simulation=simulation)
         
-        
 class LazuliTarget( _LazuliScene_ ):
     """ """
     def __init__(self, lbda, flux, mag=None, band="bessellb",
