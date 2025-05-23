@@ -4,8 +4,8 @@ from .scene import Scene
 from .pointsource import PointSource
 
 
-def get_snia_scene(model="salt", background="zodi", host={}, **kwargs):
-    """ get a scene configuration for a snia model. 
+def get_sn_scene(model="salt", background="zodi", host={}, **kwargs):
+    """ get a scene configuration for a sn model. 
     {scene: pointsource:{}, host:{}, backgound:{} """
     from .pointsource import get_snia_pointsource
     

@@ -1,8 +1,85 @@
 import numpy as np
 from .simulation import Simulation
 
-__all__ = ["lazuli_etc", "LazuliSNIa", "LazuliTarget"]
+__all__ = ["lazuli_etc", "lazuli_sn_etc", "LazuliSN", "LazuliTarget"]
 
+
+def lazuli_sn_etc(model, redshift, snr, phase=0, 
+                   lbda_range=[4000, 6800], frame='rest',
+                   statistic=np.nanmean,
+                   max_group=None, nmd=None, time_details=False,
+                   **kwargs):
+    """ calculate the exposure time required to achieve a specified Signal-to-Noise Ratio (SNR).
+    
+    This function creates a Supernovae with specified model, configures the detector
+    read-out mode, and calculates the exposure time needed to achieve the desired SNR.
+    
+    Parameters
+    ----------
+    model : str
+        kind of supernovae requested. Specify parameters with kwargs
+        - salt: SN Ia - parameters: x1, c
+        - twin: SN Ia - parameters: xi1, xi2, xi3, color
+
+    snr : float
+        The target Signal-to-Noise Ratio to achieve.
+
+    mag : float
+        Specify the desire magnitude of the target. 
+        If None, the input flux is assumed to be in erg/s/cm2/A.
+        If given, the input flux will be multiply to reach the desire magnitude
+        in the given band (see band).
+
+    band : str
+        = ignored if mag=None =
+        The photometric band for the magnitude. 
+
+    lbda_range : list of float
+        The wavelength range in Angstroms over which to calculate the SNR.
+
+    frame : str, optional
+        The reference frame for lbda_range. 
+        Available options 'rest' (rest-frame) or 'obs' (observer-frame).
+
+    statistic : function, optional
+        The statistical function to use for calculating the SNR. 
+
+    max_group : int, None
+        Specify the maximum number of groups in a single ramp for the detector read-out mode.
+        If None, default configuration parameters are used.
+
+    nmd : int, optional
+        Specify the detector MACC mode (n, m, d). 
+        n: number of groups ;  m: number of frames per group; d: number of drops between groups
+
+    time_details : bool
+        If True, returns detailed exposure time information. 
+    
+    **kwargs parameters of the SN model (see model)
+
+    Returns
+    -------
+    exptime : float, dict
+        The calculated exposure time required to achieve the target SNR.
+        (see time_details)
+
+    target : LazuliTarget
+        The configured target object with the specified conditions.
+    """
+    # create a target of specified conditions
+    target = LazuliSN(model=model, redshift=redshift, phase=phase, **kwargs)
+
+    # specify the detector read-out mode | None are ignored.
+    target.change_detector_mode(nmd=nmd, max_group=max_group)
+    
+    # setup the instrument to the requested signal to noise
+    _ = target.setup_to_snr(snr, lbda_range=lbda_range, frame='rest',
+                                statistic=statistic, inplace=True)
+    
+    # get the exposure time
+    exptime = target.get_exposure_time(full=time_details)
+
+    return exptime, target
 
 def lazuli_etc(lbda, flux, snr,
                    mag=None, band="bessellb",
@@ -70,7 +147,6 @@ def lazuli_etc(lbda, flux, snr,
 
     # specify the detector read-out mode | None are ignored.
     target.change_detector_mode(nmd=nmd, max_group=max_group)
-    
     
     # setup the instrument to the requested signal to noise
     _ = target.setup_to_snr(snr, lbda_range=lbda_range, frame='rest',
@@ -288,7 +364,7 @@ class _LazuliScene_():
 
     def get_properties(self, which, default=None, as_dict=True):
         """ change the properties of the target. """
-        return self.simulation.get_parameters(which=which, default=default, as_dict=as_dict)
+        return self.simulation.get_parameter(which=which, default=default, as_dict=as_dict)
     
     # ============== #
     #  Properties    #
@@ -306,14 +382,14 @@ class _LazuliScene_():
 # ============ #
 #  Specifics   #
 # ============ #
-class LazuliSNIa( _LazuliScene_ ):
+class LazuliSN( _LazuliScene_ ):
     """ """
     def __init__(self, model="salt", slicer=True, **kwargs):
         """ """
-        from .scene import get_snia_scene
+        from .scene import get_sn_scene
         from .iotools import get_config
-        scene = get_snia_scene(model=model)
-        config = get_config( **( self._DEFAULT_CONFIG | {"scene": scene} | kwargs) )
+        scene = get_sn_scene(model=model, **kwargs)
+        config = get_config( **( self._DEFAULT_CONFIG | {"scene": scene}) )
         simulation = Simulation.from_config(config, slicer=slicer)
         
         super().__init__(simulation=simulation)
