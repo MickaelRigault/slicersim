@@ -50,21 +50,21 @@ print(exptime)
 ***
 # Quick look
 
-**warning:** new simplified format on the way. documentation to be updated.
-
-
 ```python
 import slicersim
-# => a simulation from a config 
-config = slicersim.iotools.get_config(scene='supernova.toml')
-sim = slicersim.Simulation.from_config(config)
+# load a SN Ia (see also: `slicersim.LazuliTarget(lbda, flux)`)
+snia = slicersim.LazuliSN(redshift=0.8, c=0.2, x1=-1.2, phase=1.5)
 
-# update the simulation (see sim.mutable_parameters)
-sim.update(target__redshift=1.2)
-lbda, flux_1, variance_1 = sim.get_spectrum(incl_error=True)
+# update configuration to reach a signal-to-noise of 20
+_ = snia.setup_to_snr(20)
 
-sim.update(target__redshift=0.7)
-lbda, flux_2, variance_2 = sim.get_spectrum(incl_error=True)
+# grab the expected observed spectrum
+lbda, flux_1, variance_1 = snia.get_spectrum()
+
+# change the target property
+# warnigns: without updating the setting, this new target won't have a snr=20
+snia.set_properties(redshift=1.2)
+lbda, flux_2, variance_2 = snia.get_spectrum()
 ```
 
 and show your simulated spectra
@@ -77,13 +77,13 @@ ax.plot(lbda, flux_1)
 ax.fill_between(lbda, 
                 flux_1-np.sqrt(variance_1),
                 flux_1+np.sqrt(variance_1), alpha=0.3,
-               label="z=1.2")
+               label="z=0.8")
 
 ax.plot(lbda, flux_2)
 ax.fill_between(lbda, 
                 flux_2-np.sqrt(variance_2),
                 flux_2+np.sqrt(variance_2), alpha=0.3,
-               label="z=0.7")
+               label="z=1.2")
 ax.legend(frameon=False, fontsize="small")
 ax.set(xlabel=r"wavelength [$\AA$]", ylabel="flux [ADU]")
 ```
