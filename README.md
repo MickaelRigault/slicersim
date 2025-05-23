@@ -59,12 +59,12 @@ snia = slicersim.LazuliSN(redshift=0.8, c=0.2, x1=-1.2, phase=1.5)
 _ = snia.setup_to_snr(20)
 
 # grab the expected observed spectrum
-lbda, flux_1, variance_1 = snia.get_spectrum()
+lbda, flux_1, variance_1 = snia.get_spectrum(unit="adu")
 
 # change the target property
-# warnigns: without updating the setting, this new target won't have a snr=20
+# warning: without updating the setting, this new target won't have a snr=20
 snia.set_properties(redshift=1.2)
-lbda, flux_2, variance_2 = snia.get_spectrum()
+lbda, flux_2, variance_2 = snia.get_spectrum(unit="adu")
 ```
 
 and show your simulated spectra
