@@ -46,8 +46,6 @@ print(exptime)
 ```
 
 ***
-**warning:** new simplified format on the way. documentation to be updated.
-***
 # Quick look
 
 ```python
@@ -110,7 +108,13 @@ See notebooks:
  - [supernova](docs/notebooks/etc_of_snia.ipynb)
 
 ***
-# Study origin of variance
+# Lower-level: Simulator & config.
+
+Example: Study origin of variance
+
+You can load a slicersim object at a lower level than an lazuli object: a Simulator. This object is at the core of slicersim and combines information of all sources needed to simulate our observations: a scene (what is observed), a mirror, a spectrograph and a detector.
+
+The Simulator combine these to be able to generate a datacube with realistic noise, and extract a realistic spectrum from it.
 
 Once your simulator is loaded, you have several method to check the variance origin. 
 - `estimate_variance_contribution`: that probe the variance origin for a given wavelength rate
