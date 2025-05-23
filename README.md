@@ -90,34 +90,12 @@ ax.set(xlabel=r"wavelength [$\AA$]", ylabel="flux [ADU]")
 ![readme example](docs/gallery/spectra_examples.png)
 
 ***
-# Estimation Time Calculator
+# Details on ETC
 
-Load your simulation
-```python
-config = slicersim.iotools.get_config(scene='supernova.toml')
-sim = slicersim.Simulation.from_config(config)
-```
-Create the SN Ia of interest and fetch the correct configuration that leads to an averave SNR of 10 between rest-frame 4_000 and 7_000 A.
-```python
-sim.update(target__redshift = 1, target__c=0.3, target__x1=-0.5)
-new_config, snr, total_exptime = sim.fetch_snr(10, lbda_range= [4000, 7000], frame="rest")
-print(f"{new_config}")
-```
-```bash
-{'nmd': (64, 8, 0), 'nramp': 2}
-```
-And now let's set this configuration to the simulation
-```python
-sim.update(**new_config)
-sim.get_times()
-```
-```bash
-{'integration_time': 1426.32,
- 'exposure_time': 1448.96,
- 'tframe': 2.83,
- 'tgroup': 22.64,
- 'total_exptime': 2897.92}
-```
+See notebooks: 
+ - [any spectrum](docs/notebooks/etc_of_any_spectrum.ipynb)
+ - [supernova](docs/notebooks/etc_of_snia.ipynb)
+
 ***
 # Study origin of variance
 
