@@ -1,6 +1,10 @@
-__version__ = '0.14.0'
+__version__ = '0.16.1'
 
+# Top level simulations
 from .simulation import *
-from .spectrograph import Spectrograph
-from .detector import Detector
-from .scene import *
+
+# Top level target (uses simulation)
+from .lazuli import *
+
+# quick access useful for simulation
+from .iotools import get_config

@@ -57,10 +57,13 @@ class Detector:
         self.lbda = lbda                   #: Wavelengths [Å]
         self.name = config["name"]         #: Detector name
         self.nmd = config.get("nmd") #: MACC(N=#group, M=#frame, D=#drop)
+        self.max_group = int(config.get("max_group", 64))     #: maximum number of group per ramp
+        
         self.tframe = float(config["tframe"])      #: Frame time [s]
         self.dark = float(config["dark"])          #: Dark current [e-/s]
         self.ron = float(config["readout_noise"])  #: Read-Out Noise per frame [e-]
         self.gain = float(config["gain"])          #: Gain [ADU/e-]
+
         try:
             self.qe = float(config["QE"])          # Constant QE
             self.qe_name = self.qe_interp = None
@@ -98,10 +101,6 @@ class Detector:
         s += f"\n  Variance model: {self.variance_model}"
 
         return s
-
-    def __repr__(self):
-
-        return f"Detector({self.meta})"
 
     @classmethod
     def from_config(cls, config, lbda=10_000., verbose=False):
@@ -210,10 +209,38 @@ class Detector:
         """ internal function for the integration time """
         n, m, d = nmd
         return (n - 1) * (m + d) * tframe  # = (n - 1) * tgroup
-    
+
+    def estimate_slice_spectrum(self, flux):
+        """ 
+        [slicer mode]
+
+        Parameters
+        ----------
+        flux: Array
+            incident flux (arbitrary shape, e.g. (nlbda, nlices, npixels)) [ph/s/px]
+        
+        Returns
+        -------
+        Array, Array
+            - slice spectra [ADU] 
+            - variance [ADU²]
+        """
+        # Reshape photonflux2adu (() or (nlbda,)) to match flux's shape
+        photonflux2ADU = complete_dims(self.photonflux2ADU, -np.ndim(flux))
+
+        # Detector signal [ADU], shape is (width,) + flux.shape  | take ~200ms
+        signal_at_detector, variance = self.estimate_pixel_signal(signal, withdark=False)
+        
+        # "optimal" extraction | signal_at_detector ignored then.
+        signal = flux * photonflux2ADU   # Total incident signal [ADU]
+        
+        return signal, variance
+        
     # - estimators
     def estimate_spx_spectrum(self, flux, sigma=1, width=5):
         """ Estimate extracted signal and variance from incident flux [ph/s].
+
+        [mla mode] 
 
         It is evaluated from an *optimal* extraction, i.e. inverse-variance
         weighted least-square fit of the cross-dispersion profile (assumed
@@ -237,7 +264,7 @@ class Detector:
         Returns
         -------
         Array, Array
-            - spx spectrum [ADU] 
+            - spx spectra [ADU] 
             - variance [ADU²]
         """
         # Reshape photonflux2adu (() or (nlbda,)) to match flux's shape
@@ -250,10 +277,10 @@ class Detector:
         sigma = complete_dims(sigma, -np.ndim(flux))
         p = self._xdisp_profile(sigma=sigma, width=width)
 
-        # Incident flux [ph/s], flux.shape + (width,)
+        # Incident flux [ph/s], flux.shape + (width,) | take~50ms
         profiles = p * complete_dims(flux, 1)
 
-        # Detector signal [ADU], shape is (width,) + flux.shape
+        # Detector signal [ADU], shape is (width,) + flux.shape  | take ~200ms
         sig, var = self.estimate_pixel_signal(profiles, withdark=False)
 
         # One should have signal almost equal to sig.sum(axis=0)
@@ -261,27 +288,11 @@ class Detector:
         # Saturated px with infinite variance will not contribute
         variance = 1 / (p**2 / var).sum(axis=-1)  # Variance on signal [ADU²]
 
-        # Detect and mask saturated pixels
-        if self.saturation:
-            saturated = np.isnan(sig).any(axis=-1)
-            self.nsaturated_specpx = np.count_nonzero(saturated)
-            if self.nsaturated_specpx > 0:
-                warnings.warn(
-                    f"{self.nsaturated_specpx} spectral px above {self.saturation} ADU.",
-                    SaturationWarning)
-                
-                if np.ndim(signal):
-                    signal[saturated] = np.nan
-                    variance[saturated] = np.inf
-                else:
-                    signal, variance = np.nan, np.inf
-                    
-        else:
-            self.nsaturated_specpx = None
-
         return signal, variance                  # flux.shape [ADU]
         
-    def estimate_pixel_signal(self, flux, withdark=False):
+    def estimate_pixel_signal(self, flux, withdark=False,
+                                  variance_model="default",
+                                  saturation="default"):
         """ Estimate measured signal and variance from incident flux [ph/s].
 
         Signal includes incident flux and dark contribution if needed.
@@ -298,6 +309,15 @@ class Detector:
         
         withdark: bool
             include dark contribution to output signal
+
+        variance_model: bool
+            variance model to use. Rauscher07 or Kubik20.
+            If "default", self.variance_model is used.
+
+        saturation: int
+            if given, this attent to detect saturation. 
+            if "default", self.saturation used.
+            If None, no saturation
             
         Returns
         -------
@@ -305,6 +325,12 @@ class Detector:
             - pixel signal [ADU]
             - variance [ADU²]
         """
+        if variance_model == "default":
+            variance_model = self.variance_model
+
+        if saturation == "default":
+            saturation = self.saturation
+            
         # Reshape qe (() or (nlbda,)) to match flux's shape (nlbda, ..., width)
         qe = complete_dims(self.qe, -np.ndim(flux))
 
@@ -314,10 +340,10 @@ class Detector:
                              ron=self.ron, dark=self.dark, gain=self.gain)
 
         # Variance estimate in [ADU²]
-        if self.variance_model == "Rauscher+07":
+        if  variance_model in ["Rauscher07", "Rauscher+07"]:
             variance = self._estimate_variance_rauscher07(**variance_prop)
             
-        elif self.variance_model == "Kubik20":
+        elif variance_model == "Kubik20":
             variance = self._estimate_variance_kubik20(**variance_prop)
         else:
             raise NotImplementedError(
@@ -326,8 +352,8 @@ class Detector:
         signal = (flux_e + self.dark) * self.electronpers2ADU  # Total signal [ADU]
 
         # Detect and mask saturated pixels
-        if self.saturation:
-            saturated = signal > self.saturation
+        if saturation is not None:
+            saturated = signal > saturation
             self.nsaturated_detpx = np.count_nonzero(saturated)
             if self.nsaturated_detpx > 0:
                 warnings.warn(
@@ -490,49 +516,3 @@ class Detector:
         This is effective exposure time [s] * gain [ADU/e-].
         """
         return self.integration_time * self.gain
-
-#
-#
-#
-#
-#
-if __name__ == "__main__":
-
-    from mlaperf.iotools import get_config
-    from mlaperf.detector import Detector
-
-    config = get_config("instrument.toml")
-    # config["detector"]["QE"] = "H2RG18.csv"
-
-    detector = Detector(config["detector"])
-    print(detector)
-
-    flux = 1                                          # [ph/s]
-    dark = detector.dark * detector.electronpers2ADU  # Dark contribution [ADU]
-    # Signal (without dark) [ADU]
-    sigk, vsigk = detector.estimate_pixel_signal(flux, variance_model='Kubik20',
-                                              withdark=False)
-    sigr, vsigr = detector.estimate_pixel_signal(flux, variance_model='Rauscher+07',
-                                              withdark=False)
-
-    def SNR(f, v):
-        return f / v**0.5
-
-    print(f"Incident flux: {flux:.1f} ph/s/px")
-    print(f"  dark: {dark:.2f} ADU/px")
-    print(f"  Kubik20:     {sigk:.2f} ± {vsigk**0.5:.2f} ADU/px, "
-          f"SNR: {SNR(sigk, vsigk):.2f}")
-    print(f"  Rauscher+07: {sigr:.2f} ± {vsigr**0.5:.2f} ADU/px, "
-          f"SNR: {SNR(sigr, vsigr):.2f}")
-
-    sigma = config["spectrograph"]["spectral_xdisp_sigma"]        # [px]
-    try:
-        width = config["extraction"]["xdisp_width"]         # [px]
-    except KeyError:
-        width = (config["extraction"]["xdisp_width_insigma"] *
-                 config["spectrograph"]["spectral_xdisp_sigma"])  # [px]
-
-    print(f"Incident flux: {flux:.1f} ph/s/spx, {sigma=} px, {width=} px")
-    sig, vsig = detector.estimate_spx_spectrum(flux, sigma=sigma, width=width)
-    print(f"  signal: {sig:.2f} ± {vsig**0.5:.2f} ADU/px")
-    print(f"  SNR: {SNR(sig, vsig):.2f}")

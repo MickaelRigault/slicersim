@@ -73,6 +73,7 @@ tframe = 2.830             # Single frame (read) time [s]
 px_size = 10.0             # Pixel physical size [µm]
                            # (should be consistent w/ dispersion_law)
 readout_mode = [16, 8, 0]  # (N * (M + D) - D) = 256 frames, exptime = 12'05''
+max_group = 64 	           # maximum number of groups per ramp
 variance_model = "Rauscher+07"  # Variance model (Kubik20 or Rauscher+07)
 dark = 2.8e-3              # Dark current [e-/s/px] # Effective incl. box temperature
 # NOT IMPLEMENTED: dark current as function of detector temperature

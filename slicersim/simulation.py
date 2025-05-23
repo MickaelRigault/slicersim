@@ -17,7 +17,7 @@ import pprint
 import numpy as np
 import pandas
 from .scene import Scene
-from .spectrograph import Spectrograph
+from .spectrograph import Spectrograph, MLASpectrograph, SlicerSpectrograph
 from .detector import Detector
 
 __all__ = ["Simulation"]
@@ -174,10 +174,12 @@ class Simulation:
         """ """
         warnings.warn("DEPRECATION: 'Simulation.from_pointing' is deprecated, used 'from_scene' instead (see also 'from_source').")
         return cls.from_scene(*args, **kwargs)
+    
     @classmethod
     def from_scene(cls, redshift=None, snr=20,
                        lbda_range=[4000, 6800], frame='rest',
                        scene='supernova.toml', instrument='lazuli.toml',
+                       slicer=True,
                        **kwargs):
         """ load the simulation setting the config to acquire the pointed target
 
@@ -214,7 +216,7 @@ class Simulation:
         
         # create the simulator
         config = get_config(instrument=instrument, scene=scene)
-        this = cls.from_config(config)
+        this = cls.from_config(config, slicer=slicer)
 
         # update to expecting target
         if redshift is not None:
@@ -231,7 +233,7 @@ class Simulation:
         return this
         
     @classmethod
-    def from_config(cls, config):
+    def from_config(cls, config, slicer=True):
         """ Initiate simulation from config nested dictionary.
 
         :param dict config: top level configuration containing
@@ -246,7 +248,10 @@ class Simulation:
         # using spectrograph wavelengths.
 
         # Initialize the spectrograph from config
-        spectrograph = Spectrograph.from_config(config["spectrograph"])
+        if slicer:
+            spectrograph = SlicerSpectrograph.from_config(config["spectrograph"])
+        else:
+            spectrograph = MLASpectrograph.from_config(config["spectrograph"])
 
         # Initialize the scene from config (wavelength from spectrograph)
         scene = Scene.from_config(config["scene"], lbda=spectrograph.lbda)
@@ -415,7 +420,6 @@ class Simulation:
         Product of the spectroscopic throughput: spectrograph.flambda2photon
         and the detector efficiency: detector.photonflux2ADU
 
-
         Returns
         -------
         lbda: array
@@ -492,7 +496,7 @@ class Simulation:
             if right_config != {'spatial_scale': 0.04, 'psf_sigma_spectral': 0.03}:
                 warnings.warn("inclusion of spectrum variance has been validated for {'spatial_scale': 0.04, 'psf_sigma_spectral': 0.03} only. Likely wrong if too far.")
                 
-            spec_adu = self.flambda_to_adu(spectrum)
+            spec_adu = self.convert_units(flux_in=spectrum, units_in="flambda", units_out="adu")
             # This is an approximation that seem to work, not clear why... (so the above warning)
             poisson_adu_to_variance = np.sqrt(self.spectrograph.get_nea_spatial()  / self.spectrograph.get_nea_pixels() )
             var_source = spec_adu * poisson_adu_to_variance
@@ -556,7 +560,6 @@ class Simulation:
                     return meta_target[which]
 
         return {which: default} if as_dict else default
-
 
     def get_background_spectrum(self, unit="adu", skyarea=None, per_ramp=False):
         """ get the (flat) background flux
@@ -628,9 +631,10 @@ class Simulation:
 
         if as_dict:
             return {"target": target_cube,
-                        "background": background_cube,
-                        "host_cube": host_cube,
-                        "thermal_cube": thermal_cube}
+                    "background": background_cube,
+                    "host_cube": host_cube,
+                    "thermal_cube": thermal_cube}
+        
         return np.stack([target_cube, background_cube, host_cube, thermal_cube])
         
     def get_projected_scene(self, in_photons=True, switch_off=[],
@@ -646,9 +650,9 @@ class Simulation:
         """
         if not as_oversampled:
             oversampling = None
-            
-        cube = np.zeros( (self.spectrograph.nlbda, *self.spectrograph.get_spectrograph_shape(oversampling=oversampling)) )  # (nlbda, ny, nx)
 
+        cube = self.spectrograph.get_empty_cube(filled=0, oversampling=oversampling)
+        
         # spectra (3, nlbda):
         # * point source spectrum [erg/s/cm²/Å]
         # * host (not yet implemented)
@@ -659,7 +663,8 @@ class Simulation:
         if "target" not in switch_off:
             cube += self.spectrograph.generate_point_source(target,
                                                             position=self.scene.target_position,
-                                                            psf_profile=psf_profile, oversampling=oversampling,
+                                                            psf_profile=psf_profile,
+                                                            oversampling=oversampling,
                                                             as_oversampled=as_oversampled,
                                                             **kwargs)
 
@@ -695,14 +700,20 @@ class Simulation:
         cube_signal, cube_variance: 
             (nlbda, ny, nx) in [ADU].
         """
+        # change accepted.        
+        # 
+        # component within the cube
+        # 
         AVAILABLE_SWITCHOFF = ["dark", "ron", "target", "host", "background","thermal"]
         switch_off = np.atleast_1d(switch_off).tolist() # as list
-        
+
         if np.any(effect_bool := [effect not in AVAILABLE_SWITCHOFF for effect in switch_off]):
             unknown_effect = np.asarray(switch_off)[effect_bool]
             warnings.warn(f"unknown switch off effect(s) {unknown_effect}.")
-            
-        # Detector effect
+
+        #
+        # switch off detector effect
+        # 
         if "dark" in switch_off:
             current_dark = self.get_parameter("dark")
             self.update(detector__dark=0)            # Switch off dark
@@ -715,7 +726,74 @@ class Simulation:
         else:
             current_ron = None
 
+        #
+        # Get cubes
+        #
+        
+        # mla
+        if self.spectrograph.type in ["mla", "spaxel", "spx"]:
+            sig_cube, var_cube = self._get_mla_cube_()
+
+        # slicer            
+        elif self.spectrograph.type in ["slicer", "slice"]:
+            sig_cube, var_cube = self._get_slicer_cube_()
+            
+        # unknown not accepted.            
+        else:
+            raise ValueError(f"unknown spectrograph type {self.spectrograph.type}: mla or slicer accepted.")
+        
+        #
+        # switch back in detector effects (if any)
+        #
+        if current_dark is not None:
+            self.update(detector__dark=current_dark)
+            
+        if current_ron is not None:
+            self.update(detector__ron=current_ron)
+
+        #
+        # include ramps.
+        #
+        if not per_ramp:
+            nramp = self.get_parameter("nramp")
+            sig_cube *= nramp
+            var_cube *= nramp
+
+        return sig_cube, var_cube
+
+    def _get_slicer_cube_(self, psf_profile="default", switch_off=[],
+                           oversampling=None, as_oversampled=False,
+                           per_ramp=False,
+                           **kwargs):
+        """ 
+
+        Parameters
+        ----------
+        oversampling: None, int, or 2d 
+            who should the slicer be oversampled to account for the anamorphose.
+        
+        """    
+        # scene split per slices   
+        cube = self.get_projected_scene(in_photons=True,
+                                        switch_off=switch_off,
+                                        psf_profile=psf_profile,
+                                        as_oversampled=as_oversampled,
+                                        oversampling=oversampling,
+                                        **kwargs)  # (nlbda, nslices_with_anamorphose, npixels)
+                                        
+        # slicers projected onto the detector: 1 lbda for 1 slice corresponds to 1 pixel
+        sig_cube, var_cube = self.detector.estimate_pixel_signal( cube )
+        
+        return sig_cube, var_cube
+        
+    def _get_mla_cube_(self, psf_profile="default", switch_off=[],
+                           as_oversampled=False, oversampling=None,
+                           per_ramp=False,
+                           **kwargs):
+        """ """
+
         # Scene effect
+        # takes 65.1 ms
         cube = self.get_projected_scene(in_photons=True,
                                         switch_off=switch_off,
                                         psf_profile=psf_profile,
@@ -734,26 +812,13 @@ class Simulation:
 
         # This assumes optimal extraction, only the variance depends
         # on detector parameters.
+        # takes ~300ms
         sig_cube, var_cube = self.detector.estimate_spx_spectrum(
             cube,               # (nlbda, ny, nx) [ph/s]
             sigma=xdisp_sigmas,       # (nlbda,) [px]
             width=width)
 
-        #
-        # switch back in detector effects
-        #
-        if current_dark is not None:
-            self.update(detector__dark=current_dark)
             
-        if current_ron is not None:
-            self.update(detector__ron=current_ron)
-
-        if not per_ramp:
-            nramp = self.get_parameter("nramp")
-            sig_cube *= nramp
-            var_cube *= nramp
-            
-        # output
         return sig_cube, var_cube  # (nlbda, ny, nx) [ADU, ADU²]
 
     def get_slice(self, lbda_range, frame="obs", switch_off=[], incl_error=False, 
@@ -811,7 +876,7 @@ class Simulation:
                                                psf_profile=psf_profile)
 
         try:
-            radius = self.extraction["aperture_radius"]  # [spx]
+            radius = self.extraction["aperture_radius"]  # [spx/slicers]
         except KeyError:
             # See Spectrograph.rescale_parameters
             radius = (self.extraction["aperture_radius_insigma"] *
@@ -881,6 +946,7 @@ class Simulation:
         for wmin, wmax in lbda_range:
             sel = ((self.spectrograph.lbda >= wmin) &
                    (self.spectrograph.lbda <= wmax))
+                
             band_sigs.append(statistic(signal[sel], axis=0))
             band_vars.append(statistic(variance[sel], axis=0))
 
@@ -889,6 +955,7 @@ class Simulation:
         else:
             return np.asarray(band_sigs), np.asarray(band_vars)
 
+        
     def get_band_snr(self, lbda_range, frame="obs",
                      statistic=np.nanmean, **kwargs):
         """ Compute mean signal to noise ratio over a spectral domain.
@@ -1012,29 +1079,67 @@ class Simulation:
     # ----------- #
     #  Conversion #
     # ----------- #
-    def flambda_to_adu(self, flux=1.):
-        """ convert input spectrum in [erg/s/cm2/A] into ADU (including nramp) """
-        _, transmission = self.get_effective_transmission()
-        return flux * transmission * self.get_parameter("nramp")
-
-    def adu_to_flambda(self, flux=1.):
-        """ convert input spectrum in ADU (including nramp) into [erg/s/cm2/A]"""
-        _, transmission = self.get_effective_transmission()
-        return flux_adu / (transmission * self.get_parameter("nramp"))
+    def convert_units(self, units_in, units_out, flux_in=1):
+        """ 
+        units: 
+        - adu [total integrated on detector]
+        <=>
+        - flambda [erg/s/a/cm2]
+        - rate [adu/s]
+        - framerate [adu/frame]
+        - fphoton [ph/s]
+        """
+        if units_in == units_out:
+            coefs = 1
+    
+        # ADU
+        # adu <=> flambda 
+        elif units_in == "adu" and units_out == "flambda":
+            _, transmission = self.get_effective_transmission()
+            coefs = 1 / (transmission * self.get_parameter("nramp"))
+            
+        elif units_in == "flambda" and units_out == "adu":
+            coefs = 1/self.convert_units("adu", "flambda")
+    
+        # adu <=> rate
+        elif units_in == "adu" and units_out == "rate":
+            coefs = 1/self.observing_time
+        elif units_in == "rate" and units_out == "adu":
+            coefs = 1/self.convert_units("adu", "rate")
+    
+        # adu <=> frame-rate
+        elif units_in == "adu" and units_out == "framerate":
+            # adu 
+            coefs = self.detector.tframe/self.observing_time
+        elif units_in == "framerate" and units_out == "adu":
+            coefs =  1/self.convert_units("adu", "framerate")
+            
+        # adu <=> photons
+        elif units_in == "adu" and units_out == "fphoton":
+            coefs = 1/self.detector.photonflux2ADU
+        elif units_in == "photonflux" and units_out == "adu":
+            coefs =  1/self.convert_units("adu", "fphoton")
+    
+        # not implemented
+        else:
+            raise NotImplementedError(f"{unit_in} to {units_out} not implemented")
+            
+        return coefs*flux_in
     
     # ---------- #
     #  Fetching  #
     # ---------- #
     def fetch_snr(self, target_snr,
-                      max_group=64,
+                      max_group=None,
                       nframe_per_group=None,
                       ndrop=None,
                       guess=None,
+                      fitter="native",
                       #
                       lbda_range=[4000, 6800], frame="rest",
                       statistic=np.nanmean,
                       reset_param=True, 
-                      maxiter=100, tol=0.5, iterstep=1):
+                      maxiter=30, tol=0.5, iterstep=1):
         """ vary the free_parameter to reach the target SNR.
     
         Parameters
@@ -1077,6 +1182,9 @@ class Simulation:
             - reached SNR.
             - integration_time
         """
+        if max_group is None:
+            max_group = self.detector.max_group
+            
         # store current ramp and nmd
         input_nmd = self.get_parameter("nmd")
         input_nramp = self.get_parameter("nramp")
@@ -1090,8 +1198,7 @@ class Simulation:
         # How do we compute the snr
         prop_fetch = dict(lbda_range=lbda_range, frame=frame,
                           statistic=statistic,
-                          maxiter=maxiter,
-                          tol=tol, iterstep=iterstep)
+                          tol=tol)
 
         # this is one max ramp
         full_singleramp_config = {"nmd": (max_group, nframe_per_group, ndrop),
@@ -1118,18 +1225,77 @@ class Simulation:
                 guess = 4 # we expect less than, say, 20 ramps and at least 2.
             self.update( nramp=guess, nmd=(max_group, nframe_per_group, ndrop) )
             prop_fetch |= {"min_value":2}
-            
-        read_config, snr, integration_time = self._fetch_snr(target_snr,
+
+        if fitter == "native":
+            read_config, snr, integration_time = self._fetch_snr(target_snr,
                                                              free_parameter=free_parameter,
+                                                             iterstep=iterstep, maxiter=maxiter,
                                                              **prop_fetch)
-                                                                        
+        elif fitter == "scipy":
+            read_config, snr, integration_time = self._fetch_snr_minimize(target_snr, free_parameter=free_parameter,
+                                                                              x0=guess, **prop_fetch)
+            
         # reset back to initial nmd
         if reset_param:
             self.update(nmd = input_nmd, nramp=input_nramp)
 
         # return what you where looking for.
         return read_config, snr, integration_time
-                
+
+    def _fetch_snr_minimize(self, target_snr, free_parameter, x0,
+                                lbda_range=[4000, 6800], frame="rest", statistic=np.nanmean,
+                                min_value=None, as_int=True,
+                                tol=0.3, **kwargs):
+        """ """
+        from scipy import stats, optimize
+        
+        minimal_values = {"ngroup": 2, "nramp": 1, 'nframe':2}
+        if min_value is None:
+            min_value = minimal_values.get(free_parameter)
+        
+        # ---------------------- #
+        # Parsing input uptions  #
+        # ---------------------- #
+        if free_parameter not in ["ngroup", "nramp", 'nframe']:
+            raise ValueError(f"free_parameter should be 'ngroup', 'nramp' or 'nframe' {free_parameter} given.")
+        
+        prop_snr = dict(lbda_range=lbda_range, 
+                        frame=frame, 
+                        statistic=statistic)
+
+        # nframe supposed to change the macc mode to (1,1,0)
+        if free_parameter == "nframe":
+            input_nmd = self.get_parameter("nmd")
+            self.update(nmd=(min_value, 1, 0)) # start at min value
+            free_parameter = "ngroup" # 1 frame per group, so ngroup=nframe
+        else:
+            input_nmd = None
+
+        # ---------------------- #
+        # Fitting                #
+        # ---------------------- #
+        def to_minimize(value):
+            """ """
+            self.update(**{free_parameter: value})
+            current_snr = self.get_band_snr(**prop_snr)
+            return (current_snr - target_snr)**2
+
+        fit_result = optimize.minimize(to_minimize, x0=x0, tol=tol, **kwargs)
+        if as_int:
+            bestfit = round(fit_result.x[0])
+            self.update(**{free_parameter: bestfit})
+            current_snr = self.get_band_snr(**prop_snr)
+        else:
+            # as fit_result.fun = (current_snr - target_snr)**2
+            current_snr = np.sqrt(fit_result.fun) + target_snr
+
+        # So this is what is used.
+        used_config = {"nmd": self.get_parameter("nmd"),
+                       "nramp": self.get_parameter("nramp")}
+        
+        total_exptime = self.observing_time # includes nramps
+        return used_config, current_snr, total_exptime
+        
     def _fetch_snr(self, target_snr, free_parameter,
                    lbda_range=[4000, 6800], frame="rest", statistic=np.nanmean,
                    min_value=None,

@@ -163,6 +163,7 @@ class Spectrograph:
     .. Warning:: the spectral PSF impacts the cross-dispersion profile,
                  but is not applied in the dispersion direction.
     """
+    _SPECTROGRAPH_TYPE = "Unknown"
 
     #: Mutable parameters (list)
     mutable_parameters = ['spectral_range', 'spectral_resolution', # lbda
@@ -173,10 +174,9 @@ class Spectrograph:
                           #'camera.acceptance', 'camera.speed',
                           ]
 
-    
     def __init__(self, lbda, mirror,
                  spaxels={}, throughput=None,
-                 xdispersion={}, spatial_psf={},
+                 spatial_psf={},
                  lbda_edges=None,
                  meta={}):
         """ Initialize the spectrograph. 
@@ -196,11 +196,7 @@ class Spectrograph:
             
         throughput: array, func
             throughput of the spectrograph. 
-            if func => throughput = func(lbda)
-
-        xdispersion: dict
-            properties of the cross dispersion PSF.
-            
+            if func => throughput = func(lbda)            
         """
         # wavelength
         self.lbda = lbda
@@ -220,53 +216,54 @@ class Spectrograph:
             self._throughput_interp = None
             self.throughput = throughput
 
-        self.xdispersion = xdispersion
         self.spatial_psf = spatial_psf
         
         # affect the instance
-        self.mutable_parameters = self.mutable_parameters + [f"mirror.{k}" for k in self.mirror.mutable_parameters]
+        self.mutable_parameters = self.mutable_parameters + \
+          [f"mirror.{k}" for k in self.mirror.mutable_parameters]
         
         self._meta_in = meta.copy()      #: Meta-parameters as input
         self._meta = meta.copy()         #: Meta-parameters as used
-        
+
     @classmethod
     def from_config(cls, config):
         """ """
-        # make sure the input config is not changed
+        # spectrograph that inherit Spectrograph simply need to update _parse_config()
+        init_prop, _ = cls._parse_config(config)
+        return cls(**init_prop)
+        
+    @staticmethod
+    def _parse_config(config):
+                # make sure the input config is not changed
         input_config = deepcopy(config)
         
         # wavelengths
-        lbda, lbda_edges = build_lbda_from_config(config)
+        lbda, lbda_edges = build_lbda_from_config(input_config)
 
         # Mirror
-        mirror = Mirror.from_config(config['mirror'])
+        mirror = Mirror.from_config(input_config['mirror'])
         
         # Spaxels
-        spaxels = build_spaxels_from_config(config)
+        spaxels = build_spaxels_from_config(input_config)
         
         # throughput
-        throughput = build_throughput_from_config(config)
+        throughput = build_throughput_from_config(input_config)
         
-        # PSF at the detector level
-        xdispersion = {"sigma_spectral": float(config["psf"]["detector"]["xdisp_sigma_spectral"]),
-                      "sigma": float(config["psf"]["detector"]["xdisp_sigma"]),
-                      "profile": config["psf"]["detector"]["xdisp_profile"]}
-
         # in coming PSF
-        psf = {"sigma_spectral": config["psf"]["spatial"]["psf_sigma_spectral"],
-               "guiding_sigma": float(config["psf"]["spatial"]["guiding_sigma"]),
-               "profile": config["psf"]["spatial"]["psf_profile"]}
+        psf = {"sigma_spectral": input_config["psf"]["spatial"]["psf_sigma_spectral"],
+               "guiding_sigma": float(input_config["psf"]["spatial"]["guiding_sigma"]),
+               "profile": input_config["psf"]["spatial"]["psf_profile"]}
 
         init_prop = {"lbda":lbda, 
                      "lbda_edges":lbda_edges, 
                      "mirror": mirror,
                      "spaxels":spaxels,
                      "throughput": throughput, 
-                     "xdispersion":xdispersion, 
                      "spatial_psf": psf,
-                     "meta": config}
+                     "meta": input_config}
             
-        return cls(**init_prop)
+        return init_prop, input_config
+
         
     @staticmethod
     def build_lbda_from_config(config):
@@ -315,7 +312,6 @@ class Spectrograph:
         updates = {}
         mirror_updates = {}
         lbda_updates = {}
-        xdisp_updates = {}
         psf_updates = {}
         spaxel_updates = {}      
         
@@ -349,10 +345,6 @@ class Spectrograph:
             # change PSF
             elif k in self.meta["psf"]["spatial"].keys():
                 psf_updates[k.replace("psf_","")] = v
-
-            # change PSF xdisp
-            elif k in self.meta["psf"]["detector"].keys():
-                xdisp_updates[k.replace("xdisp_","")] = v
                 
             # spaxels
             elif k in ('spatial_scale', 'spatial_scale_insigma', 
@@ -367,7 +359,7 @@ class Spectrograph:
         
         # psf
         self.spatial_psf = self.spatial_psf | psf_updates
-        self.xdispersion = self.xdispersion | xdisp_updates
+
         
         # lbda
         if spaxel_updates:
@@ -413,47 +405,27 @@ class Spectrograph:
     
     def get_spaxel_centroids(self, in_arcsec=False, squeeze=False, oversampling=None):
         """ """
-        if oversampling is None or oversampling == self.spaxels["oversampling"]:
+        # numpy and all() test enables to have list/array oversampling (or float/int)
+        if oversampling is None or (np.asarray(oversampling) == self.spaxels["oversampling"]).all():
             spaxels_coords = self.spaxels
         else:
             spaxels_coords = build_pixels(self.spx_shape, oversampling=oversampling)
         
         x, y = spaxels_coords["centroids"]
         if in_arcsec:
+            if np.ndim(self.spx_spatial_scale) == 0:
+                spx_y = spx_x = self.spx_spatial_scale
+            else:
+                spx_y, spx_x = self.spx_spatial_scale
             # not /= not to change 
-            x = x * self.spx_spatial_scale / spaxels_coords["oversampling"]  # in arcsec
-            y = y * self.spx_spatial_scale / spaxels_coords["oversampling"]  # in arcsec
+            x = x * spx_x / spaxels_coords["oversampling"]  # in arcsec
+            y = y * spx_y / spaxels_coords["oversampling"]  # in arcsec
 
         if squeeze:
-            x, y = np.squeeze(x), np.squeeze(x)
+            x, y = np.squeeze(x), np.squeeze(y)
             
         return (x, y), spaxels_coords["oversampling"]
         
-    def get_xdisp_sigma_spectral(self, xdims=0, xdisp_sigma=None):
-        """ Get spectral PSF stddev [px].
-
-        The total (Gaussian) spectral PSF is made of two components:
-
-        - the optical (chromatic) component, with stddev proportional
-          to wavelength, normalized at wref=1 µm,
-        - the achromatic component, with constant stddev.
-
-        If needed, the 1D vector can be embedded in a N-dim array of
-        shape `(nlbda,) + (1,)*xdims`.
-
-        :param int xdims: extra dimensions to be appended
-        :param float xdisp_sigma: constant sigma override [px]
-                                  (None for default)
-        :return: total sigma [px]
-        """
-        if xdisp_sigma is None:
-            xdisp_sigma = self.xdispersion["sigma"]
-
-        return self._get_chromatic_sigma(self.lbda,
-                                         chromatic_sigma = self.xdispersion["sigma_spectral"],
-                                         constant_sigma = xdisp_sigma,
-                                         wref = self.lbda_ref,
-                                         xdims = xdims)
 
     def get_psf_sigma_spectral(self, xdims=0, guiding_sigma=None,
                               in_spaxels=False, lbda=None):
@@ -485,7 +457,8 @@ class Spectrograph:
                                         wref = self.lbda_ref,
                                         xdims=xdims)
         if in_spaxels:
-            sigma /= self.spx_spatial_scale
+            # not inplace to allow non-float spx_spatial_scale
+            sigma = sigma/self.spx_spatial_scale
             
         return sigma
     
@@ -528,8 +501,9 @@ class Spectrograph:
             
         # Gaussian        
         if profile in ["gaussian", "default", "normal", "norm"]:
-            sigmas = self.get_psf_sigma_spectral(xdims=2, guiding_sigma=guiding_sigma)
-            sigmas /= self.spx_spatial_scale
+            sigmas = self.get_psf_sigma_spectral(guiding_sigma=guiding_sigma)
+            # allows asymetric spx_spatial_scale
+            sigmas = sigmas[:, None, None] / self.spx_spatial_scale
             prop = dict(in_arcsec=False, squeeze=False, oversampling=1)
             if as_oversampled: # no need to oversample as this uses exact erf functions.
                 print(f"changin oversampling to {oversampling=}")
@@ -537,9 +511,15 @@ class Spectrograph:
 
             (xx, yy), oversampling = self.get_spaxel_centroids(**prop)
                  
-            psf = profiles.get_gaussian2d(xx, yy, sigma=sigmas, mean = position, **kwargs)
+            psf = profiles.get_gaussian2d(xx, yy, sigma=sigmas, mean=position, **kwargs)
+            
             if as_oversampled:
-                psf *= oversampling**2 # to conserve energy
+                if np.ndim(oversampling) == 1:
+                    oversampling_y, oversampling_x = oversampling
+                else:
+                    oversampling_y = oversampling_x = oversampling
+                    
+                psf *= oversampling_x*oversampling_y # to conserve energy
                 
             return psf
 
@@ -548,9 +528,13 @@ class Spectrograph:
         #
         if guiding_sigma is None:
             guiding_sigma = self.spatial_psf["guiding_sigma"]
-        
+
+
+        # to accomodate with non-square spaxels (like slicer)
+        # we work in arcsec, not in spaxels.
         if profile in ["airy", "mirror", "airydisk"]:
-            radius = self.mirror.get_airy_radius(self.lbda) / self.spx_spatial_scale # in spaxels
+            radius = self.mirror.get_airy_radius(self.lbda) # in arcsec
+
             position = np.asarray(position)  # in spaxels
             psf_func = profiles.get_profilemodel("airy", position=position,
                                                       radius=radius[:, None, None],
@@ -559,7 +543,8 @@ class Spectrograph:
             raise ValueError(f"psf profile {profile=} not implemented")
 
         # coordinates including oversampling for exact PSF profile and guiding convolution
-        (xx, yy), oversampling = self.get_spaxel_centroids(in_arcsec=False, squeeze=False,
+        # x and y are in arcsec as radius is given in arcsec.
+        (xx, yy), oversampling = self.get_spaxel_centroids(in_arcsec=True, squeeze=False,
                                                            oversampling=oversampling)
         psf = psf_func(xx, yy)
          
@@ -576,6 +561,7 @@ class Spectrograph:
         """ """
         from scipy.ndimage import gaussian_filter
         # gaussian convolution | guiding_sigma is given in arcsec
+        # works by itself if spx_spatial_scale is a list or a float.
         sigma_guiding_pixels = guiding_arcsec / (self.spx_spatial_scale/oversampling) # in arcsec=>spaxels
         return gaussian_filter(image, sigma_guiding_pixels, axes=(-2,-1))
 
@@ -588,6 +574,7 @@ class Spectrograph:
             block_size = (1, oversampling, oversampling)
         else:
             raise ValueError(f"image ndim must be 2 or 3 {np.ndim(image)=} given.")
+        
         from astropy import nddata
         return nddata.block_reduce(image, block_size=(1, oversampling, oversampling), func=func)
 
@@ -650,7 +637,6 @@ class Spectrograph:
         array: 
             (n-lbda_range, ny, nx)        
         """
-            
         slices = []
         for wmin, wmax in np.atleast_2d(lbda_range):
             flag_lbda = ((self.lbda >= wmin) & (self.lbda <= wmax))
@@ -702,53 +688,10 @@ class Spectrograph:
             norm_scale = self.spx_spatial_scale
         
         return self.mirror.get_nea_airy(self.lbda, norm_scale=norm_scale, position=position)
-            
-    def get_nea_spatial(self, position=(0,0), in_spaxels=True, guiding_sigma=None):
-        """ noise equivalent area in unit of slice/spaxels 
-
-        i.e., how many "spaxel noise")
-        
-        Parameters
-        ----------
-        position: (float, float)
-            position of the PSF in unit of spaxel / slicer
-
-        in_spaxels: bool
-            shall the unit of the area be in spaxels**2 ? 
-            If False => arcsec**2
-
-        Returns
-        -------
-        array
-        """
-        from .nea import get_2dnorm_nea
-        
-        if self.spatial_psf["profile"] not in ("normal", "norm", "gaussian"):
-            raise NotImplementedError(f"only gaussian spatial PSF profile implemented, but: {self.spatial_psf['profile']=}")
-            
-        sigma_at_mla = self.get_psf_sigma_spectral(in_spaxels=in_spaxels,
-                                                   guiding_sigma=guiding_sigma,
-                                                   xdims=2)
-        return get_2dnorm_nea(sigma_at_mla, mean = position)
-
-    def get_nea_pixels(self):
-        """ noise equivalent area of a spaxel /slice in unit of pixels
-
-        Returns
-        -------
-        array
-        """
-        from .nea import get_1dnorm_nea
-        if self.xdispersion["profile"] not in ("normal", "norm", "gaussian"):
-            raise NotImplementedError(f"only gaussian xdispersion PSF profile implemented, but: {self.xdispersion['profile']=}")
-            
-        sigma_xdisp_at_detector = self.get_xdisp_sigma_spectral()  # in pixels 
-        return get_1dnorm_nea(sigma_xdisp_at_detector)
 
     # ------------- #
     #   Others      #
     # ------------- #
-    
     def point_source_variance(self, varcube, position=(0, 0), radius=5,
                                   psf_profile="default",
                                   optimal=True, verbose=False):
@@ -767,15 +710,21 @@ class Spectrograph:
         :param bool optimal: optimal vs. plain extraction
         :return: spx spectrum [ADU] and variance [ADU²]
         """
-
+        if np.ndim(radius) == 0:
+            radius_y = radius_x = radius
+        elif np.ndim(radius) == 1 and len(radius) == 2:
+            radius_y, radius_x = radius
+        else:
+            raise ValueError(f"cannot parse input {raduis=}")
+        
         # Spatial PSF
         psf = self.get_spatial_psf(position=position, profile=psf_profile)  # (nlbda, ny, nx)
 
         # Aperture
         x0, y0 = position
         (x, y), oversampling = self.get_spaxel_centroids()
-        r = np.hypot(x - x0, y - y0)  # (ny, nx) [spx]
-        aper = (r <= radius)
+        r_radius = np.hypot((x - x0)/radius_x, (y - y0)/radius_y)  # (ny, nx) [spx]
+        aper = (r_radius <= 1)
         nspx = np.count_nonzero(aper)           # Selected spx
         if verbose:
             print(f"Aperture of {radius=} spx: {nspx} spx selected")
@@ -806,7 +755,8 @@ class Spectrograph:
                  (as a function of wavelength or averaged)
         """
         if sigma is None:
-            sigma = self.get_xdisp_sigma_spectral()  # (nlbda,)
+            sigma = self.get_spectral_dispersion()
+            
         sigma = np.maximum(sigma, 1)
 
         dlbda = np.diff(self.lbda_edges)
@@ -817,6 +767,10 @@ class Spectrograph:
 
         return wres    
 
+    def get_spectral_dispersion(self):
+        """ """
+        raise NotImplementedError()
+    
     # - generate        
     def generate_point_source(self, spectrum, position=(0, 0),
                                   psf_profile="default",
@@ -846,12 +800,46 @@ class Spectrograph:
         :param spectrum: uniform scene background spectrum [erg/s/cm²/Å/arcsec²]
         :return: (nlbda, ny, nx) photon flux cube [ph/s/spx]
         """
+
         # erg/s/cm²/Å/arcsec² * cm² * Å / erg/ph * arcsec² = ph/s/spx
-        flux = spectrum * self.flambda2photon * self.spx_spatial_scale**2
+        flux = spectrum * self.flambda2photon * self.spx_area
 
         return np.full((self.nlbda, *self.get_spectrograph_shape(oversampling=oversampling) ), # y, x
                        flux[:, np.newaxis, np.newaxis])  # (nlbda, ny, nx)
 
+    def get_empty_cube(self, filled=0, oversampling=None):
+        """ """
+        ny, nx = self.get_spectrograph_shape(oversampling=oversampling)
+        return filled * np.ones( (self.nlbda, ny, nx) )
+
+    def get_nea_spatial(self, position=(0,0), in_spaxels=True, guiding_sigma=None):
+        """ noise equivalent area in unit of slice/spaxels 
+
+        i.e., how many "spaxel noise")
+        
+        Parameters
+        ----------
+        position: (float, float)
+            position of the PSF in unit of spaxel / slicer
+
+        in_spaxels: bool
+            shall the unit of the area be in spaxels**2 ? 
+            If False => arcsec**2
+
+        Returns
+        -------
+        array
+        """
+        from .nea import get_2dnorm_nea
+        
+        if self.spatial_psf["profile"] not in ("normal", "norm", "gaussian"):
+            raise NotImplementedError(f"only gaussian spatial PSF profile implemented, but: {self.spatial_psf['profile']=}")
+            
+        sigma_at_spectro = self.get_psf_sigma_spectral(in_spaxels=in_spaxels,
+                                                   guiding_sigma=guiding_sigma,
+                                                   xdims=2)
+        return get_2dnorm_nea(sigma_at_spectro, mean=position)
+    
     #
     # - tools
     #                       
@@ -1093,6 +1081,17 @@ class Spectrograph:
     def spx_edges(self):
         """ """
         return self.spaxels["edges"]
+        
+    @property
+    def spx_area(self):
+        """ """
+        if np.ndim(self.spx_spatial_scale) == 0:
+            spx_spatial_scale_y = spx_spatial_scale_x = self.spx_spatial_scale
+        else:
+            spx_spatial_scale_y, spx_spatial_scale_x = self.spx_spatial_scale
+        return spx_spatial_scale_y * spx_spatial_scale_x
+        
+
 
     @property
     def spx_spatial_scale(self):
@@ -1132,7 +1131,12 @@ class Spectrograph:
         """ spaxel solid angle [sr]. """
         hspx = self.spx_spatial_scale / 2  # [arcsec]
         hspx *= 4.84813681109536e-06   # [rad]
-        return np.pi * np.sin(hspx)**2
+        if np.ndim(hspx)==0:
+            hspx_y = hspx_x = hspx
+        else:
+            hspx_y, hspx_x = hspx
+        
+        return np.pi * np.sin(hspx_y) * np.sin(hspx_x)
 
     @property
     def skyarea(self):
@@ -1152,11 +1156,171 @@ class Spectrograph:
         return float(self.spatial_psf["sigma_spectral"])
 
     @property
+    def type(self):
+        """ """
+        return self._SPECTROGRAPH_TYPE
+
+    
+    
+class MLASpectrograph( Spectrograph ):
+    """ a spectrograph with no anamorphose and x-dispersion for traces """
+    _ANAMORPHOSE = None
+    _SPECTROGRAPH_TYPE = "mla"
+
+    def __init__(self, xdispersion={}, *args, **kwargs):
+        """ """
+        _ = super().__init__(*args, **kwargs)
+        
+        # an MLA has a cross-dispersion
+        self.xdispersion = xdispersion
+
+    # this is what from_config needs
+    @classmethod
+    def _parse_config(cls, config):
+        """ """
+        
+        init_prop, config = super()._parse_config(config)
+        
+        # PSF at the detector level
+        xdispersion = {"sigma_spectral": float(config["psf"]["detector"]["xdisp_sigma_spectral"]),
+                      "sigma": float(config["psf"]["detector"]["xdisp_sigma"]),
+                      "profile": config["psf"]["detector"]["xdisp_profile"]}
+        init_prop["xdispersion"] = xdispersion
+        return init_prop, config
+    
+    def update(self, reset_others=False, **kwargs):
+        """ """
+        # do xdispersion stuffs
+        xdisp_updates = {}
+        for k, v in kwargs.items():
+            if k in self.meta["psf"]["detector"].keys():
+                xdisp_updates[k.replace("xdisp_", "")] = v
+                _ = kwargs.pop(k) # remove them
+                
+        self.xdispersion = self.xdispersion | xdisp_updates
+        # and the rest (normal spectrograph)
+        return super().update(reset_others=False, **kwargs)
+
+    def get_xdisp_sigma_spectral(self, xdims=0, xdisp_sigma=None):
+        """ Get spectral PSF stddev [px].
+
+        The total (Gaussian) spectral PSF is made of two components:
+
+        - the optical (chromatic) component, with stddev proportional
+          to wavelength, normalized at wref=1 µm,
+        - the achromatic component, with constant stddev.
+
+        If needed, the 1D vector can be embedded in a N-dim array of
+        shape `(nlbda,) + (1,)*xdims`.
+
+        :param int xdims: extra dimensions to be appended
+        :param float xdisp_sigma: constant sigma override [px]
+                                  (None for default)
+        :return: total sigma [px]
+        """
+        if xdisp_sigma is None:
+            xdisp_sigma = self.xdispersion["sigma"]
+
+        return self._get_chromatic_sigma(self.lbda,
+                                         chromatic_sigma = self.xdispersion["sigma_spectral"],
+                                         constant_sigma = xdisp_sigma,
+                                         wref = self.lbda_ref,
+                                         xdims = xdims)
+    def get_spectral_dispersion(self):
+        """ this is given by the x-dispersion profile. """
+        return self.get_xdisp_sigma_spectral()  # (nlbda,)
+
+
+    def get_nea_spatial(self, position=(0,0), in_spaxels=True, guiding_sigma=None):
+        """ noise equivalent area in unit of slice/spaxels 
+
+        i.e., how many "spaxel noise")
+        
+        Parameters
+        ----------
+        position: (float, float)
+            position of the PSF in unit of spaxel / slicer
+
+        in_spaxels: bool
+            shall the unit of the area be in spaxels**2 ? 
+            If False => arcsec**2
+
+        Returns
+        -------
+        array
+        """
+        from .nea import get_2dnorm_nea
+        
+        if self.spatial_psf["profile"] not in ("normal", "norm", "gaussian"):
+            raise NotImplementedError(f"only gaussian spatial PSF profile implemented, but: {self.spatial_psf['profile']=}")
+            
+        sigma_at_mla = self.get_psf_sigma_spectral(in_spaxels=in_spaxels,
+                                                   guiding_sigma=guiding_sigma,
+                                                   xdims=2)
+        return get_2dnorm_nea(sigma_at_mla, mean = position)
+
+    def get_nea_pixels(self):
+        """ noise equivalent area of a spaxel /slice in unit of pixels
+
+        Returns
+        -------
+        array
+        """
+        from .nea import get_1dnorm_nea
+        if self.xdispersion["profile"] not in ("normal", "norm", "gaussian"):
+            raise NotImplementedError(f"only gaussian xdispersion PSF profile implemented, but: {self.xdispersion['profile']=}")
+            
+        sigma_xdisp_at_detector = self.get_xdisp_sigma_spectral()  # in pixels 
+        return get_1dnorm_nea(sigma_xdisp_at_detector)
+    
+    # ============== #
+    #   Properties   #
+    # ============== #
+    @property
     def xdisp_sigma_spectral(self):
         """ """
         return self.xdispersion["sigma_spectral"]
-        
+
     
 
 
+class SlicerSpectrograph( Spectrograph ):
+    """ """
+    _ANAMORPHOSE = (2, 1)
+    _SPECTROGRAPH_TYPE = "slicer"
+    
+    def set_spaxels(self, shape, spx_scale):
+        """ """
+        shape = np.asarray(shape) * self._ANAMORPHOSE
+        spx_scale = np.asarray(spx_scale) / self._ANAMORPHOSE
+        self._spaxels = {"shape": shape, "spx_scale": spx_scale}
+        self._spaxel_coords = {}
 
+
+    def get_nea_pixels(self):
+        """ noise equivalent area of a slice (per wavelength) in unit of pixels
+
+        Returns
+        -------
+        array
+        """
+        return 1 # just an image now. 
+        
+#    def get_spectrograph_shape(oversampling=None):
+#        """ """
+#        oversampling = self._parse_oversampling_(oversampling)
+#        return super().get_spectrograph_shape(oversampling=oversampling)
+
+#    @classmethod
+#    def _parse_oversampling_(cls, oversampling):
+#        """ oversampling accounting for the anamorphose """
+#        if oversampling is None:
+#            oversampling = cls._ANAMORPHOSE
+            
+#        elif np.ndim(oversampling) == 0: #int or float
+#            oversampling = oversampling*np.asarray( cls._ANAMORPHOSE ).astype(int)
+#
+#        elif np.ndim(oversampling) != 1 or len(oversampling) != 2: #int or float
+#            raise ValueError(f"could not parse {oversampling=}, should be int or (nslicers, npixels) ")
+        
+        

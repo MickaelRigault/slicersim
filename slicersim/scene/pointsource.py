@@ -13,6 +13,36 @@ except ImportError:
     twins_embedding_model = None
 
 
+
+def get_snia_pointsource(model="salt", **kwargs):
+    """ generic top level configuration setting 
+
+    Parameters
+    ----------
+    model: str
+        name of the modelling to use
+        - salt (or any sncosmo salt source name).
+        - twin
+
+    **kwargs update the pointsource
+    """
+    generic = {'name': 'SN Ia', 
+               'redshift': 1.5, 
+               'phase': 0, 'position': [1, 0.5]}
+    
+    if "salt" in model.lower():
+        if model == "salt":
+            model = "salt2-extended"
+        
+        pointsource = {'source': model, 'MBmax': -19.3, 'c': 0., 'x1': 0.}
+        
+    elif "twin" in model.lower():
+        pointsource = {'magnitude':0., 'color':0., 'coordinates':(0., 0., 0.)}
+
+    return generic | pointsource | kwargs
+
+
+    
 """
     @staticmethod
     def stdstar_from_config(config, lbda, k=3, verbose=True):

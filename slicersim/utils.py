@@ -380,9 +380,17 @@ def integ_gaussian2D_erf(xy_edges, sigma, mu=(0, 0), normed=True):
 
     mux, muy = mu
 
+    # allows for asymetric sigma
     sqrt2sig = 1.4142135623730951 * sigma
-    tmpx = erf((x_edges - mux) / sqrt2sig)  # sig.shape + (1, nx+1)
-    tmpy = erf((y_edges - muy) / sqrt2sig)  # sig.shape + (ny+1, 1)
+    if sqrt2sig.shape[-1] == 1:
+        sqrt2sig_y = sqrt2sig_x = sqrt2sig
+        
+    elif sqrt2sig.shape[-1] == 2:
+        sqrt2sig_y = sqrt2sig[..., 0][...,None] # no dim reduction
+        sqrt2sig_x = sqrt2sig[..., 1][...,None] # no dim reduction
+        
+    tmpx = erf((x_edges - mux) / sqrt2sig_x)  # sig.shape + (1, nx+1)
+    tmpy = erf((y_edges - muy) / sqrt2sig_y)  # sig.shape + (ny+1, 1)
     
     # Normalized Gaussian, sig.shape + (ny, nx)
     f = np.diff(tmpx, axis=-1) * np.diff(tmpy, axis=-2) / 4

@@ -3,6 +3,7 @@
 import numpy as np
 from astropy.modeling import functional_models
 from .utils import integ_gaussian2D_erf
+from scipy import stats
 # =========== #
 #  Internal   #
 # =========== #
@@ -34,10 +35,19 @@ def build_pixels(shape, oversampling=10):
     if oversampling is None:
         oversampling = 1
     else:
-        oversampling = int(oversampling)
+        # generic for int or list of.
+        oversampling = np.asarray(oversampling, dtype="int")
+
+    # assymetric oversampling
+    if np.ndim(oversampling) == 1:
+        oversampling_y, oversampling_x = oversampling
+    else:
+        oversampling_y = oversampling_x = oversampling
+    
+        
     ny, nx = np.asarray(shape, dtype=int)
-    x = np.linspace(0, nx, nx*oversampling) - nx/2.
-    y = np.linspace(0, ny, ny*oversampling) - ny/2.
+    x = np.linspace(0, nx, nx*oversampling_x) - nx/2.
+    y = np.linspace(0, ny, ny*oversampling_y) - ny/2.
     pixel_sizex = x[1]-x[0]
     pixel_sizey = y[1]-y[0]
     x_edges = np.append(x, x[-1]+pixel_sizex) - pixel_sizex/2
@@ -46,7 +56,7 @@ def build_pixels(shape, oversampling=10):
             "edges": (x_edges[None,:], y_edges[:,None]),
             "shape": shape,
             "pixelarea": pixel_sizex*pixel_sizey,
-            "fullshape": (ny*oversampling, nx*oversampling),
+            "fullshape": (ny*oversampling_y, nx*oversampling_x),
             "oversampling": oversampling
            }
 
@@ -181,15 +191,21 @@ def get_profilemodel(name, position=(0,0), normalized=True, **kwargs):
                   "sersic": "Sersic2D",
                   "ricker": "RickerWavelet2D",
                   "lorentz": "Lorentz2D"}
-    SHORT_CUTS |= {k:SHORT_CUTS["airy"] for k in ["airydisk"]}
-    SHORT_CUTS |= {k:SHORT_CUTS["gaussian"] for k in ["gauss", "normal"]}
-    SHORT_CUTS |= {k:SHORT_CUTS["ricker"] for k in ["mexican", "mexicanhat"]}
+    SHORT_CUTS |= {k: SHORT_CUTS["airy"] for k in ["airydisk"]}
+    SHORT_CUTS |= {k: SHORT_CUTS["gaussian"] for k in ["gauss", "normal"]}
+    SHORT_CUTS |= {k: SHORT_CUTS["ricker"] for k in ["mexican", "mexicanhat"]}
+    
     name = SHORT_CUTS.get(name, name)
     
     if name == "Gaussian2D":
         kwargs["x_mean"], kwargs["y_mean"] = position
         if "sigma" in kwargs:
-            kwargs["x_stddev"] = kwargs["y_stddev"] = kwargs.pop("sigma")
+            std = kwargs.pop("sigma")
+            if np.ndim(std) == 0:
+                kwargs["x_stddev"] = kwargs["y_stddev"] = std
+            else:
+                kwargs["x_stddev"], kwargs["y_stddev"] = std
+                
     else:
         kwargs["x_0"], kwargs["y_0"] = position
 
@@ -198,8 +214,12 @@ def get_profilemodel(name, position=(0,0), normalized=True, **kwargs):
             # See e.g. photutils => #AiryDiskPSF.evaluate()
             from scipy.special import jn_zeros
             radius = kwargs.get("radius", 1)
+            if np.ndim(radius) == 0:
+                radius_x = radius_y = radius
+            else:
+                radius_x, radius_y = radius 
             _rz = jn_zeros(1, 1)[0] / np.pi
-            norm = (4.0 / np.pi) * (radius / _rz) ** 2
+            norm = (4.0 / np.pi) * (radius_x*radius_y / _rz**2) 
                 
         else:
             raise ValueError(f"Only AiryDisk2D norm has been implemented, not {name=}")
