@@ -1,7 +1,8 @@
 import numpy as np
 from .simulation import Simulation
 
-__all__ = ["lazuli_etc", "lazuli_sn_etc", "LazuliSN", "LazuliTarget"]
+__all__ = ["lazuli_etc", "lazuli_sn_etc",
+            "LazuliSN", "LazuliTarget", "LazuliCalSpec"]
 
 
 def lazuli_sn_etc(model, redshift, snr, phase=0, 
@@ -394,6 +395,19 @@ class LazuliSN( _LazuliScene_ ):
         
         super().__init__(simulation=simulation)
 
+
+class LazuliCalSpec( _LazuliScene_ ):
+    """ """
+    def __init__(self, name, background="zodi", 
+                 **kwargs):
+        """ """
+        from .extra.calspec import calspecsource
+        lbda, flux, _ = calspecsource.get_spectrum(name)
+        simulation = Simulation.from_source(lbda, flux, background=background,
+                                                **kwargs)
+        super().__init__(simulation=simulation)
+        
+        
 class LazuliTarget( _LazuliScene_ ):
     """ """
     def __init__(self, lbda, flux, mag=None, band="bessellb",
@@ -401,6 +415,6 @@ class LazuliTarget( _LazuliScene_ ):
                  **kwargs):
         """ """
         simulation = Simulation.from_source(lbda, flux, background=background,
-                                                mag=mag, band="bessellb",
+                                                mag=mag, band=band,
                                                 **kwargs)
         super().__init__(simulation=simulation)
