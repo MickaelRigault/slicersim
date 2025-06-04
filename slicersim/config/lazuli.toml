@@ -76,7 +76,7 @@ readout_mode = [16, 8, 0]  # (N * (M + D) - D) = 256 frames, exptime = 12'05''
 max_group = 64 	           # maximum number of groups per ramp
 variance_model = "Rauscher+07"  # Variance model (Kubik20 or Rauscher+07)
 dark = 2.8e-3              # Dark current [e-/s/px] 
-thermal_dark = 1e-3        # thermal induiced dark current [e-/s/px]
+thermal_dark = 1e-3        # thermal induced dark current [e-/s/px]
 # NOT IMPLEMENTED: dark current as function of detector temperature
 # cutoff = 1.7         # Cut-off wavelength [µm] (for dark current)
 # temperature = 0      # Temperature [K] (for dark current, 0 for none)

@@ -26,7 +26,8 @@ COLORS = {"target": "#283C48",
           "host":"#6E441E", 
           "ron": "#80886D", 
           "background": "#B08630", 
-          "dark": "#616B62", 
+          "dark": "#616B62",
+          "thermal_dark": "#7E8B80",
           "thermal":"#662515"
           }
 
@@ -517,31 +518,43 @@ class Simulation:
         :return: parameter value
         """
         if which is None:       # Get all of them
-            which = [ item
+            which = [item
                       for sublist in self._elements
                       for item in sublist ]
 
         if np.ndim(which):  # If a list, loop over elements
-            return { param: self.get_parameter(param, as_dict=False)
+            return {param: self.get_parameter(param, as_dict=False)
                      for param in which }
 
+        # allowing to provide origin__{bla}
+        
         # Extraction parameter
-        if which in self.extraction:
-            return self.extraction[which]
+        if which.startswith("extraction__") or which in self.extraction:
+            return self.extraction[ which.replace("extraction__", "") ]
 
         # Short cuts
-        if which == "ngroup":
+        if which in ["detector__ngroup", "ngroup"]:
             return self.detector.nmd[0]
 
         # Short cuts
-        if which == "nframe":
+        if which in ["detector__nframe", "nframe"]:
             return self.detector.nmd[0]
 
+        # Generic source__value term
+        if "__" in which:
+            try:
+                source, value = which.split("__")
+                instance = getattr(self, source)
+                return getattr(instance, value)
+            except:
+                pass # failed
+
+        
         # Otherwise, look at individual elements
         elements = ["scene", "spectrograph", "detector"]
         for element in elements:
-            instance = getattr(self, element)
-
+            instance = getattr(self, element)            
+            which = which.replace("__", ".") # original format. 
             if '.' in which:    # Composed key: key1.key2
                 k1, k2 = which.split('.')
                 if hasattr(instance, k1):
@@ -704,7 +717,7 @@ class Simulation:
         # 
         # component within the cube
         # 
-        AVAILABLE_SWITCHOFF = ["dark", "ron", "target", "host", "background","thermal"]
+        AVAILABLE_SWITCHOFF = ["effective_dark"] + self.variance_sources
         switch_off = np.atleast_1d(switch_off).tolist() # as list
 
         if np.any(effect_bool := [effect not in AVAILABLE_SWITCHOFF for effect in switch_off]):
@@ -713,32 +726,46 @@ class Simulation:
 
         #
         # switch off detector effect
-        # 
+        #
+        if "effective_dark" in switch_off:
+            switch_off.append("dark")
+            switch_off.append("thermal_dark")
+            switch_off = np.unique(switch_off).tolist()
+
+        # detector dark
         if "dark" in switch_off:
-            current_dark = self.get_parameter("dark")
-            current_thermal_dark = self.get_parameter("thermal_dark")            
-            self.update(detector__dark=0, detector__thermal_dark=0)            # Switch off dark
+            current_dark = self.get_parameter("detector__dark")
+            self.update(detector__dark = 0)            # Switch off dark
         else:
             current_dark = None
-            current_thermal_dark = None            
+        # thermal induced dark-like signal.
+        if "thermal_dark" in switch_off:
+            current_thermal_dark = self.get_parameter("detector__thermal_dark")
+            self.update(detector__thermal_dark = 0)    # Switch off dark            
+        else:
+            current_thermal_dark = None
             
         if "ron" in switch_off:
-            current_ron = self.get_parameter("ron")
-            self.update(detector__ron=0)             # Switch off ron
+            current_ron = self.get_parameter("detector__ron")
+            self.update(detector__ron=0)              # Switch off ron
         else:
             current_ron = None
 
         #
         # Get cubes
         #
+        cube_prop = dict(psf_profile=psf_profile,
+                             switch_off=switch_off,
+                             as_oversampled=as_oversampled, oversampling=oversampling,
+                             per_ramp=per_ramp) | kwargs
         
         # mla
         if self.spectrograph.type in ["mla", "spaxel", "spx"]:
-            sig_cube, var_cube = self._get_mla_cube_()
+            sig_cube, var_cube = self._get_mla_cube_(**cube_prop)
 
         # slicer            
         elif self.spectrograph.type in ["slicer", "slice"]:
-            sig_cube, var_cube = self._get_slicer_cube_()
+            sig_cube, var_cube = self._get_slicer_cube_(**cube_prop)
             
         # unknown not accepted.            
         else:
@@ -749,6 +776,7 @@ class Simulation:
         #
         if current_dark is not None:
             self.update(detector__dark=current_dark)
+            
         if current_thermal_dark is not None:
             self.update(detector__thermal_dark=current_thermal_dark)
             
@@ -858,6 +886,7 @@ class Simulation:
                                                    as_oversampled=as_oversampled,
                                                    oversampling=oversampling,
                                                    **kwargs)
+        
         band_sigs = self.spectrograph.cube_to_slice(cube_signal, lbda_range, func=np.nansum, squeeze=squeeze)
         band_vars = self.spectrograph.cube_to_slice(cube_variance, lbda_range, func=np.nansum, squeeze=squeeze)
     
@@ -1016,36 +1045,14 @@ class Simulation:
         
         # Detector elements
         # Dark
-        _, variance_nodark = self.get_band_flux(
-            lbda_range,
-            switch_off=["dark"], **prop)
-        dark_contrib = variance - variance_nodark
-
-
-        # RoN
-        _, variance_noron = self.get_band_flux(
-            lbda_range,
-            switch_off=["ron"], **prop)
-        ron_contrib = variance - variance_noron
-
-        # Scene elements
-        # Background
-        _, variance_nobkgd = self.get_band_flux(
-            lbda_range,
-            switch_off=["background"], **prop)
-        bkgd_contrib = variance - variance_nobkgd
-
-        # Target
-        _, variance_notarget = self.get_band_flux(
-            lbda_range,
-            switch_off=["target"], **prop)
-        target_contrib = variance - variance_notarget
-
-        # Thermal
-        _, variance_nothermal = self.get_band_flux(
-            lbda_range,
-            switch_off=["thermal"], **prop)
-        thermal_contrib = variance - variance_nothermal
+        variance_contribution = {}
+        for source in self.variance_sources:
+            _, variance_nosource = self.get_band_flux(
+                lbda_range,
+                switch_off=[source], **prop)
+            variance_contribution[source] = variance - variance_nosource
+            variance_contribution[f"frac_{source}"] = variance_contribution[source]/variance
+            
 
         return {
             "snr": signal / variance**0.5,
@@ -1054,12 +1061,7 @@ class Simulation:
             "obstime": self.observing_time,             # [s] (total observing time)
             "signal": signal,                           # [ADU]
             "variance": variance,                       # [ADU²]
-            "frac_dark": dark_contrib / variance,       # Detector dark
-            "frac_ron": ron_contrib / variance,         # Detector RoN
-            "frac_background": bkgd_contrib / variance, # Background
-            "frac_target": target_contrib / variance,   # Point source
-            "frac_thermal": thermal_contrib / variance, # Thermal
-        }
+            } | variance_contribution
 
     def estimate_variance_contribution_spectra(self, as_dataframe=True):
         """ Estimate different noise contributions to the total variance 
@@ -1071,7 +1073,7 @@ class Simulation:
         lbda, flux, variance = self.get_spectrum()
         estimates = {"lbda": lbda, "flux": flux, "variance": variance}
         
-        for effect in ["dark", "ron", "target", "background", "thermal"]:
+        for effect in self.variance_sources:
             _, _, variance_noeffect = self.get_spectrum( switch_off=[effect] )
             estimates[effect] = variance - variance_noeffect
     
@@ -1622,7 +1624,7 @@ class Simulation:
         # Loop over effects
         in_effect = []
         base = 0
-        for new_effect in ["dark", "ron", "target", "background", "thermal"]:
+        for new_effect in self.variance_sources:
             in_effect = in_effect+[new_effect]
             
             spectra_contrib = variance_contrib[in_effect].sum(axis=1)/variance
@@ -1662,7 +1664,7 @@ class Simulation:
             ax.set_ylabel("Flux [ADU]", fontsize="large")
         axsnr.set_ylabel("Signal / Noise", fontsize="large")
         axv.set_ylabel("variance contrib.", fontsize="medium")
-        axv.legend(loc=[0.01, 1.5], fontsize="small")
+        axv.legend(loc=[0.01, 1.2], fontsize="small", frameon=False)
         
         ax.set_title(f"z={self.get_parameter('redshift')} | c={self.get_parameter('c')}, x1={self.get_parameter('x1')} | t={self.get_times()['total_exptime']/60:.1f} min",
                     color="k", fontsize="small", loc="right")
@@ -1707,3 +1709,8 @@ class Simulation:
     def _elements(self): # test structure
         """ internal list of elements """
         return ["scene", "spectrograph", "detector", "extraction"]
+
+    @property
+    def variance_sources(self):
+        """ """
+        return ["dark", "thermal_dark", "ron", "target", "host", "background","thermal"]

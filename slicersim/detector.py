@@ -37,7 +37,7 @@ class Detector:
     #: Mutable parameters (list)
     mutable_parameters = ['ngroup',"nframe_per_group",
                           'nmd', 'tframe',
-                          'ron', 'gain', 'qe', 'dark', 'thermal_dark'
+                          'ron', 'gain', 'qe', 'dark', 'thermal_dark',
                           'saturation', 'variance_model']
     # Do not mutate px_size, fixed to 10 µm in spectrograph
 
@@ -61,7 +61,7 @@ class Detector:
         
         self.tframe = float(config["tframe"])      #: Frame time [s]
         self.dark = float(config["dark"])          #: Dark current [e-/s]
-        self.thermal_dark = float(config.get("thermal_dark", 0) )  #: thermal induived dark current [e-/s]
+        self.thermal_dark = float(config.get("thermal_dark", 0) )  #: thermal induced dark current [e-/s]
         self.ron = float(config["readout_noise"])  #: Read-Out Noise per frame [e-]
         self.gain = float(config["gain"])          #: Gain [ADU/e-]
 
@@ -472,7 +472,7 @@ class Detector:
     # ================ #
     @property
     def effective_dark(self):
-        """ sum of the detector dark current and that induiced by thermal radiation in the detector vicinity  """
+        """ sum of the detector dark current and that induced by thermal radiation in the detector vicinity  """
         return self.dark + self.thermal_dark
     
     @property
