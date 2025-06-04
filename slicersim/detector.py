@@ -37,7 +37,7 @@ class Detector:
     #: Mutable parameters (list)
     mutable_parameters = ['ngroup',"nframe_per_group",
                           'nmd', 'tframe',
-                          'ron', 'gain', 'qe', 'dark',
+                          'ron', 'gain', 'qe', 'dark', 'thermal_dark'
                           'saturation', 'variance_model']
     # Do not mutate px_size, fixed to 10 µm in spectrograph
 
@@ -61,6 +61,7 @@ class Detector:
         
         self.tframe = float(config["tframe"])      #: Frame time [s]
         self.dark = float(config["dark"])          #: Dark current [e-/s]
+        self.thermal_dark = float(config.get("thermal_dark", 0) )  #: thermal induived dark current [e-/s]
         self.ron = float(config["readout_noise"])  #: Read-Out Noise per frame [e-]
         self.gain = float(config["gain"])          #: Gain [ADU/e-]
 
@@ -88,7 +89,7 @@ class Detector:
     def __str__(self):
 
         s = f"Detector {self.name!r}:"
-        s += f"\n  {self.px_size:.0f} µm px, dark: {self.dark:.3f} e-/s, RoN: {self.ron:.0f} e-/frame"
+        s += f"\n  {self.px_size:.0f} µm px, dark: {self.dark:.3f} e-/s, thermal_dark: {self.thermal_dark:.3f} e-/s, RoN: {self.ron:.0f} e-/frame"
         if self.qe_name:
             s += f"\n  QE: {self.qe_name!r} (~{self.qe.mean():.2f} e-/ph)"
         else:
@@ -337,7 +338,7 @@ class Detector:
         # Variance estimators works with input flux in e-/s (not ph/s)
         flux_e = flux * qe  # [e-/s]
         variance_prop = dict(flux=flux_e, nmd=self.nmd, tframe=self.tframe,
-                             ron=self.ron, dark=self.dark, gain=self.gain)
+                             ron=self.ron, dark=self.effective_dark, gain=self.gain)
 
         # Variance estimate in [ADU²]
         if  variance_model in ["Rauscher07", "Rauscher+07"]:
@@ -349,7 +350,7 @@ class Detector:
             raise NotImplementedError(
                 f"Unknown variance model {self.variance_model!r}.")
 
-        signal = (flux_e + self.dark) * self.electronpers2ADU  # Total signal [ADU]
+        signal = (flux_e + self.effective_dark) * self.electronpers2ADU  # Total signal [ADU]
 
         # Detect and mask saturated pixels
         if saturation is not None:
@@ -368,7 +369,7 @@ class Detector:
             self.nsaturated_detpx = None
 
         if not withdark:  # Remove dark contribution
-            signal -= self.dark * self.electronpers2ADU  # [ADU]
+            signal -= self.effective_dark * self.electronpers2ADU  # [ADU]
 
         return signal, variance  # [ADU], [ADU²]
 
@@ -469,6 +470,11 @@ class Detector:
     # ================ #
     #   Properties     #
     # ================ #
+    @property
+    def effective_dark(self):
+        """ sum of the detector dark current and that induiced by thermal radiation in the detector vicinity  """
+        return self.dark + self.thermal_dark
+    
     @property
     def meta(self):
         """ metadata of the instance """

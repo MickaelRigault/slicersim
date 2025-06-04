@@ -716,9 +716,11 @@ class Simulation:
         # 
         if "dark" in switch_off:
             current_dark = self.get_parameter("dark")
-            self.update(detector__dark=0)            # Switch off dark
+            current_thermal_dark = self.get_parameter("thermal_dark")            
+            self.update(detector__dark=0, detector__thermal_dark=0)            # Switch off dark
         else:
             current_dark = None
+            current_thermal_dark = None            
             
         if "ron" in switch_off:
             current_ron = self.get_parameter("ron")
@@ -747,6 +749,8 @@ class Simulation:
         #
         if current_dark is not None:
             self.update(detector__dark=current_dark)
+        if current_thermal_dark is not None:
+            self.update(detector__thermal_dark=current_thermal_dark)
             
         if current_ron is not None:
             self.update(detector__ron=current_ron)
