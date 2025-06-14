@@ -13,8 +13,7 @@ class CalSpecSource():
     
     _ARCHIVE_URL = "https://archive.stsci.edu/hlsps/reference-atlases/cdbs/current_calspec/"
     def __init__(self):
-        """
-        Initialize the CalSpecSource instance.
+        """ Initialize the CalSpecSource instance.
 
         This method initializes the instance by downloading the file list of CalSpec sources.
         """

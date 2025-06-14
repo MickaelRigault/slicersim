@@ -191,6 +191,7 @@ class _LazuliScene_():
         -------
         instance
         """
+        from .iotools import get_config        
         # create the simulator
         config = get_config( **(cls._DEFAULT_CONFIG | kwargs) )
         simulation = Simulation.from_config(config, slicer=slicer)
@@ -383,6 +384,7 @@ class _LazuliScene_():
 # ============ #
 #  Specifics   #
 # ============ #
+# Supernovae
 class LazuliSN( _LazuliScene_ ):
     """ """
     def __init__(self, model="salt", slicer=True, **kwargs):
@@ -395,7 +397,7 @@ class LazuliSN( _LazuliScene_ ):
         
         super().__init__(simulation=simulation)
 
-
+# CalSpec Stars
 class LazuliCalSpec( _LazuliScene_ ):
     """ """
     def __init__(self, name, background="zodi", 
@@ -406,7 +408,14 @@ class LazuliCalSpec( _LazuliScene_ ):
         simulation = Simulation.from_source(lbda, flux, background=background,
                                                 **kwargs)
         super().__init__(simulation=simulation)
-        
+
+    @classmethod
+    def from_name(cls, name, **kwargs):
+        """ Construct the CalSpec Lazuli object from a CalSpec name """
+        # this is actually a wrapper of the init
+        return cls(name, **kwargs)
+
+# Generic object
 class LazuliTarget( _LazuliScene_ ):
     """ """
     def __init__(self, lbda, flux, mag=None, band="bessellb",

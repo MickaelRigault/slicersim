@@ -579,42 +579,6 @@ class Spectrograph:
         return nddata.block_reduce(image, block_size=(1, oversampling, oversampling), func=func)
 
     #  internal tricks 
-    def get_thermal_signal(self, domains=None, temperature=None, emissivity=None,
-                               as_cube=False, oversampling=None):
-        """ Mirror thermal signal [ph/s/spx/Δλ].
-
-        Parameters
-        ----------
-        domains:  
-            (nlbda, 2) list of spectral domains [Å] or spectral px by default
-
-        temperature: float
-            mirror temperature [K], or default one
-            
-        emissivity: float
-            mirror emissivity, or default one
-            
-        as_cube: bool
-            output format (3d cube of float or float)
-
-        Returns
-        -------
-        thermal signal in ph/s/spx/Δλ (3d cube or float, see as_cube)
-        """
-        if domains is None:
-            domains = np.vstack([self.lbda_edges[:-1],
-                                 self.lbda_edges[1:]]).T  # (nlbda, 2) [Å]
-
-        solid_angle = self.omega                  # Spx solid angle [sr]
-        signal = self.mirror.get_thermal_signal(domains,
-                                                solid_angle=solid_angle,
-                                                temperature=temperature,
-                                                emissivity=emissivity)
-        if as_cube:
-            signal = np.full((self.nlbda, *self.get_spectrograph_shape(oversampling=oversampling)),
-                                 signal[:, np.newaxis, np.newaxis])  # (nlbda, ny, nx)
-            
-        return signal                              # [ph/s/spx/Δλ]
 
     def cube_to_slice(self, cube, lbda_range, func=np.nansum, squeeze=False):
         """ get slices of the given cube. 
@@ -770,12 +734,30 @@ class Spectrograph:
     def get_spectral_dispersion(self):
         """ """
         raise NotImplementedError()
+
+    def get_lsf_dispersion(self):
+        """ get the gaussian LSF dispersion sigma in units of wavelength bin """
+        return 1
+
+    def apply_line_spread_function(self, fluxes, **kwargs):
+        """ """
+        from scipy.ndimage import gaussian_filter1d
+        
+        # wavelength is the first direction of fluxes
+        lsf_sigma = self.get_lsf_dispersion()
+        
+        # apply a gaussian filter to input fluxes ; wavelength axis is 0 by default
+        return gaussian_filter1d(fluxes, lsf_sigma, **({"axis":0} | kwargs) )
     
-    # - generate        
+    # ------------- #
+    #    generate   #
+    # ------------- #
+    # Point Souce
     def generate_point_source(self, spectrum, position=(0, 0),
                                   psf_profile="default",
                                   oversampling=None,
-                                  as_oversampled=False):
+                                  as_oversampled=False,
+                                  apply_lsf=True):
         """ Generate a photon flux cube from a point source spectrum.
 
         :param spectrum: point source spectrum [erg/s/cm²/Å]
@@ -791,10 +773,15 @@ class Spectrograph:
         # erg/s/cm²/Å / erg/ph * cm² * Å = ph/s
         flux = spectrum * self.flambda2photon      # (nlbda,) [ph/s]
 
-        return np.reshape(flux, (-1, 1, 1)) * psf  # Point source (nlbda, ny, nx)
+        psf_cube = np.reshape(flux, (-1, 1, 1)) * psf  # Point source (nlbda, ny, nx)
+        if apply_lsf:
+            psf_cube = self.apply_line_spread_function(psf_cube)
+            
+        return psf_cube
 
-                       
-    def generate_background(self, spectrum, oversampling=None):
+    # Flat Background    
+    def generate_background(self, spectrum, oversampling=None,
+                                apply_lsf=True):
         """ Generate a photon flux cube from uniform scene background spectrum.
 
         :param spectrum: uniform scene background spectrum [erg/s/cm²/Å/arcsec²]
@@ -804,14 +791,69 @@ class Spectrograph:
         # erg/s/cm²/Å/arcsec² * cm² * Å / erg/ph * arcsec² = ph/s/spx
         flux = spectrum * self.flambda2photon * self.spx_area
 
-        return np.full((self.nlbda, *self.get_spectrograph_shape(oversampling=oversampling) ), # y, x
-                       flux[:, np.newaxis, np.newaxis])  # (nlbda, ny, nx)
+        bkgd_cube = np.full((self.nlbda, *self.get_spectrograph_shape(oversampling=oversampling) ), # y, x
+                                flux[:, np.newaxis, np.newaxis])  # (nlbda, ny, nx)
+        if apply_lsf:
+            bkgd_cube = self.apply_line_spread_function(bkgd_cube)
+                                
+        return bkgd_cube
 
+    # Structured background
+    def generate_structured_background(self, *args, apply_lsf=True, **kwargs):
+        """ Generate a photon flux cube from uniform scene a structured background scene (e.g., host). """
+        raise NotImplementedError("generate_structured_background() has not been implemented.")
+
+    # Themal (pre-dispersor)
+    def generate_thermal_signal(self, domains=None, temperature=None, emissivity=None,
+                                as_cube=False, oversampling=None,
+                                apply_lsf=True):
+        """ Mirror thermal signal [ph/s/spx/Δλ].
+
+        Parameters
+        ----------
+        domains:  
+            (nlbda, 2) list of spectral domains [Å] or spectral px by default
+
+        temperature: float
+            mirror temperature [K], or default one
+            
+        emissivity: float
+            mirror emissivity, or default one
+            
+        as_cube: bool
+            output format (3d cube of float or float)
+
+        Returns
+        -------
+        thermal signal in ph/s/spx/Δλ (3d cube or float, see as_cube)
+        """
+        if domains is None:
+            domains = np.vstack([self.lbda_edges[:-1],
+                                 self.lbda_edges[1:]]).T  # (nlbda, 2) [Å]
+
+        solid_angle = self.omega                  # Spx solid angle [sr]
+        signal = self.mirror.get_thermal_signal(domains,
+                                                solid_angle=solid_angle,
+                                                temperature=temperature,
+                                                emissivity=emissivity)
+        if as_cube:
+            signal = np.full((self.nlbda, *self.get_spectrograph_shape(oversampling=oversampling)),
+                                 signal[:, np.newaxis, np.newaxis])  # (nlbda, ny, nx)
+                                 
+        if apply_lsf:
+            signal = self.apply_line_spread_function(signal)
+            
+        return signal                              # [ph/s/spx/Δλ]    
+    # Empty cube
     def get_empty_cube(self, filled=0, oversampling=None):
         """ """
+        # no apply LSF as zeros...
         ny, nx = self.get_spectrograph_shape(oversampling=oversampling)
         return filled * np.ones( (self.nlbda, ny, nx) )
 
+    # ------------ #
+    #   GETTER     #
+    # ------------ #
     def get_nea_spatial(self, position=(0,0), in_spaxels=True, guiding_sigma=None):
         """ noise equivalent area in unit of slice/spaxels 
 
