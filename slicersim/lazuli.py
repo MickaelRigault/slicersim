@@ -400,11 +400,13 @@ class LazuliSN( _LazuliScene_ ):
 # CalSpec Stars
 class LazuliCalSpec( _LazuliScene_ ):
     """ """
+    from .extra.calspec import calspecsource
+    _SOURCES = calspecsource
     def __init__(self, name, background="zodi", 
                  **kwargs):
         """ """
-        from .extra.calspec import calspecsource
-        lbda, flux, _ = calspecsource.get_spectrum(name)
+        
+        lbda, flux, _ = self._SOURCES.get_spectrum(name)
         simulation = Simulation.from_source(lbda, flux, background=background,
                                                 **kwargs)
         super().__init__(simulation=simulation)
