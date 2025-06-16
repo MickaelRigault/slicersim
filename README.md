@@ -161,12 +161,12 @@ that can be used to build 2D model or estimate the PSF noise equivalent area (ne
 - Check the origin of the variance sources (read-out noise, target poisson noise, dark-current etc)
 
 ## Advanced
-- Change the detector or spectrograph properties (“MACC/NMD modes")
-- 
+- Change the detector read-out mode or spectrograph spatial sampling
+- Access any property of any simulation element, and change them !
 
 ## Experts
-- 
-
+- Build you own “scene” 
+- Build your own configuration
 
 
 ***
