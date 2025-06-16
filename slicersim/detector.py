@@ -361,10 +361,10 @@ class Detector:
                     f"{self.nsaturated_detpx} detector px above {self.saturation} ADU.",
                     SaturationWarning)
                 if np.ndim(signal):
-                    signal[saturated] = np.NaN
-                    variance[saturated] = np.Inf
+                    signal[saturated] = np.nan
+                    variance[saturated] = np.inf
                 else:
-                    signal, variance = np.NaN, np.Inf
+                    signal, variance = np.nan, np.inf
         else:
             self.nsaturated_detpx = None
 
