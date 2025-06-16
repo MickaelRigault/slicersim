@@ -163,8 +163,10 @@ that can be used to build 2D model or estimate the PSF noise equivalent area (ne
 ## Advanced
 - Change the detector read-out mode or spectrograph spatial sampling
 - Access any property of any simulation element, and change them !
-
+- Access the detector QE, throughtput, effective spectral resolution...
+  
 ## Experts
+- Noise Equivalent area
 - Build you own “scene” 
 - Build your own configuration
 
