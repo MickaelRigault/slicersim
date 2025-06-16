@@ -156,8 +156,11 @@ that can be used to build 2D model or estimate the PSF noise equivalent area (ne
 # Tutorials
 
 ## Beginner
-- ETC: type Ia supernovae, calspec or any input spectrum
-- Specify the desired signal to noise and get simulated spectra
+- ETC: top level function for any input spectrum or a type Ia supernova.
+- LazuliTarget (Any target, Type Ia Supernovae, CalSpec):
+  - Specify the desired signal to noise
+  - get exposure time, and read-mode
+  - get simulated spectra
 - Check the origin of the variance sources (read-out noise, target poisson noise, dark-current etc)
 
 ## Advanced
