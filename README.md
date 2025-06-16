@@ -153,5 +153,22 @@ that can be used to build 2D model or estimate the PSF noise equivalent area (ne
 *(more to come..., see: `slicersim.profiles.get_2dpsf_nea()`)*
 
 ***
+# Tutorials
+
+## Beginner
+- ETC: type Ia supernovae, calspec or any input spectrum
+- Specify the desired signal to noise and get simulated spectra
+- Check the origin of the variance sources (read-out noise, target poisson noise, dark-current etc)
+
+## Advanced
+- Change the detector or spectrograph properties (“MACC/NMD modes")
+- 
+
+## Experts
+- 
+
+
+
+***
 # Credits
 Developped by M. Rigault ; _adapted from the original MLAPerf v:0.18.0 developed by Y. Copin and M. Rigault_
