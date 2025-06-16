@@ -130,7 +130,7 @@ def read_config(filename, verbose=False):
         return filename
         
     # list / array structure
-    if hasattr(filename, "__iter__") and type(filename) not in (str, np.string_):
+    if hasattr(filename, "__iter__") and type(filename) not in (str, np.bytes_):
         d = {}
         for filename_ in filename:
             d = merge_dicts(d, read_config(filename_))
