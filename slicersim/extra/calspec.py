@@ -54,11 +54,14 @@ class CalSpecSource():
         """
         if name in self.source.index:
             basename = self.source.loc[name]["basename"]
+            if type(basename) == pandas.Series: #multiple entries
+                basename = basename.iloc[-1] # take the last
         else:
             fetched = self.source[self.source.index.str.startswith(name)]
-            if len(fetched)>=2:
-                raise ValueError(f"multiple matches for {name=}: {list(fetched.index)}")
-            basename = fetched.iloc[0]["basename"]
+            if len(fetched) >= 2:
+                if fetched.index.nunique() > 1: # crash if different objects
+                    raise ValueError(f"multiple matches for {name=}: {list(fetched.index)}")
+            basename = fetched.iloc[-1]["basename"]
 
         return os.path.join(self._ARCHIVE_URL, basename)
 

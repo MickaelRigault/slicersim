@@ -200,8 +200,8 @@ class _LazuliScene_():
     # =============== #
     #   Methods       #
     # =============== #
-    def change_detector_mode(self, nmd=None, max_group=None):
-        """ change the configuration of the detector 
+    def change_detector_mode(self, nmd=None, max_group=None, nramp=None):
+        """ change the detector configuration
 
         Parameters
         ----------
@@ -223,7 +223,51 @@ class _LazuliScene_():
         
         if nmd is not None:
             self.simulation.update(nmd=nmd)
+
+        if nramp is not None:
+            self.simulation.update(nramp=nramp)
+
+    def change_spectrograph_mode(self, sampling=None, spatial_shape=None, spatial_scale=None):
+        """ change the detector configuration
+
+        Parameters
+        ----------
+        sampling : str
+            sampling mode to use:
+            - fine: well spatially sampled grid (~[58, 116] with 40mas spaxels)
+            - medium: coarser grid sampling (~[58, 116] with 80mas spaxels)
+        
+        spatial_shape: (float, float)
+            manually set the grid shape (e.g. [40,40])
+            = this is on top of sampling if any = 
+
+        spatial_scale: float, list
+            manually set spaxel size (in arcsec). 
+            if float this is assumed squared. if list, (x,y).
+            = this is on top of sampling if any = 
+        
+        Return
+        ------
+        None
+        """
+        if sampling is not None:
+            from .spectrograph import Spectrograph
+            config = Spectrograph._SAMPLING.get(sampling, None)
+            if config is None:
+                raise ValueError(f"cannot parse the given sampling {sampling=} | {Spectrograph._SAMPLING} expected")
+        else:
+            config = {}
+
+        # manual setting if any
+        if spatial_shape is None:
+            config["spatial_shape"] = spatial_shape
+
+        if spatial_scale is None:
+            config["spatial_scale"] = spatial_scale
             
+        return self.simulation.update(**config)
+        
+    # SETTER
     def set_properties(self, **kwargs):
         """ shortcut to change the pointsource properties """
         # list of mutable properties
@@ -321,6 +365,18 @@ class _LazuliScene_():
            nramp: number of ramps (1-ramp = 1-nmd)
         """
         return self.get_properties(["nmd", "nramp"])
+
+    def get_spectrograph_sampling(self):
+        """ get the current spectrograph sampling configuration """
+        from .spectrograph import Spectrograph
+        config = self.get_properties(["spatial_shape", "spatial_scale"])
+        sampling = "manual"
+        for this_sampling, this_config in Spectrograph._SAMPLING.items():
+            if config == this_config:
+                sampling = this_sampling
+                break
+            
+        return sampling, config        
 
     def get_spectrum(self, unit="adu", incl_error=True, **kwargs):
         """ get a realistic simulated spectrum given the current configurations.

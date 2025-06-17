@@ -165,6 +165,11 @@ class Spectrograph:
     """
     _SPECTROGRAPH_TYPE = "Unknown"
 
+    _SAMPLING = {"fine": {'spatial_shape': [58, 116], 'spatial_scale': 0.04},
+                 "medium": {'spatial_shape': [58, 116], 'spatial_scale': 0.08}
+                 }
+    
+
     #: Mutable parameters (list)
     mutable_parameters = ['spectral_range', 'spectral_resolution', # lbda
                           'xdisp_sigma_spectral', 'xdisp_sigma', # xdisp_profile,
