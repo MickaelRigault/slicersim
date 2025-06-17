@@ -86,27 +86,36 @@ ax.legend(frameon=False, fontsize="small")
 ax.set(xlabel=r"wavelength [$\AA$]", ylabel="flux [ADU]")
 ```
 ![readme example](docs/gallery/spectra_examples.png)
-***
-# LazuliObject
-
-The following Lazuli-objects are top level classes that ease simulation manipulation. 
-
-You can retreive simulated spectrum, compute the etc, change the target properties or the detector read-out mode.
-
-For more tools, you are invited to change the `.simulation` attribute that is the backbone of all slicersim simulations.
-
-- `LazuliSN(redshift, phase, [...])` : access the dedicate Supernovae Lazuli simulator
-- `LazuliCalSpec(name, [...])` : access the dedicate CalSpec star Lazuli simulator
-- `LazuliTarget(lbda, flux, [...])` : access a Lazuli simulator for any input spectrum.
-
   
 ***
-# Details on ETC
+# Tutorials
 
-See notebooks: 
- - [any spectrum](docs/notebooks/extra/etc_of_any_spectrum.ipynb)
- - [supernova](docs/notebooks/extra/etc_of_snia.ipynb)
+## Beginner
+- [ETC: top level function for any input spectrum or a type Ia supernova](docs/notebooks/beginner_ETC_lazulitarget.ipynb)
+- [LazuliTarget (Any target, Type Ia Supernovae, CalSpec)](docs/notebooks/beginner_LazuliTargets.ipynb):
+  - Specify the desired signal to noise
+  - get exposure time, and read-mode
+  - get simulated spectra
+- [Check the origin of the variance sources](docs/notebooks/beginner_variancesource.ipynb)
+  - origin of variance (read-out noise, target poisson noise, dark-current etc)
+  - switch off any contribution and see resulting variance
+  - scan all variance contributions, get the resulting dataframe and plot the result.
+- [Change properties of the target](beginner_change_properties.ipynb):
+  - change any supernovae properties
+  - change the magnitude of a loaded target
 
+## Advanced
+- [Change the detector read-out mode or spectrograph spatial sampling](advanced_change_detector_and_spectrograph.ipynb)
+  - change the detector mode: max-group, n-frames per group
+  - force the read-our mode (and see which SNR you eventually get)
+  - change the spectrograph sampling (fine and medium grid)
+- Access any property of any simulation element, and change them !
+- Access the detector QE, throughtput, effective spectral resolution...
+  
+## Experts
+- Noise Equivalent area
+- Build you own “scene” 
+- Build your own configuration
 ***
 # Lower-level: Simulator & config.
 
@@ -152,35 +161,7 @@ that can be used to build 2D model or estimate the PSF noise equivalent area (ne
 
 *(more to come..., see: `slicersim.profiles.get_2dpsf_nea()`)*
 
-***
-# Tutorials
 
-## Beginner
-- [ETC: top level function for any input spectrum or a type Ia supernova](docs/notebooks/beginner_ETC_lazulitarget.ipynb)
-- [LazuliTarget (Any target, Type Ia Supernovae, CalSpec)](docs/notebooks/beginner_LazuliTargets.ipynb):
-  - Specify the desired signal to noise
-  - get exposure time, and read-mode
-  - get simulated spectra
-- [Check the origin of the variance sources](docs/notebooks/beginner_variancesource.ipynb)
-  - origin of variance (read-out noise, target poisson noise, dark-current etc)
-  - switch off any contribution and see resulting variance
-  - scan all variance contributions, get the resulting dataframe and plot the result.
-- [Change properties of the target](beginner_change_properties.ipynb):
-  - change any supernovae properties
-  - change the magnitude of a loaded target
-
-## Advanced
-- [Change the detector read-out mode or spectrograph spatial sampling](advanced_change_detector_and_spectrograph.ipynb)
-  - change the detector mode: max-group, n-frames per group
-  - force the read-our mode (and see which SNR you eventually get)
-  - change the spectrograph sampling (fine and medium grid)
-- Access any property of any simulation element, and change them !
-- Access the detector QE, throughtput, effective spectral resolution...
-  
-## Experts
-- Noise Equivalent area
-- Build you own “scene” 
-- Build your own configuration
 
 
 ***
