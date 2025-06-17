@@ -165,9 +165,15 @@ that can be used to build 2D model or estimate the PSF noise equivalent area (ne
   - origin of variance (read-out noise, target poisson noise, dark-current etc)
   - switch off any contribution and see resulting variance
   - scan all variance contributions, get the resulting dataframe and plot the result.
+- Change properties of the target:
+  - change any supernovae properties
+  - change the magnitude of a loaded target
 
 ## Advanced
 - Change the detector read-out mode or spectrograph spatial sampling
+  - change the detector mode: max-group, n-frames per group
+  - force the read-our mode (and see which SNR you eventually get)
+  - change the spectrograph sampling (fine and medium grid)
 - Access any property of any simulation element, and change them !
 - Access the detector QE, throughtput, effective spectral resolution...
   
