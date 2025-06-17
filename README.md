@@ -109,8 +109,9 @@ ax.set(xlabel=r"wavelength [$\AA$]", ylabel="flux [ADU]")
   - change the detector mode: max-group, n-frames per group
   - force the read-our mode (and see which SNR you eventually get)
   - change the spectrograph sampling (fine and medium grid)
+- [Access the detector QE, throughtput, effective spectral resolution...](advanced_access_qe_spectral_resolution_etc.ipynb) 
 - Access any property of any simulation element, and change them !
-- Access the detector QE, throughtput, effective spectral resolution...
+
   
 ## Experts
 - Noise Equivalent area
