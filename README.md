@@ -165,7 +165,7 @@ that can be used to build 2D model or estimate the PSF noise equivalent area (ne
   - origin of variance (read-out noise, target poisson noise, dark-current etc)
   - switch off any contribution and see resulting variance
   - scan all variance contributions, get the resulting dataframe and plot the result.
-- Change properties of the target:
+- [Change properties of the target](beginner_change_properties.ipynb):
   - change any supernovae properties
   - change the magnitude of a loaded target
 
