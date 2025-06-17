@@ -104,8 +104,8 @@ For more tools, you are invited to change the `.simulation` attribute that is th
 # Details on ETC
 
 See notebooks: 
- - [any spectrum](docs/notebooks/etc_of_any_spectrum.ipynb)
- - [supernova](docs/notebooks/etc_of_snia.ipynb)
+ - [any spectrum](docs/notebooks/extra/etc_of_any_spectrum.ipynb)
+ - [supernova](docs/notebooks/extra/etc_of_snia.ipynb)
 
 ***
 # Lower-level: Simulator & config.
@@ -156,12 +156,15 @@ that can be used to build 2D model or estimate the PSF noise equivalent area (ne
 # Tutorials
 
 ## Beginner
-- ETC: top level function for any input spectrum or a type Ia supernova.
-- LazuliTarget (Any target, Type Ia Supernovae, CalSpec):
+- [ETC: top level function for any input spectrum or a type Ia supernova](docs/notebooks/beginner_ETC_lazulitarget.ipynb)
+- [LazuliTarget (Any target, Type Ia Supernovae, CalSpec)](docs/notebooks/beginner_LazuliTargets.ipynb):
   - Specify the desired signal to noise
   - get exposure time, and read-mode
   - get simulated spectra
-- Check the origin of the variance sources (read-out noise, target poisson noise, dark-current etc)
+- [Check the origin of the variance sources](docs/notebooks/beginner_variancesource.ipynb)
+  - origin of variance (read-out noise, target poisson noise, dark-current etc)
+  - switch off any contribution and see resulting variance
+  - scan all variance contributions, get the resulting dataframe and plot the result.
 
 ## Advanced
 - Change the detector read-out mode or spectrograph spatial sampling
