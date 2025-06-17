@@ -91,7 +91,9 @@ ax.set(xlabel=r"wavelength [$\AA$]", ylabel="flux [ADU]")
 # Tutorials
 
 ## Beginner
-- [ETC: top level function for any input spectrum or a type Ia supernova](docs/notebooks/beginner_ETC_lazulitarget.ipynb)
+- [ETC and simuated spectra: top level function](docs/notebooks/beginner_ETC_lazulitarget.ipynb)
+  - Exposure time calculator for any target or a supernovae
+  - get the simulated spectrum and variance
 - [LazuliTarget (Any target, Type Ia Supernovae, CalSpec)](docs/notebooks/beginner_LazuliTargets.ipynb):
   - Specify the desired signal to noise
   - get exposure time, and read-mode
