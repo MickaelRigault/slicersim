@@ -40,6 +40,8 @@ class Simulation:
     spectrograph and the detector to study their relative impact on
     the resulting target Signal-to-Noise Ratio.
     """
+    VARIANCE_SOURCES = ["dark", "thermal_dark", "ron", "target", "host", "background","thermal"]
+    
     def __init__(self,
                  scene=None,
                  spectrograph=None,
@@ -1734,7 +1736,7 @@ class Simulation:
         """ internal list of elements """
         return ["scene", "spectrograph", "detector", "extraction"]
 
-    @property
+    @property    
     def variance_sources(self):
         """ """
-        return ["dark", "thermal_dark", "ron", "target", "host", "background","thermal"]
+        return self.VARIANCE_SOURCES

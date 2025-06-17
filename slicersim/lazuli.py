@@ -311,6 +311,17 @@ class _LazuliScene_():
         
         return times["total_exptime"]
 
+    def get_readout_config(self):
+        """ get the current macc (nmd) mode and the number of ramps 
+        
+        Returns
+        -------
+        dict:
+           nmd: (ngroup, nframe_per_group, ndrop)
+           nramp: number of ramps (1-ramp = 1-nmd)
+        """
+        return self.get_properties(["nmd", "nramp"])
+
     def get_spectrum(self, unit="adu", incl_error=True, **kwargs):
         """ get a realistic simulated spectrum given the current configurations.
         
@@ -416,6 +427,14 @@ class LazuliCalSpec( _LazuliScene_ ):
         """ Construct the CalSpec Lazuli object from a CalSpec name """
         # this is actually a wrapper of the init
         return cls(name, **kwargs)
+
+    # ============== #
+    #   Properties   #
+    # ============== #
+    @property
+    def source_names(self):
+        """ list of available calspec sources """
+        return self._SOURCES.source.index.values.astype(str)
 
 # Generic object
 class LazuliTarget( _LazuliScene_ ):
