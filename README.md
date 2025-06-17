@@ -170,7 +170,7 @@ that can be used to build 2D model or estimate the PSF noise equivalent area (ne
   - change the magnitude of a loaded target
 
 ## Advanced
-- Change the detector read-out mode or spectrograph spatial sampling
+- [Change the detector read-out mode or spectrograph spatial sampling](advanced_change_detector_and_spectrograph.ipynb)
   - change the detector mode: max-group, n-frames per group
   - force the read-our mode (and see which SNR you eventually get)
   - change the spectrograph sampling (fine and medium grid)
