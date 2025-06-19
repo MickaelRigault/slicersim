@@ -259,12 +259,13 @@ class _LazuliScene_():
             config = {}
 
         # manual setting if any
-        if spatial_shape is None:
+        if spatial_shape is not None:
             config["spatial_shape"] = spatial_shape
 
-        if spatial_scale is None:
+        if spatial_scale is not None:
             config["spatial_scale"] = spatial_scale
-            
+
+        print(f"{config=}")
         return self.simulation.update(**config)
         
     # SETTER

@@ -14,7 +14,7 @@ __author__ = "Mickael Rigault <m.rigault@ip2i.in2p3.fr>"
 import warnings
 import numpy as np
 from astropy import units
-
+from .thermal import ThermalRadiation
 
 class Mirror():
     """
@@ -97,52 +97,48 @@ class Mirror():
     # --------- #
     #  GETTER   #
     # --------- #
-    def get_thermal_signal(self, domains, solid_angle,
-                               temperature=None, emissivity=None):
+    def get_thermal_signal(self, lbda_bin, solid_angle,
+                               temperature=None, emissivity=None,
+                               as_sum=True):
         """ Mirror thermal signal [ph/s/spx/Δλ].
 
         Parameters
         ----------
-        domains: array
-            (nlbda, 2) list of spectral domains [Å] or spectral px by default
+        lbda_bin : array-like
+            The wavelength bin(s) in Angtrom. Can be a 1D or 2D array.
+            - 1D: [lbda_min, lbda_max]
+            - 2D: [[lbda_min, lbda_max],[lbda_min, lbda_max],...]
 
-        solid_angle: float
+        solid_angle : float
             spaxel solid angle [sr].
 
-        temperature: float
-            mirror temperature [K], or default one
+        temperature : float, None
+            specify mirror(s) temperature(s) [K]. If None, self.temperature used.
             
-        emissivity: float
-            mirror emissivity, or default one
-            
-        as_cube: bool
-            output format (3d cube of float or float)
+        emissivity: float, None
+            specify mirror(s) emissivity(s), If None, self.emissivity used.
+        
+        as_sum : bool
+            if multiple mirrors, should this be the sum of all contribution (as_sum=True)
+            or the list of (False).
 
         Returns
         -------
-        thermal signal in ph/s/spx/Δλ
+        float, array
+            thermal signal(s) [ph/s/spx/Δλ] 
+            # see as_sum for output format.
         """
-
-        from .thermal import thermal_signal
-
-        if temperature is None:
-            temperature = self.temperature  # Mirror temperature [K]
-        temperature = np.atleast_1d(temperature)
+        thermal_radiation = ThermalRadiation(self.temperature, self.emissivity)
         
-        if emissivity is None:
-            emissivity = self.emissivity    # Mirror emissivity
-        emissivity = np.atleast_1d(emissivity)
-
+        signals = thermal_radiation.get_signal(solid_angle,           # expectedin in [sr]
+                                               area = self.surface,    # Collecting area [m²]
+                                               lbda_bin=lbda_bin       # expectedin in [A]
+                                              )
+        
         # sum over 1 element if only 1 temperature
-        signal = np.sum([ thermal_signal(solid_angle,
-                                    self.surface,    # Collecting area [m²]
-                                    domains * 1e-4,  # Spectral bin [µm]
-                                    temperature_,
-                                    emissivity_)
-                        for temperature_, emissivity_ in zip(temperature, emissivity)
-                            ], axis=0)
-
-        return signal                              # [ph/s/spx/Δλ]
+        if as_sum:
+            return np.sum(signals, axis=0)
+        return signals                              # [ph/s/spx/Δλ]
 
     def get_airy_radius(self, lbda, norm_scale=1):
         """ returns the airy disk first radius caused by the primary mirror 
@@ -371,4 +367,3 @@ class Mirror():
     def nelements(self):
         """ numer of mirrors """
         return len( np.atleast_1d(self.temperature) )
-    

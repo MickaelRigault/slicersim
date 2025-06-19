@@ -17,30 +17,14 @@ Astrophysical scene is handled by :class:`mlaperf.scene.Scene` and detector by
 __author__ = "Mickael Rigault <m.rigault@ip2i.in2p3.fr>, Yannick Copin <y.copin@ip2i.in2p3.fr>"
 
 import warnings
-from dataclasses import dataclass
 import numpy as np
 from copy import deepcopy
 import astropy.units as u
 
-from .utils import integ_gaussian2D_erf, recursive_get
+from .utils import recursive_get
 from . import iotools
 from .mirrors import Mirror
 from .profiles import build_pixels
-
-_fwhm_ratio_airynorm = 2.35/0.8
-
-@dataclass
-class Camera:
-    """
-    Camera data class.
-    """
-
-    acceptance: float = 0.      #: Camera acceptance angle [rad]
-    speed: float = np.inf       #: Camera speed (f-number)
-
-    def __str__(self):
-
-        return f"Camera: {np.degree(self.acceptance)} deg, f/{self.speed:.0f}"
 
 # ================ #
 #                  #
@@ -89,7 +73,6 @@ def build_lbda(spectral_range, spectral_resolution=None, wsol=None, dsol=None):
         
     return lbda, lbda_edges
 
-
 def build_lbda_from_config(config):
     """ """
     spectral_range = np.asarray(config["spectral_range"], dtype="float32")
@@ -123,7 +106,6 @@ def build_lbda_from_config(config):
     lbda, lbda_edges = build_lbda(spectral_range, wsol=wsol, dsol=dsol,
                                     spectral_resolution=spectral_resolution)
     return lbda, lbda_edges
-
 
 def build_spaxels_from_config(config):
     """ spaxel coordinates [spx] from MLA shape.
@@ -169,14 +151,12 @@ class Spectrograph:
                  "medium": {'spatial_shape': [58, 116], 'spatial_scale': 0.08}
                  }
     
-
     #: Mutable parameters (list)
     mutable_parameters = ['spectral_range', 'spectral_resolution', # lbda
                           'xdisp_sigma_spectral', 'xdisp_sigma', # xdisp_profile,
                           'psf_sigma_spectral', 'guiding_sigma', # psf_profile
                           'spatial_scale','spatial_shape' , # spaxels
-                          'spx_scale','spx_shape' , # spaxels                          
-                          #'camera.acceptance', 'camera.speed',
+                          'spx_scale','spx_shape' , # spaxels
                           ]
 
     def __init__(self, lbda, mirror,
@@ -274,40 +254,6 @@ class Spectrograph:
     def build_lbda_from_config(config):
         return build_lbda_from_config(config)
         
-    def __str__(self):
-
-        wmin, wmax = self.spectral_range
-        avwres0 = self.effective_resolution(npx=2, sigma=0, average=True)
-        avwres = self.effective_resolution(npx=2, average=True)
-        wres = self.effective_resolution(npx=2)
-        imin = np.argmin(wres)
-
-        s = f"Spectrograph {self.name!r}:"
-        s += f"\n  Spectral range: {wmin:_.0f}-{wmax:_.0f} Å, {self.nlbda} px"
-        if self.wsol is not None:
-            s += "\n  Spectral dispersion: " \
-                f"{self.dispersion_law!r} ×{self.dispersion_scale} (R0~{avwres0:.0f})"
-        else:
-            s += f"\n  Fixed resolving power (2 px): {avwres0:.0f}"
-        s += f"\n  Spectral PSF: chromatic σ={self.xdisp_sigma_spectral:.2f} px at 1 µm, "
-        s += f"x-disp. σ={self.xdisp_sigma:.2f} px"
-        s += "\n  Resolving power (2-px + σ): " \
-            f"R~{avwres:.0f} (λ-average), " \
-            f"min={wres[imin]:.0f} at {self.lbda[imin]:_.0f} Å"
-        shape = "×".join([ str(i) for i in self.spatial_shape ])
-        s += f"\n  MLA: {shape} spx of {self.spx_spatial_scale*1e3:.0f} mas"
-        s += f"\n  Spatial PSF: chromatic σ={self.psf_sigma_spectral*1e3:.0f} mas at 1 µm, "
-        s += f"guiding σ={self.guiding_sigma*1e3:.0f} mas"
-
-        if self.throughput_name:
-            s += (f"\n  Total throughput: {self.throughput_name!r} "
-                  f"(~{self.throughput.mean():.0%})")  # px-average
-        else:
-            s += f"\n  Total throughput: constant {self.throughput:.0%}"
-
-        s += "\n  " + str(self.mirror)
-
-        return s
 
     def update(self, reset_others=False, **kwargs):
         """ Update any mutable attribute of the spectrograph. """
@@ -809,14 +755,14 @@ class Spectrograph:
         raise NotImplementedError("generate_structured_background() has not been implemented.")
 
     # Themal (pre-dispersor)
-    def generate_thermal_signal(self, domains=None, temperature=None, emissivity=None,
+    def generate_thermal_signal(self, lbda_bin=None, temperature=None, emissivity=None,
                                 as_cube=False, oversampling=None,
                                 apply_lsf=True):
         """ Mirror thermal signal [ph/s/spx/Δλ].
 
         Parameters
         ----------
-        domains:  
+        lbda_bin:  
             (nlbda, 2) list of spectral domains [Å] or spectral px by default
 
         temperature: float
@@ -832,15 +778,15 @@ class Spectrograph:
         -------
         thermal signal in ph/s/spx/Δλ (3d cube or float, see as_cube)
         """
-        if domains is None:
-            domains = np.vstack([self.lbda_edges[:-1],
-                                 self.lbda_edges[1:]]).T  # (nlbda, 2) [Å]
+        if lbda_bin is None:
+            lbda_bin = np.vstack([self.lbda_edges[:-1],
+                                  self.lbda_edges[1:]]).T  # (nlbda, 2) [Å]
 
-        solid_angle = self.omega                  # Spx solid angle [sr]
-        signal = self.mirror.get_thermal_signal(domains,
-                                                solid_angle=solid_angle,
+        signal = self.mirror.get_thermal_signal(lbda_bin,
+                                                solid_angle=self.omega,     # Spx solid angle [sr]
                                                 temperature=temperature,
                                                 emissivity=emissivity)
+        # output formating
         if as_cube:
             signal = np.full((self.nlbda, *self.get_spectrograph_shape(oversampling=oversampling)),
                                  signal[:, np.newaxis, np.newaxis])  # (nlbda, ny, nx)
@@ -1138,15 +1084,13 @@ class Spectrograph:
             spx_spatial_scale_y, spx_spatial_scale_x = self.spx_spatial_scale
         return spx_spatial_scale_y * spx_spatial_scale_x
         
-
-
     @property
     def spx_spatial_scale(self):
         """ """
         spx_spatial_scale = self._spaxels.get("spx_scale", None)
         if spx_spatial_scale is None:
             from .profiles import airyradius_to_gaussiansigma
-            print("Setting spaxels scale from airy")
+            warnings.warn("Setting spaxels scale from airy")
             radius_airy = self.mirror.get_airy_radius(self.lbda_ref)
             spx_spatial_scale = airyradius_to_gaussiansigma(radius_airy, on="fwhm")
             
@@ -1176,14 +1120,17 @@ class Spectrograph:
     @property
     def omega(self):
         """ spaxel solid angle [sr]. """
-        hspx = self.spx_spatial_scale / 2  # [arcsec]
-        hspx *= 4.84813681109536e-06   # [rad]
+        hspx = self.spx_spatial_scale * 4.84813681109536e-06   # [rad]
         if np.ndim(hspx)==0:
             hspx_y = hspx_x = hspx
         else:
             hspx_y, hspx_x = hspx
-        
-        return np.pi * np.sin(hspx_y) * np.sin(hspx_x)
+
+        # Case: square | could remove np.sin that has no impact
+        return np.sin(hspx_y) * np.sin(hspx_x)
+    
+        # Case: circular            
+        # return np.pi * np.sin(hspx_y/2) * np.sin(hspx_x/2)
 
     @property
     def skyarea(self):

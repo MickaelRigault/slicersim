@@ -1,175 +1,42 @@
 """
 Computation of thermal signal (solid angles, black body spectrum).
 """
-
-__author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
-
-
+from scipy.integrate import quad_vec
+from astropy import constants
 import numpy as np
 
-def cos2arctan(x):
-    r"""
-    .. math::
 
-       \cos^2(\arctan x) = \frac{1}{1 + x^2}.
-    """
+def get_detector_dark_current(lbda_cutoff, temperature, px_size, type='HgCdTe'):
+    """ Calculate the dark current (thermal noise) for a detector.
 
-    return 1/(1 + x**2)
+    This function computes the dark current based on the detector's cutoff wavelength,
+    temperature, pixel size, and material type. The calculation follows models described
+    in the literature for HgCdTe and InAs detectors.
 
-def sinarctan(x):
-    r"""
-    .. math::
+    Parameters
+    ----------
+    lbda_cutoff : float
+        Detector cut-off (upper) wavelength in micrometers [µm].
 
-       \sin(\arctan x) = \frac{x}{\sqrt{1 + x^2}}.
-    """
+    temperature : float
+        Detector temperature in Kelvin [K].
 
-    return x / (1 + x**2)**0.5
+    px_size : float
+        Pixel size in micrometers [µm].
 
-def omega_camera(cam_accept):
-    r"""
-    Solid angle of camera:
+    type : str, optional
+        Detector material type, either 'HgCdTe' or 'InAs' (default is 'HgCdTe').
 
-    .. math::
+    Returns
+    -------
+    float
+        Dark current in electrons per second per pixel [e/s/px].
 
-       \Omega &= 2\pi\int_{\pi}^{\theta_1} \sin\theta\,\cos\theta\,\d\theta \\
-              &= \pi\left(1 - \cos^2(\arctan x_1)\right)
-
-    with :math:`\alpha` camera acceptance (maximum incidence angles),
-    :math:`x_1 = 1/(2 \alpha)`, :math:`\theta_1 = \arctan x_1` and
-    :math:`\cos^2(\arctan x) = 1 / (1 + x^2)`.
-
-    :param cam_acceptance: camera acceptance
-    :return: camera solid angle
-    """
-
-    omega = np.pi * (1 - cos2arctan(0.5 / cam_accept))
-
-    return omega
-
-def omega_pupil(cam_speed, cam_accept):
-    r"""
-    Solid angle of pupil:
-
-    .. math::
-
-       \Omega &= 2\pi\int_{\theta_2}^{\theta_1} \cos\theta\,\d\theta \\
-              &= 2\pi\left(\sin(\arctan x_1) - \sin(\arctan x_2)\right)
-
-    with :math:`\alpha` camera acceptance, :math:`\beta` camera speed,
-    :math:`x_1 = 1/(2 \alpha)`, :math:`x_2 = 1/(2 \beta)`,
-    :math:`\theta_i = \arctan x_i` and
-    :math:`\sin(\arctan x) = x / \sqrt{1 + x^2}`.
-
-    :param cam_speed: camera speed
-    :param cam_acceptance: camera acceptance
-    :return: solid angle
-    """
-
-    sol = sinarctan(0.5/cam_accept) - sinarctan(0.5/cam_speed)
-
-    return 2*np.pi * sol
-
-def omega_slit(cam_speed):
-    r"""
-    Solid angle of the slit:
-
-    .. math::
-
-       \Omega &= 2\pi\int_{0}^{\theta_2} \cos\theta\,\d\theta \\
-              &= 2\pi\sin(\arctan x_2)
-
-    with :math:`\beta` camera speed, :math:`x_2 = 1/(2 \beta)`,
-    :math:`\theta_2 = \arctan x_2` and
-    :math:`\sin(\arctan x) = x / \sqrt{1 + x^2}`.
-
-    :param cam_speed: camera speed
-    :return: solid angle
-    """
-
-    sol = sinarctan(0.5/cam_speed)
-
-    return 2*np.pi * sol
-
-def omega_tel(half_spx):
-    r"""
-    Solid angle of telescope:
-
-    .. math::
-
-       \Omega &= 2\pi\int_{0}^{\theta_0} \sin\theta\,\cos\theta\,\d\theta \\
-              &= \pi\sin^2(\theta_0)
-
-    with :math:`\theta_0` the semi angular size of a spaxel.
-
-    :param half_spx: *half* angular size of a spaxel [rad]
-    :return: solid angle
-    """
-
-    omega = np.pi * np.sin(half_spx)**2
-
-    return omega
-
-def nphot_BB(lbda_mu, T):
-    r"""
-    Black-body spectral radiance [photon/s/sr/m²/µm].
-
-    Return the number of photon/s/sr/m²/µm for a given wavelength [µm] and
-    temperature [K]:
-
-    .. math::
-
-       BB_T^{\gamma}(\lambda) = \frac{2c}{\lambda^4}
-       \left[\exp\left(\frac{hc}{\lambda k_B T}\right) - 1\right]^{-1}
-    """
-
-    c = 299_792_458           # [m/s]
-    hc_over_kB = 0.014387774  # [K.m]
-    l = 2 * c / ((lbda_mu * 1e-6)**4 *
-                 (np.exp(hc_over_kB / (lbda_mu*1e-6 * T)) - 1))  # [ph/s/sr/m²/m]
-
-    return l * 1e-6  # [photon/s/sr/m²/µm]
-
-def thermal_signal(omega, area, spectral_band, temperature, emissivity):
-    r"""
-    Thermal signal [photons/s].
-
-    .. math::
-
-       f = S\Omega\,E \times
-       \int_{\lambda_1}^{\lambda_2} BB_T^{\gamma}(\lambda)\,\d\lambda
-
-    :param omega: solid angle [sr]
-    :param area: area [m²]
-    :param spectral_band: spectral band [µm] (could be array of)
-    :param temperature: temperature [K]
-    :param emissivity: emissivity
-    """
-
-    from scipy.integrate import quad
-
-    if np.ndim(spectral_band) == 1:
-        wmin, wmax = spectral_band
-        flux, _ = quad(nphot_BB, wmin, wmax, args=(temperature,))
-    elif np.ndim(spectral_band) == 2:
-        flux = np.asarray([quad(nphot_BB, wmin, wmax, args=(temperature,))[0]
-                               for wmin, wmax in spectral_band])
-    else:
-        raise ValueError(f"ndim of input spectral_band must be 1 or 2 {np.ndim(spectral_band)=} ")
-    
-    return flux * omega * area * emissivity  # [photon/s] integrated over bandwidth
-
-def dark_current(det_cutoff, det_temp, px_size, type='HgCdTe'):
-    """
-    Dark current (thermal noise) model [e/s/px].
-
-    :param float det_cutoff: detector cut-off (upper) wavelength [µm]
-    :param float det_temp: detector temperature [K]
-    :param float px_size: pixel size [µm]
-    :param str type: HgCdTe or InAs
-    :return: dark current [e/s/px]
-
-    References: Tennant et al. 2008JEMat..37.1406T; Tennant,
-    2010JEMat..39.1030T; O’Loughlin, PhD 2020
+    References
+    ----------
+    Tennant et al. 2008, Journal of Electronic Materials, 37, 1406T
+    Tennant, 2010, Journal of Electronic Materials, 39, 1030T
+    O'Loughlin, PhD Thesis, 2020
     """
 
     if type == 'HgCdTe':
@@ -179,6 +46,7 @@ def dark_current(det_cutoff, det_temp, px_size, type='HgCdTe'):
         C = -1.16239134096245
         lamb_scale = 0.200847413564122     # [µm]
         lamb_threshold = 4.63513642316149  # [µm]
+        
     elif type == 'InAs':
         # O'Loughlin parameters for InAs
         J0 = 5315.034051              # [A/cm²]
@@ -196,9 +64,191 @@ def dark_current(det_cutoff, det_temp, px_size, type='HgCdTe'):
     apx = (px_size * 1e-4)**2     # [cm²]
 
     lamb_e = np.where(
-        det_cutoff >= lamb_threshold,
-        det_cutoff,
-        det_cutoff / (1 - (lamb_scale/det_cutoff - lamb_scale/lamb_threshold)**Pwr))
-    J = J0 * np.exp((C * 1.24 * q / (lamb_e * kB * det_temp)))  # [A/cm²]
+        lbda_cutoff >= lamb_threshold,
+        lbda_cutoff,
+        lbda_cutoff / (1 - (lamb_scale/lbda_cutoff - lamb_scale/lamb_threshold)**Pwr))
+    J = J0 * np.exp((C * 1.24 * q / (lamb_e * kB * temperature)))  # [A/cm²]
 
     return J * apx * amp2e      # [e/s/px]
+
+
+
+
+class ThermalRadiation():
+    """A class to simulate the thermal radiation of telescope and instrument components.
+
+    This class calculates the thermal radiation signal based on the black body radiation
+    principles. It allows for the computation of photon flux within specified wavelength
+    ranges, taking into account the temperature and emissivity of the components.
+
+    Attributes
+    ----------
+    temperature : float, numpy.ndarray
+        The temperature of the components in Kelvin.
+        
+    emissivity : float, numpy.ndarray
+        The emissivity of the components.
+    """
+    def __init__(self, temperature, emissivity):
+        """ Initialize the ThermalRadiation class with temperature and emissivity.
+
+        Parameters
+        ----------
+        temperature : float, numpy.ndarray
+            The temperature of the components in Kelvin.
+        
+        emissivity : float, numpy.ndarray
+            The emissivity of the components.
+        """
+        self._temperature = np.atleast_1d(temperature)[:, None].astype(float)
+        self._emissivity = np.atleast_1d(emissivity)[:, None].astype(float)
+
+    def get_signal(self, solid_angle, area, lbda_bin):
+        """ Calculate the thermal radiation signal for given parameters.
+
+        Parameters
+        ----------
+        solid_angle : float
+            The solid angle in steradians.
+            
+        area : float
+            The area in square meters.
+            
+        lbda_bin : array-like
+            The wavelength bin(s) in Angtrom. Can be a 1D or 2D array.
+            - 1D: [lbda_min, lbda_max]
+            - 2D: [[lbda_min, lbda_max],[lbda_min, lbda_max],...]
+
+        Returns
+        -------
+        float or numpy.ndarray
+            The calculated flux signal in photons per second, integrated over the bandwidth.
+        """
+        # allows [[lbda_min, lbda_max], [lbda_min, lbda_max], ...]
+        int_flux = self.get_integrated_blackbody_photonflux(lbda_bin)
+
+        # int_flux in [photon/s / sr /m²]
+        return int_flux * solid_angle * area * self.emissivity  # [photon/s] integrated over bandwidth
+
+    def get_blackbody_photonflux(self, lbda):
+        """ Calculate the blackbody photon flux for a given wavelength.
+
+        Parameters
+        ----------
+        lbda : float, numpy.array
+            The wavelength in Angstrong.
+
+        Returns
+        -------
+        float, numpy.array
+            The blackbody photon flux in [photon/s/sr/m²/A]
+        """
+        return self._blackbody_photonflux(lbda, self.temperature)
+        
+    def get_integrated_blackbody_photonflux(self, lbda_bin, allow_trapez=True):
+        """ Calculate the blackbody photon flux intergrated over given wavelength bins.
+        
+        Parameters
+        ----------
+        lbda_bin : array-like
+            The wavelength bin(s) in Angtrom. Can be a 1D or 2D array.
+            - 1D: [lbda_min, lbda_max]
+            - 2D: [[lbda_min, lbda_max],[lbda_min, lbda_max],...]
+            
+        allow_trapez : bool
+            Whether to allow the use of trapez to approximate the integral.
+            This is used only for 2D-lbda_bin to significantly speed the code.
+            (per-mil level approximation error).
+        
+        Returns
+        -------
+        float, numpy.array
+            The blackbody photon flux integrated in given band in [photon/s/sr/m²]
+        """
+        # 1d-boundaries: let's use exact method.
+        if np.ndim(lbda_bin) == 1: # 
+            int_flux = self._get_flux1d(self.temperature, *lbda_bin)
+            
+        elif np.ndim(lbda_bin) == 2:
+            # trapeze method: muuuuch faster. Correct at the per-mil level.
+            if allow_trapez:
+                # approximated method, but vectorized.
+                delta_bin = np.diff(lbda_bin).squeeze()
+                lbda_mid = np.mean(lbda_bin, axis=-1)
+                int_flux = self.get_blackbody_photonflux(lbda_mid) * delta_bin
+                
+            else:
+                # exact method, but require for loop
+                int_flux = np.hstack( [self._get_flux1d(self.temperature, lbda_min, lbda_max)
+                                           for lbda_min, lbda_max in lbda_bin] )
+
+        else:
+            raise ValueError(f"ndim of input lbda_bin must be 1 or 2 {np.ndim(lbda_bin)=} ")
+        
+        return int_flux
+
+    # ------------ #
+    #  Internal    #
+    # ------------ #    
+    @classmethod
+    def _get_flux1d(cls, temperature, lbda_min, lbda_max):
+        """ Calculate the flux within a specified wavelength range.
+
+        Parameters
+        ----------
+        temperature : float
+            The temperature in Kelvin.
+            
+        lbda_min : float
+            The minimum wavelength in Angstrong.
+            
+        lbda_max : float
+            The maximum wavelength in Angstrong.
+
+        Returns
+        -------
+        float
+            The calculated flux within the specified wavelength range. [photon/s/sr/m²]
+        """
+        # quad_vec is the vectorized version of quad. Needed as temperature could be an array
+        flux, _ = quad_vec(cls._blackbody_photonflux, lbda_min, lbda_max, args=(temperature,))
+        return flux
+
+    @staticmethod
+    def _blackbody_photonflux(lbda, temperature):
+        """ Calculate the blackbody photon flux for a given wavelength and temperature.
+
+        Parameters
+        ----------
+        lbda : float
+            The wavelength in Angstrong.
+        temperature : float
+            The temperature in Kelvin.
+
+        Returns
+        -------
+        float
+            The blackbody photon flux in photons per second per steradian per square meter per micrometer.
+        """
+        c = constants.c.value     # [m/s]
+        hc_over_kB = ( (constants.h*constants.c) / (constants.k_B) ).value  # [K.m]
+        
+        l = 2 * c / ((lbda * 1e-10)**4 *
+                (np.exp(hc_over_kB / (lbda*1e-10 * temperature)) - 1))  # [ph/s/sr/m²/m]
+        return l * 1e-10  # [photon/s/sr/m²/A]
+
+    # ============ #
+    #  Properties  #
+    # ============ #
+    @property
+    def temperature(self):
+        """Get the temperature [in K] of the components """
+        return self._temperature
+
+    @property
+    def emissivity(self):
+        """Get the emissivity of the components. """
+        return self._emissivity
+
+
+    
