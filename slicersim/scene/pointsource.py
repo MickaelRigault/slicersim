@@ -410,10 +410,10 @@ class PointSource( SceneElement ):
                     model_func = source_to_modelfunc(config["source"])
                 else: # assume it's a spectrum
                     mag = config.get("mag", None)
-                    band = config.get("band", None)
+                    band = config.get("band", "bessellb")
                     lbda_, flux_ = source_
                     return cls.from_spectrum(lbda_, flux_,
-                                              mag=mag, band="bessellb",
+                                              mag=mag, band=band,
                                              position=position, meta=config.copy() ) 
             else:
                 raise ValueError("neither 'model_func' nor 'source' in the config. One is needed.")

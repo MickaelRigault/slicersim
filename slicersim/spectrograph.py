@@ -757,7 +757,7 @@ class Spectrograph:
     # Themal (pre-dispersor)
     def generate_thermal_signal(self, lbda_bin=None, temperature=None, emissivity=None,
                                 as_cube=False, oversampling=None,
-                                apply_lsf=True):
+                                apply_lsf=True, as_sum=True):
         """ Mirror thermal signal [ph/s/spx/Δλ].
 
         Parameters
@@ -774,27 +774,32 @@ class Spectrograph:
         as_cube: bool
             output format (3d cube of float or float)
 
+        as_sum : bool
+            if multiple mirrors, should this be the sum of all contribution (as_sum=True)
+            or the list of (False).
+
         Returns
         -------
         thermal signal in ph/s/spx/Δλ (3d cube or float, see as_cube)
         """
         if lbda_bin is None:
-            lbda_bin = np.vstack([self.lbda_edges[:-1],
-                                  self.lbda_edges[1:]]).T  # (nlbda, 2) [Å]
+            lbda_bin = self.lbda_bin
 
         signal = self.mirror.get_thermal_signal(lbda_bin,
                                                 solid_angle=self.omega,     # Spx solid angle [sr]
                                                 temperature=temperature,
-                                                emissivity=emissivity)
+                                                emissivity=emissivity,
+                                                    as_sum=as_sum)
         # output formating
         if as_cube:
             signal = np.full((self.nlbda, *self.get_spectrograph_shape(oversampling=oversampling)),
-                                 signal[:, np.newaxis, np.newaxis])  # (nlbda, ny, nx)
+                                 signal[..., np.newaxis, np.newaxis])  # (nlbda, ny, nx)
                                  
         if apply_lsf:
             signal = self.apply_line_spread_function(signal)
             
-        return signal                              # [ph/s/spx/Δλ]    
+        return signal                              # [ph/s/spx/Δλ]
+        
     # Empty cube
     def get_empty_cube(self, filled=0, oversampling=None):
         """ """
@@ -802,6 +807,9 @@ class Spectrograph:
         ny, nx = self.get_spectrograph_shape(oversampling=oversampling)
         return filled * np.ones( (self.nlbda, ny, nx) )
 
+    def get_interalelement_thermal(self):
+        """ the total element of 1 pixel. """
+        
     # ------------ #
     #   GETTER     #
     # ------------ #
@@ -1100,7 +1108,13 @@ class Spectrograph:
     def nlbda(self):
         """ number of spectral pixels. """
         return len(self.lbda)
-    
+
+    @property
+    def lbda_bin(self):
+        """ wavelength edge bins. """
+        return np.vstack([self.lbda_edges[:-1],
+                          self.lbda_edges[1:]]).T  # (nlbda, 2) [Å]
+                                  
     @property
     def meta(self):
         """ metadata of the instance. """

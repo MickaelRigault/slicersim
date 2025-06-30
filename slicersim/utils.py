@@ -6,6 +6,16 @@ __author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>", "Mickael Rigault <m.rigaul
 
 import numpy as np
 
+
+def fratio_to_solidangle(fratio):
+    """ """
+    if np.ndim(fratio) == 0:
+        fratio_y = fratio_x = fratio
+    else:
+        fratio_y, fratio_x = fratio
+        
+    return np.pi / (4 * fratio_y*fratio_x)
+
 def recursive_get(dict_, key, default=None):
     """ """
     if key in dict_.keys():

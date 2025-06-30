@@ -130,14 +130,15 @@ class Mirror():
         """
         thermal_radiation = ThermalRadiation(self.temperature, self.emissivity)
         
-        signals = thermal_radiation.get_signal(solid_angle,           # expectedin in [sr]
-                                               area = self.surface,    # Collecting area [m²]
-                                               lbda_bin=lbda_bin       # expectedin in [A]
+        signals = thermal_radiation.get_signal(lbda_bin=lbda_bin,        # expectedin in [A]
+                                               solid_angle=solid_angle,  # expectedin in [sr]
+                                               area = self.surface,      # Collecting area [m²]
                                               )
         
         # sum over 1 element if only 1 temperature
         if as_sum:
             return np.sum(signals, axis=0)
+        
         return signals                              # [ph/s/spx/Δλ]
 
     def get_airy_radius(self, lbda, norm_scale=1):

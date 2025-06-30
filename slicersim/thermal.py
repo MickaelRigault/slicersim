@@ -89,7 +89,7 @@ class ThermalRadiation():
     emissivity : float, numpy.ndarray
         The emissivity of the components.
     """
-    def __init__(self, temperature, emissivity):
+    def __init__(self, temperature, emissivity, nelements=1):
         """ Initialize the ThermalRadiation class with temperature and emissivity.
 
         Parameters
@@ -102,33 +102,60 @@ class ThermalRadiation():
         """
         self._temperature = np.atleast_1d(temperature)[:, None].astype(float)
         self._emissivity = np.atleast_1d(emissivity)[:, None].astype(float)
-
-    def get_signal(self, solid_angle, area, lbda_bin):
+        self._nelements = np.atleast_1d(nelements)[:, None].astype(int)
+        
+    def get_signal(self, lbda_bin, area, solid_angle=None, fratio=None):
         """ Calculate the thermal radiation signal for given parameters.
 
+        This function allows two formats for area <-> solid_angle
+        1. `solid_angle` as angular area [sr] of the reception (e.g. spaxel_size in rad*rad)
+            then `area` is the area of the emissive source (e.g. the telescope mirror surface in m2)
+
+        2. `fratio` is the optical f-ratio of the system from the emissive source to the reception
+            if so, a solid_angle is computed using np.pi/(4*fratio_x*fratio_y)
+            then `area` is the receptive surface in m2 (e.g. the detector pixel in m2)
+        
         Parameters
         ----------
-        solid_angle : float
-            The solid angle in steradians.
-            
-        area : float
-            The area in square meters.
-            
         lbda_bin : array-like
             The wavelength bin(s) in Angtrom. Can be a 1D or 2D array.
             - 1D: [lbda_min, lbda_max]
             - 2D: [[lbda_min, lbda_max],[lbda_min, lbda_max],...]
+
+        area : float
+            The area in square meters.
+
+        solid_angle : float
+            The solid angle in steradians.
+            (see format comment above)
+            = required if fratio is None = 
+
+        fratio: float, array, None
+            fratio of the optical system. It could be assymetric like (fratio_x, fratio_y)
+            (see format comment above)
+            = required if solid_angle is None = 
 
         Returns
         -------
         float or numpy.ndarray
             The calculated flux signal in photons per second, integrated over the bandwidth.
         """
+        if fratio is not None:
+            if solid_angle is not None:
+                raise ValueError("You must provide either fratio or solid_angle (not both)")
+            from .utils import fratio_to_solidangle
+            solid_angle = fratio_to_solidangle(fratio)
+            
+        # fratio is given
+        elif solid_angle is None:
+            raise ValueError("You must provide either fratio or solid_angle (none given)")
+        # solid_angle is given
+        
         # allows [[lbda_min, lbda_max], [lbda_min, lbda_max], ...]
         int_flux = self.get_integrated_blackbody_photonflux(lbda_bin)
 
         # int_flux in [photon/s / sr /m²]
-        return int_flux * solid_angle * area * self.emissivity  # [photon/s] integrated over bandwidth
+        return int_flux * solid_angle * area * self.emissivity * self.nelements  # [photon/s] integrated over bandwidth
 
     def get_blackbody_photonflux(self, lbda):
         """ Calculate the blackbody photon flux for a given wavelength.
@@ -250,5 +277,8 @@ class ThermalRadiation():
         """Get the emissivity of the components. """
         return self._emissivity
 
-
+    @property
+    def nelements(self):
+        """ number of element at given temperature and emissivity """
+        return self._nelements
     
