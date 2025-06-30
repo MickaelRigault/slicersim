@@ -1154,7 +1154,7 @@ class Simulation:
     
         # not implemented
         else:
-            raise NotImplementedError(f"{unit_in} to {units_out} not implemented")
+            raise NotImplementedError(f"{units_in} to {units_out} not implemented")
             
         return coefs*flux_in
     
