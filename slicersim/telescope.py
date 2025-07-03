@@ -6,7 +6,7 @@ Mirror module, to simulate:
 
 .. autosummary::
 
-   Mirror
+   Telescope
 """
 
 __author__ = "Mickael Rigault <m.rigault@ip2i.in2p3.fr>"
@@ -16,10 +16,8 @@ import numpy as np
 from astropy import units
 from .thermal import ThermalRadiation
 
-class Mirror():
-    """
-    Mirror data class.
-    """
+class Telescope():
+    """ Telescope """
 
     mutable_parameters = ['temperature', 'emissivity',
                           "diameter_ext", "diameter_int",

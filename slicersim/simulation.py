@@ -19,6 +19,7 @@ import pandas
 from .scene import Scene
 from .spectrograph import Spectrograph, MLASpectrograph, SlicerSpectrograph
 from .detector import Detector
+from .telescope import Telescope
 
 __all__ = ["Simulation"]
 
@@ -46,19 +47,22 @@ class Simulation:
                  scene=None,
                  spectrograph=None,
                  detector=None,
+                 telescope=None,                 
                  extraction={},
                  meta={}):
         """
         A simulation is made of 4 elements:
 
         1. a scene (what Mother Nature provides)
-        2. a spectrograph, incl. telescope (how the scene is observed)
-        3. a detector (how the signal is recorded)
-        4. some extraction parameters (how the signal is extracted)
+        2. a telescope (which mirror size)
+        3. a spectrograph, incl. telescope (how the scene is observed)
+        4. a detector (how the signal is recorded)
+        5. some extraction parameters (how the signal is extracted)
 
         :param Scene scene: input scene
         :param Spectrograph spectrograph: input spectrograph
         :param Detector detector: input detector
+        :param Telescope telescope: input telescope
         :param dict extraction: input extraction parameters
         :param dict meta: meta-data
         :param dict kwargs: elements to be added to meta-data
@@ -67,6 +71,7 @@ class Simulation:
         self.spectrograph = spectrograph  #: Spectrograph instance
         self.detector = detector          #: Detector instance
         self.extraction = extraction      #: Extraction parameters
+        self.telescope = telescope        #: telescope
         self._in_meta = meta              #: Meta-parameters
 
     def __str__(self):
@@ -83,6 +88,11 @@ class Simulation:
         if self.detector:
             s += ('\n' + " Detector ".center(w, '-') + '\n' +
                   str(self.detector))
+                
+        if self.telescope:
+            s += ('\n' + " Telescope ".center(w, '-') + '\n' +
+                  str(self.telescope))
+                
         if self.extraction:
             s += ('\n' + " Extraction ".center(w, '-') + '\n' +
                   pprint.pformat(self.extraction, sort_dicts=False))
@@ -96,7 +106,8 @@ class Simulation:
         return self.__str__()
 
     @classmethod
-    def from_source(cls, lbda, flux, mag=None, band="bessellb", position=(0, 0),
+    def from_source(cls, lbda, flux, mag=None,
+                        band="bessellb", position=(0, 0),
                         instrument="lazuli.toml",
                         background="zodi",
                         host=None,
@@ -168,20 +179,16 @@ class Simulation:
             scene_config += [host]
 
         # now let's use it to load the scene.
-        return cls.from_scene(scene=scene_config, instrument=instrument,
+        return cls.from_scene(scene=scene_config,
+                              instrument=instrument,
                               snr=snr, lbda_range=lbda_range, frame=frame,
                             **kwargs)
-        
-    @classmethod
-    def from_pointing(cls, *args, **kwargs):
-        """ """
-        warnings.warn("DEPRECATION: 'Simulation.from_pointing' is deprecated, used 'from_scene' instead (see also 'from_source').")
-        return cls.from_scene(*args, **kwargs)
     
     @classmethod
     def from_scene(cls, redshift=None, snr=20,
                        lbda_range=[4000, 6800], frame='rest',
-                       scene='supernova.toml', instrument='lazuli.toml',
+                       scene='supernova.toml',
+                       instrument='lazuli.toml',
                        slicer=True,
                        **kwargs):
         """ load the simulation setting the config to acquire the pointed target
@@ -249,15 +256,19 @@ class Simulation:
 
         # First initialize spectrograph to set wavelengths, then other elements
         # using spectrograph wavelengths.
+        
+        # Initialize the telescope (mirror)
+        telescope = Telescope.from_config(config["telescope"])
 
         # Initialize the spectrograph from config
         if slicer:
-            spectrograph = SlicerSpectrograph.from_config(config["spectrograph"])
+            spectrograph = SlicerSpectrograph.from_config(config["spectrograph"], telescope=telescope)
         else:
-            spectrograph = MLASpectrograph.from_config(config["spectrograph"])
+            spectrograph = MLASpectrograph.from_config(config["spectrograph"], telescope=telescope)
 
         # Initialize the scene from config (wavelength from spectrograph)
         scene = Scene.from_config(config["scene"], lbda=spectrograph.lbda)
+
 
         # Initialize the detector from config
         detector = Detector.from_config(config["detector"], lbda=spectrograph.lbda)
@@ -266,6 +277,7 @@ class Simulation:
         extraction = config["extraction"]
 
         return cls(scene=scene,
+                   telescope=telescope, 
                    spectrograph=spectrograph,
                    detector=detector,
                    extraction=extraction,
@@ -1703,6 +1715,7 @@ class Simulation:
     def meta(self):
         """ concatenation of all element configurations (aka. meta) """
         return self._in_meta | {"scene": self.scene.meta,
+                                "telescope": self.telescope.meta,
                                 "spectrograph": self.spectrograph.meta,
                                 "detector": self.detector.meta,
                                 "extraction":self.extraction}
@@ -1722,9 +1735,10 @@ class Simulation:
         """ list of mutable parameters """
         extra = [] + list(self.extraction.keys())
         scene_ = self.scene.mutable_parameters
+        telescope_ = self.telescope.mutable_parameters        
         spectro_ = self.spectrograph.mutable_parameters
         detector_ = [f"detector.{k}" for k in self.detector.mutable_parameters]
-        all_mutables =  scene_+spectro_+detector_ + extra
+        all_mutables =  scene_+ telescope_ + spectro_ + detector_ + extra
         # remove lbda that could be in scene, as this is based on spectrograph
         if "lbda" in all_mutables: 
             all_mutables.remove("lbda")
@@ -1734,7 +1748,7 @@ class Simulation:
     @property
     def _elements(self): # test structure
         """ internal list of elements """
-        return ["scene", "spectrograph", "detector", "extraction"]
+        return ["scene", "telescope", "spectrograph", "detector", "extraction"]
 
     @property    
     def variance_sources(self):

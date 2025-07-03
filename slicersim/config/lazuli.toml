@@ -3,7 +3,7 @@
 #
 # Mirror ==============================
 #
-[spectrograph.mirror]
+[telescope]
 diameter_ext = 3.0         # Primary mirror external diameter [m]
 diameter_int = 0           # Primary mirror internal diameter [m]
 temperature = [283, 253, 283, 278]          # Mirror temperature [K] (0 for none)
