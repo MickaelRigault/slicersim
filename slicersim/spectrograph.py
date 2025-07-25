@@ -23,13 +23,14 @@ from .utils import recursive_get
 from . import iotools
 from .telescope import Telescope
 from .profiles import build_pixels
+from .thermal import ThermalOptics
 
 # ================ #
 #                  #
 #   Spectrograph   #
 #                  #
 # ================ #
-def lbda_from_respow(spectral_range, res_power, npx=2):
+def lbda_from_respow(spectral_range, res_power, npx_resolution=2):
     r""" Compute wavelength ramp for constant n-px resolving power.
 
     .. math::
@@ -43,29 +44,30 @@ def lbda_from_respow(spectral_range, res_power, npx=2):
 
     :param 2-tuple spectral_range: spectral domain
     :param float res_power: resolving power R
-    :param float npx: n-px resolution (i.e. n px per spectral elements)
+    :param float npx_resolution: n-px resolution (i.e. n px per spectral elements)
     :return: mid and bin edge wavelengths [same units as input domain]
     """
 
     wmin, wmax = spectral_range
-    dlog = 1/(2.302585092994046 * res_power * npx)  # ln(10)=2.303...
+    dlog = 1/(2.302585092994046 * res_power * npx_resolution)  # ln(10)=2.303...
     npx = round((np.log10(wmax) - np.log10(wmin)) / dlog)
     loglbda_edges = np.linspace(np.log10(wmin), np.log10(wmax), npx + 1)
-    loglbda_mid = (loglbda_edges[:-1] + loglbda_edges[1:])/2
+    loglbda_mid = (loglbda_edges[:-1] + loglbda_edges[1:])/2 # mean
 
     return 10**loglbda_mid, 10**loglbda_edges
 
-def build_lbda(spectral_range, spectral_resolution=None, wsol=None, dsol=None):
+def build_lbda(spectral_range, spectral_resolution=None, wsol=None, dsol=None, npx_resolution=2):
     """ set wavelength coordinates.
 
     Set :attr:`lbda` (:attr:`nlbda` mid wavelengths) and :attr:`lbda_egdes`
     (:attr:`nlbda` + 1 edge wavelengths).
     """
     if wsol is None:   # Compute from constant resolving power
-        lbda, lbda_edges = lbda_from_respow(spectral_range, spectral_resolution)
+        lbda, lbda_edges = lbda_from_respow(spectral_range, spectral_resolution,
+                                                npx_resolution=npx_resolution)
     else:              # Compute from wavelength solution
         wmin, wmax = spectral_range
-        npx = round(dsol(wmax) - dsol(wmin))    # Total nb of px
+        npx = round(dsol(wmax) - dsol(wmin))+1  # Total nb of px
         lbda = wsol(np.r_[:npx])                # λ at bin center
         lbda_edges = wsol(np.r_[:npx+1] - 0.5)  # λ at bin edge
         
@@ -78,6 +80,7 @@ def build_lbda_from_config(config):
     dispersion_law = config.get("dispersion_law", None)
     dispersion_scale = float(config.get("dispersion_scale", 1))
     spectral_resolution = config.get("spectral_resolution", None)
+    npx_resolution = config.get("dispersion_resolution", 2) # number of pixel per resolution element.
     # Set by dispersion law ?
     if dispersion_law is not None:
         # => ok, you have a dispersion law
@@ -87,12 +90,12 @@ def build_lbda_from_config(config):
         
         # dispersion solution (wavelengths in Å, offset in pix)
         dsol = iotools.chromatic_interpolator(
-            tab[wname].to(u.AA), tab[dname] * dispersion_scale,
+            tab[wname].to(u.AA), tab[dname] * dispersion_scale * npx_resolution/2,
             ext='extrapolate')
         
         # wavelength solution (wavelengths in Å, offset in pix)
         wsol = iotools.chromatic_interpolator(
-            tab[wname].to(u.AA), tab[dname] * dispersion_scale,
+            tab[wname].to(u.AA), tab[dname] * dispersion_scale * npx_resolution/2,
             ext='extrapolate', inverse=True)
         
     elif spectral_resolution is None:
@@ -102,7 +105,8 @@ def build_lbda_from_config(config):
         dispersion_scale = float(dispersion_scale)
 
     lbda, lbda_edges = build_lbda(spectral_range, wsol=wsol, dsol=dsol,
-                                    spectral_resolution=spectral_resolution)
+                                  spectral_resolution=spectral_resolution,
+                                  npx_resolution=npx_resolution)
     return lbda, lbda_edges
 
 def build_spaxels_from_config(config):
@@ -150,7 +154,7 @@ class Spectrograph:
                  }
     
     #: Mutable parameters (list)
-    mutable_parameters = ['spectral_range', 'spectral_resolution', # lbda
+    mutable_parameters = [#'spectral_range', 'spectral_resolution', # lbda
                           'xdisp_sigma_spectral', 'xdisp_sigma', # xdisp_profile,
                           'psf_sigma_spectral', 'guiding_sigma', # psf_profile
                           'spatial_scale','spatial_shape' , # spaxels
@@ -161,6 +165,7 @@ class Spectrograph:
                  spaxels={}, throughput=None,
                  spatial_psf={},
                  lbda_edges=None,
+                 optics={},
                  meta={}):
         """ Initialize the spectrograph. 
         You likely want to create it using the .from_config() constructor
@@ -188,6 +193,9 @@ class Spectrograph:
         # mirror
         self.telescope = telescope
 
+        # optics
+        self.optics = optics
+        
         # Spaxels
         self.set_spaxels(**spaxels)
         
@@ -203,7 +211,8 @@ class Spectrograph:
         
         # affect the instance
         self.mutable_parameters = self.mutable_parameters + \
-          [f"telescope.{k}" for k in self.telescope.mutable_parameters]
+          [f"telescope.{k}" for k in self.telescope.mutable_parameters] + \
+          [f"optics.{k}" for k in self.optics.mutable_parameters]
         
         self._meta_in = meta.copy()      #: Meta-parameters as input
         self._meta = meta.copy()         #: Meta-parameters as used
@@ -228,6 +237,9 @@ class Spectrograph:
         
         # throughput
         throughput = build_throughput_from_config(input_config)
+
+        # thermal optics
+        optics = ThermalOptics.from_config(input_config["optics"])
         
         # in coming PSF
         psf = {"sigma_spectral": input_config["psf"]["spatial"]["psf_sigma_spectral"],
@@ -239,6 +251,7 @@ class Spectrograph:
                      "spaxels":spaxels,
                      "throughput": throughput, 
                      "spatial_psf": psf,
+                     "optics": optics,
                      "meta": input_config}
             
         return init_prop, input_config
@@ -248,7 +261,6 @@ class Spectrograph:
     def build_lbda_from_config(config):
         return build_lbda_from_config(config)
         
-
     def update(self, reset_others=False, **kwargs):
         """ Update any mutable attribute of the spectrograph. """
         NAME_ALT = {"spx_shape": "spatial_shape",
@@ -256,6 +268,7 @@ class Spectrograph:
             
         updates = {}
         telescope_updates = {}
+        optics_updates = {}
         lbda_updates = {}
         psf_updates = {}
         spaxel_updates = {}      
@@ -275,18 +288,14 @@ class Spectrograph:
                 telescope_updates[k.replace("telescope.", "")] = v
                 continue
 
-            # lbda
-            elif k in ('spectral_range', 'spectral_resolution'):
-                
-                # Simulation.update is in charge of updating other chromatic
-                # quantities if 'spectral_range' or 'spectral_resolution' are
-                # modified.
-                if k == "spectral_resolution" and self.wsol is not None:
-                    warnings.warn("Switching to constant resolving power.")
-                    lbda_updates['dispersion_law'] = None
-                    
-                lbda_updates[k] = v
+            # optics
+            if k.startswith("optics."):
+                optics_updates[k.replace("optics.", "")] = v
+                continue            
 
+            # lbda
+            # not allowed to change.
+            
             # change PSF
             elif k in self.meta["psf"]["spatial"].keys():
                 psf_updates[k.replace("psf_","")] = v
@@ -301,11 +310,13 @@ class Spectrograph:
         
         # update telescope
         self.telescope.update(**telescope_updates, reset_others=reset_others)
+
+        # update internal optics
+        self.optics.update(**optics_updates)
         
         # psf
         self.spatial_psf = self.spatial_psf | psf_updates
 
-        
         # lbda
         if spaxel_updates:
             spaxels = build_spaxels_from_config( self._meta | spaxel_updates )
@@ -371,7 +382,6 @@ class Spectrograph:
             
         return (x, y), spaxels_coords["oversampling"]
         
-
     def get_psf_sigma_spectral(self, xdims=0, guiding_sigma=None,
                               in_spaxels=False, lbda=None):
         """ Get spatial PSF stddev [arcsec].
@@ -674,7 +684,7 @@ class Spectrograph:
         if average:             # Chromatic average
             wres = np.average(wres, weights=dlbda)
 
-        return wres    
+        return wres
 
     def get_spectral_dispersion(self):
         """ """
@@ -682,7 +692,7 @@ class Spectrograph:
 
     def get_lsf_dispersion(self):
         """ get the gaussian LSF dispersion sigma in units of wavelength bin """
-        return 1
+        return self.meta.get("dispersion_resolution", 2) /2.
 
     def apply_line_spread_function(self, fluxes, **kwargs):
         """ """
@@ -749,7 +759,7 @@ class Spectrograph:
         raise NotImplementedError("generate_structured_background() has not been implemented.")
 
     # Themal (pre-dispersor)
-    def generate_thermal_signal(self, lbda_bin=None, temperature=None, emissivity=None,
+    def generate_thermal_signal(self, lbda_bin=None,
                                 as_cube=False, oversampling=None,
                                 apply_lsf=True, as_sum=True):
         """ Telescope mirror thermal signal [ph/s/spx/Δλ].
@@ -780,10 +790,8 @@ class Spectrograph:
             lbda_bin = self.lbda_bin
 
         signal = self.telescope.get_thermal_signal(lbda_bin,
-                                                solid_angle=self.omega,     # Spx solid angle [sr]
-                                                temperature=temperature,
-                                                emissivity=emissivity,
-                                                    as_sum=as_sum)
+                                                   solid_angle=self.omega,     # Spx solid angle [sr]
+                                                   as_sum=as_sum)
         # output formating
         if as_cube:
             signal = np.full((self.nlbda, *self.get_spectrograph_shape(oversampling=oversampling)),
@@ -793,6 +801,35 @@ class Spectrograph:
             signal = self.apply_line_spread_function(signal)
             
         return signal                              # [ph/s/spx/Δλ]
+
+    def get_thermal_dark(self, pixel_area, as_sum=True):
+        """ 
+        Parameters
+        ----------
+        pixel_area: float
+            detector pixel surface in m2
+
+        Returns
+        -------
+        float, array
+            ph/s associated to thermal radiations.
+        """
+        # properties at the detector
+        ## each pixels integrate the whole spectral range.
+        lbda_bin = self.lbda[[0,-1]]
+
+        
+        # get the dark signal in ph/s
+        signals = self.optics.get_signal(lbda_bin = lbda_bin,        # expectedin in [A]
+                                         area = pixel_area)          # Collecting area [m²]
+        
+                                          
+        # sum over 1 element if only 1 temperature
+        if as_sum:
+            signals = np.sum(signals, axis=0)
+
+        return signals
+
         
     # Empty cube
     def get_empty_cube(self, filled=0, oversampling=None):
@@ -801,9 +838,6 @@ class Spectrograph:
         ny, nx = self.get_spectrograph_shape(oversampling=oversampling)
         return filled * np.ones( (self.nlbda, ny, nx) )
 
-    def get_interalelement_thermal(self):
-        """ the total element of 1 pixel. """
-        
     # ------------ #
     #   GETTER     #
     # ------------ #
@@ -1283,7 +1317,6 @@ class MLASpectrograph( Spectrograph ):
         """ """
         return self.xdispersion["sigma_spectral"]
 
-    
 
 
 class SlicerSpectrograph( Spectrograph ):

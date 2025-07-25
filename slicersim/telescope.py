@@ -14,7 +14,8 @@ __author__ = "Mickael Rigault <m.rigault@ip2i.in2p3.fr>"
 import warnings
 import numpy as np
 from astropy import units
-from .thermal import ThermalRadiation
+from copy import deepcopy
+from .thermal import ThermalOptics
 
 class Telescope():
     """ Telescope """
@@ -23,34 +24,27 @@ class Telescope():
                           "diameter_ext", "diameter_int",
                           "surface"]
 
-    def __init__(self, surface=None, temperature=0, emissivity=0, meta={}):
+    def __init__(self, surface=None, optics=None, meta={}):
         """ """
         
         self._surface = surface
+        self._optics = optics
         # update a copy of the meta
-        meta = meta.copy()
+        
         # make sure temperature and emissivity are given.
-        meta["temperature"] = temperature
-        meta["emissivity"] = emissivity
-
-        self._meta = meta.copy()
-        self._meta_in = meta.copy()        
+        self._meta = deepcopy(meta)
+        self._meta_in = deepcopy(meta)
 
         if surface is None and np.any([k not in self.meta for k in ["diameter_ext", "diameter_int"]]):
             warnings.warn("Surface not given and 'diameter_ext' and/or 'diameter_int' are unknown.")
                                           
-        
     @classmethod
     def from_config(cls, config):
         """ """
         surface = config.get("surface", None) # if None, diameter_ext and diameter_int used.
-        temperature = config.get("temperature", 0)
-        emissivity = config.get("emissivity", 0)
-
-        return cls(surface=surface, temperature=temperature, emissivity=emissivity,
-                    meta=config # core information stored in meta
-                    )
-    
+        optics = ThermalOptics.from_config( config, no_solidangle_ok=True)
+        return cls(surface=surface, optics=optics, meta=config) # core information stored in meta
+                       
     def __str__(self):
 
         s = f"Primary Mirror: {self.surface:.0f} m²"
@@ -96,7 +90,6 @@ class Telescope():
     #  GETTER   #
     # --------- #
     def get_thermal_signal(self, lbda_bin, solid_angle,
-                               temperature=None, emissivity=None,
                                as_sum=True):
         """ Mirror thermal signal [ph/s/spx/Δλ].
 
@@ -109,12 +102,6 @@ class Telescope():
 
         solid_angle : float
             spaxel solid angle [sr].
-
-        temperature : float, None
-            specify mirror(s) temperature(s) [K]. If None, self.temperature used.
-            
-        emissivity: float, None
-            specify mirror(s) emissivity(s), If None, self.emissivity used.
         
         as_sum : bool
             if multiple mirrors, should this be the sum of all contribution (as_sum=True)
@@ -126,12 +113,10 @@ class Telescope():
             thermal signal(s) [ph/s/spx/Δλ] 
             # see as_sum for output format.
         """
-        thermal_radiation = ThermalRadiation(self.temperature, self.emissivity)
-        
-        signals = thermal_radiation.get_signal(lbda_bin=lbda_bin,        # expectedin in [A]
-                                               solid_angle=solid_angle,  # expectedin in [sr]
-                                               area = self.surface,      # Collecting area [m²]
-                                              )
+        signals = self.optics.get_signal(lbda_bin=lbda_bin,        # expectedin in [A]
+                                         solid_angle=solid_angle,  # expectedin in [sr]
+                                         area = self.surface,      # Collecting area [m²]
+                                        )
         
         # sum over 1 element if only 1 temperature
         if as_sum:
@@ -348,6 +333,10 @@ class Telescope():
         return self.meta.get("diameter_ext", None)
 
     @property
+    def optics(self):
+        """ Thermal Optics element """
+        return self._optics
+    @property
     def diameter_int(self):
         """ internal diameter (assumed circular) """
         return self.meta.get("diameter_int", None)
@@ -355,14 +344,14 @@ class Telescope():
     @property
     def temperature(self):
         """ mirror temperature (in K) """
-        return self.meta.get("temperature", None)
+        return self.optics.temperature
     
     @property
     def emissivity(self):
         """ Emissivity of the mirror  """
-        return self.meta.get("emissivity", None)
+        return self.optics.emissivity
 
     @property
     def nelements(self):
         """ numer of mirrors """
-        return len( np.atleast_1d(self.temperature) )
+        return self.optics.nelements

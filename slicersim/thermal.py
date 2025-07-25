@@ -4,75 +4,169 @@ Computation of thermal signal (solid angles, black body spectrum).
 from scipy.integrate import quad_vec
 from astropy import constants
 import numpy as np
+from copy import deepcopy
 
 
-def get_detector_dark_current(lbda_cutoff, temperature, px_size, type='HgCdTe'):
-    """ Calculate the dark current (thermal noise) for a detector.
-
-    This function computes the dark current based on the detector's cutoff wavelength,
-    temperature, pixel size, and material type. The calculation follows models described
-    in the literature for HgCdTe and InAs detectors.
-
-    Parameters
-    ----------
-    lbda_cutoff : float
-        Detector cut-off (upper) wavelength in micrometers [µm].
-
-    temperature : float
-        Detector temperature in Kelvin [K].
-
-    px_size : float
-        Pixel size in micrometers [µm].
-
-    type : str, optional
-        Detector material type, either 'HgCdTe' or 'InAs' (default is 'HgCdTe').
-
-    Returns
-    -------
-    float
-        Dark current in electrons per second per pixel [e/s/px].
-
-    References
-    ----------
-    Tennant et al. 2008, Journal of Electronic Materials, 37, 1406T
-    Tennant, 2010, Journal of Electronic Materials, 39, 1030T
-    O'Loughlin, PhD Thesis, 2020
-    """
-
-    if type == 'HgCdTe':
-        # Tennant+08 original parameters for HgCdTe
-        J0 = 8367.00001853855              # [A/cm²]
-        Pwr = 0.544071281108481
-        C = -1.16239134096245
-        lamb_scale = 0.200847413564122     # [µm]
-        lamb_threshold = 4.63513642316149  # [µm]
-        
-    elif type == 'InAs':
-        # O'Loughlin parameters for InAs
-        J0 = 5315.034051              # [A/cm²]
-        Pwr = 0.569561634
-        C = -1.140270099
-        lamb_scale = 0.21507853       # [µm]
-        lamb_threshold = 4.843406496  # [µm]
+def fratio_to_solidangle(fratio, geometry="circular"):
+    """ """
+    if np.ndim(fratio) == 0:
+        fratio_y = fratio_x = fratio
     else:
-        raise NotImplementedError(f"Unknown detector type {type!r}.")
+        fratio_y, fratio_x = fratio
 
-    kB = 1.380649e-23             # Boltzmann constant [J/K]
-    q = 1.602176634e-19           # electron charge [C]
-    amp2e = 6.2415091e+18         # A to e/s
+    # will match the fratio shape if possible. Break if not.
+    geometry = np.broadcast_to(geometry, fratio_y.shape)
+    if not np.all([geom in ["circular", "square"] for geom in geometry]):
+        raise NotImplementedError("only 'circular' or 'square' geometries implemented: {geometry=} given.")
 
-    apx = (px_size * 1e-4)**2     # [cm²]
-
-    lamb_e = np.where(
-        lbda_cutoff >= lamb_threshold,
-        lbda_cutoff,
-        lbda_cutoff / (1 - (lamb_scale/lbda_cutoff - lamb_scale/lamb_threshold)**Pwr))
-    J = J0 * np.exp((C * 1.24 * q / (lamb_e * kB * temperature)))  # [A/cm²]
-
-    return J * apx * amp2e      # [e/s/px]
+    # square by default
+    coefs = np.ones(fratio_y.shape) # square
+    coefs[geometry=="circular"] = np.pi / 4
+    
+    return coefs / (fratio_y*fratio_x)
 
 
+class ThermalOptics():
+    """ """
+    mutable_parameters = ['temperature', 'emissivity'] # lbda
 
+    def __init__(self, temperature, emissivity, fratio=None, solid_angle=None,
+                     nelements=1, geometry="circular",
+                     meta={}):
+        """ """
+        self._temperature = np.atleast_1d(temperature)[:, None].astype(float)
+        self._emissivity = np.atleast_1d(emissivity)[:, None].astype(float)
+        self._nelements = np.atleast_1d(nelements)[:, None].astype(int)
+        if fratio is not None:
+            self._fratio = np.atleast_2d(fratio).astype(float)
+        else:
+            self._fratio = None
+
+        if solid_angle is not None:
+            self._solid_angle = np.atleast_1d(solid_angle).astype(float)
+        else:
+            self._solid_angle = None
+        
+        self._geometry = np.atleast_1d(geometry).astype(str)
+        self._meta = deepcopy(meta)
+    
+    @classmethod
+    def from_config(cls, config, no_solidangle_ok=True):
+        """ """
+        
+        temperature = config.get("temperature", None)        
+        emissivity = config.get("emissivity", None)
+        if temperature is None or emissivity is None:
+            raise ValueError(f" one of {temperature=} and/or {emissivity=} is None. They are mandatory.")
+
+        fratio = config.get("fratio", None)
+        solid_angle = config.get("solid_angle", None)
+        
+        if not no_solidangle_ok and (fratio is None and solid_angle is None):
+            warnings.warn("Either fratio or solid_angle must be given. Both are None, some computations will not work.")
+
+        if fratio is not None and solid_angle is not None:
+            warnings.warn("both fratio and solid_angle are given, solid_angle will then *not* be derived from input fratio")
+        
+        nelements = config.get("nelements", 1)
+        geometry = config.get("geometry", "circular")
+        return cls(temperature=temperature, emissivity=emissivity, 
+                   fratio=fratio, solid_angle=solid_angle,
+                   nelements=nelements, geometry=geometry,
+                  meta=config)
+
+    def update(self, reset_thermal=True, **kwargs):
+        """ """
+        for k, v in kwargs.items():
+            if k not in self.mutable_parameters:
+                warnings.warn(f"Parameter {k!r} is not mutable.")
+                continue
+            if k in ["temperature", "emissivity"]:
+                setattr(self, f"_{k}", np.atleast_2d(v).astype(float) )
+            else:
+                warnings.warn(f"update not implemented for {k}. *Ignored* ")
+
+        if reset_thermal:
+            self._thermal = None
+            
+    # ============= #
+    #   Methods     #
+    # ============= #
+    def get_signal(self, lbda_bin, area, solid_angle=None, qe=None):
+        """ Calculate the thermal radiation signal for given parameters.
+        
+        Parameters
+        ----------
+        lbda_bin : array-like
+            The wavelength bin(s) in Angtrom. Can be a 1D or 2D array.
+            - 1D: [lbda_min, lbda_max]
+            - 2D: [[lbda_min, lbda_max],[lbda_min, lbda_max],...]
+
+        area : float
+            The area in square meters.
+
+        solid_angle : float, None
+            if None, self.solid_angle is used
+            The solid angle in steradians ; it corresponds to the angular area [sr] of the reception 
+            (e.g. spaxel_size in rad*rad)
+
+        Returns
+        -------
+        float or numpy.ndarray
+            The calculated flux signal in photons per second, integrated over the bandwidth.
+        """
+        if solid_angle is None:
+            solid_angle = self.solid_angle
+
+        solid_angle = np.atleast_1d(solid_angle)[:,None].astype(float)
+        return self.thermal.get_signal(lbda_bin, area, solid_angle=solid_angle, qe=qe)
+    
+    # ============= #
+    #  Properties   #
+    # ============= #
+    @property
+    def temperature(self):
+        """Get the temperature [in K] of the components """
+        return self._temperature
+
+    @property
+    def emissivity(self):
+        """Get the emissivity of the components. """
+        return self._emissivity
+
+    @property
+    def nelements(self):
+        """ number of element at given temperature and emissivity """
+        return self._nelements
+
+    @property
+    def fratio(self):
+        """ """
+        return self._fratio
+
+    @property
+    def geometry(self):
+        """ """
+        return self._geometry
+        
+    @property
+    def solid_angle(self):
+        """ """
+        if self._solid_angle is None:
+            if self.fratio is None: 
+                raise ValueError("both fratio and solid_angle are None. Cannot derive or get solid_angle")
+            self._solid_angle = fratio_to_solidangle( fratio = self.fratio.T,
+                                                geometry = self._geometry)
+            
+        return self._solid_angle
+
+    @property
+    def thermal(self):
+        """ """
+        if not hasattr(self, "_thermal") or self._thermal is None:
+            self._thermal = ThermalRadiation(self.temperature, self.emissivity, self.nelements)
+            
+        return self._thermal
 
 class ThermalRadiation():
     """A class to simulate the thermal radiation of telescope and instrument components.
@@ -100,20 +194,12 @@ class ThermalRadiation():
         emissivity : float, numpy.ndarray
             The emissivity of the components.
         """
-        self._temperature = np.atleast_1d(temperature)[:, None].astype(float)
-        self._emissivity = np.atleast_1d(emissivity)[:, None].astype(float)
-        self._nelements = np.atleast_1d(nelements)[:, None].astype(int)
+        self._temperature = np.atleast_2d(temperature)
+        self._emissivity = np.atleast_2d(emissivity)
+        self._nelements = np.atleast_2d(nelements)
         
-    def get_signal(self, lbda_bin, area, solid_angle=None, fratio=None):
+    def get_signal(self, lbda_bin, area, solid_angle, qe=None):
         """ Calculate the thermal radiation signal for given parameters.
-
-        This function allows two formats for area <-> solid_angle
-        1. `solid_angle` as angular area [sr] of the reception (e.g. spaxel_size in rad*rad)
-            then `area` is the area of the emissive source (e.g. the telescope mirror surface in m2)
-
-        2. `fratio` is the optical f-ratio of the system from the emissive source to the reception
-            if so, a solid_angle is computed using np.pi/(4*fratio_x*fratio_y)
-            then `area` is the receptive surface in m2 (e.g. the detector pixel in m2)
         
         Parameters
         ----------
@@ -126,38 +212,24 @@ class ThermalRadiation():
             The area in square meters.
 
         solid_angle : float
-            The solid angle in steradians.
-            (see format comment above)
-            = required if fratio is None = 
+            The solid angle in steradians ; it corresponds to the angular area [sr] of the reception 
+            (e.g. spaxel_size in rad*rad)
 
-        fratio: float, array, None
-            fratio of the optical system. It could be assymetric like (fratio_x, fratio_y)
-            (see format comment above)
-            = required if solid_angle is None = 
+        qe: None, float, func
+            Quantum efficiency to convert ph->e-
 
         Returns
         -------
         float or numpy.ndarray
-            The calculated flux signal in photons per second, integrated over the bandwidth.
+            The calculated flux signal in photons (or e- if qe!=1) per second, integrated over the bandwidth.
         """
-        if fratio is not None:
-            if solid_angle is not None:
-                raise ValueError("You must provide either fratio or solid_angle (not both)")
-            from .utils import fratio_to_solidangle
-            solid_angle = fratio_to_solidangle(fratio)
-            
-        # fratio is given
-        elif solid_angle is None:
-            raise ValueError("You must provide either fratio or solid_angle (none given)")
-        # solid_angle is given
-        
         # allows [[lbda_min, lbda_max], [lbda_min, lbda_max], ...]
-        int_flux = self.get_integrated_blackbody_photonflux(lbda_bin)
+        int_flux = self.get_integrated_blackbody_flux(lbda_bin, qe=qe)
 
-        # int_flux in [photon/s / sr /m²]
-        return int_flux * solid_angle * area * self.emissivity * self.nelements  # [photon/s] integrated over bandwidth
+        # int_flux in [{photon,e-}/s / sr /m²]
+        return int_flux * solid_angle * area * self.emissivity * self.nelements  # [{photon,e-}/s] integrated over bandwidth
 
-    def get_blackbody_photonflux(self, lbda):
+    def get_blackbody_flux(self, lbda, qe=1):
         """ Calculate the blackbody photon flux for a given wavelength.
 
         Parameters
@@ -165,15 +237,21 @@ class ThermalRadiation():
         lbda : float, numpy.array
             The wavelength in Angstrong.
 
+        qe: None, float, array, func
+            Quantum efficiency to convert ph->e-
+            - None: returned unit: ph/s
+            - function: qe <= qe(lbda)
+            - float or array: should broadcast with lbda.shape
+            
         Returns
         -------
         float, numpy.array
-            The blackbody photon flux in [photon/s/sr/m²/A]
+            The blackbody photon (or e-) flux in [{photon, e-}/s/sr/m²/A]
         """
-        return self._blackbody_photonflux(lbda, self.temperature)
+        return self._blackbody_flux(lbda, self.temperature, qe=qe)
         
-    def get_integrated_blackbody_photonflux(self, lbda_bin, allow_trapez=True):
-        """ Calculate the blackbody photon flux intergrated over given wavelength bins.
+    def get_integrated_blackbody_flux(self, lbda_bin, allow_trapez=True, qe=None):
+        """ Calculate the blackbody photon (or e-) flux intergrated over given wavelength bins.
         
         Parameters
         ----------
@@ -186,15 +264,21 @@ class ThermalRadiation():
             Whether to allow the use of trapez to approximate the integral.
             This is used only for 2D-lbda_bin to significantly speed the code.
             (per-mil level approximation error).
+
+        qe: None, float, array, func
+            Quantum efficiency to convert ph->e-
+            - None: returned unit: ph/s
+            - function: qe <= qe(lbda)
+            - float or array: should broadcast with lbda.shape
         
         Returns
         -------
         float, numpy.array
-            The blackbody photon flux integrated in given band in [photon/s/sr/m²]
+            The blackbody photon (or e- if qe!=1) flux integrated in given band in [{photon,e-}/s/sr/m²]
         """
         # 1d-boundaries: let's use exact method.
         if np.ndim(lbda_bin) == 1: # 
-            int_flux = self._get_flux1d(self.temperature, *lbda_bin)
+            int_flux = self._get_flux1d(self.temperature, *lbda_bin, qe=qe)
             
         elif np.ndim(lbda_bin) == 2:
             # trapeze method: muuuuch faster. Correct at the per-mil level.
@@ -202,11 +286,11 @@ class ThermalRadiation():
                 # approximated method, but vectorized.
                 delta_bin = np.diff(lbda_bin).squeeze()
                 lbda_mid = np.mean(lbda_bin, axis=-1)
-                int_flux = self.get_blackbody_photonflux(lbda_mid) * delta_bin
+                int_flux = self.get_blackbody_flux(lbda_mid, qe=qe) * delta_bin
                 
             else:
                 # exact method, but require for loop
-                int_flux = np.hstack( [self._get_flux1d(self.temperature, lbda_min, lbda_max)
+                int_flux = np.hstack( [self._get_flux1d(self.temperature, lbda_min, lbda_max, qe=qe)
                                            for lbda_min, lbda_max in lbda_bin] )
 
         else:
@@ -218,7 +302,7 @@ class ThermalRadiation():
     #  Internal    #
     # ------------ #    
     @classmethod
-    def _get_flux1d(cls, temperature, lbda_min, lbda_max):
+    def _get_flux1d(cls, temperature, lbda_min, lbda_max, qe=None):
         """ Calculate the flux within a specified wavelength range.
 
         Parameters
@@ -232,15 +316,58 @@ class ThermalRadiation():
         lbda_max : float
             The maximum wavelength in Angstrong.
 
+        qe: None, float, array, func
+            Quantum efficiency to convert ph->e-
+            - None: returned unit: ph/s
+            - function: qe <= qe(lbda)
+            - float: unit qe accross all wavelengths
+
         Returns
         -------
         float
-            The calculated flux within the specified wavelength range. [photon/s/sr/m²]
+            The calculated flux within the specified wavelength range. [{photon, e-}/s/sr/m²]
         """
         # quad_vec is the vectorized version of quad. Needed as temperature could be an array
-        flux, _ = quad_vec(cls._blackbody_photonflux, lbda_min, lbda_max, args=(temperature,))
+        flux, _ = quad_vec(cls._blackbody_flux, lbda_min, lbda_max, args=(temperature, qe))
         return flux
 
+    
+    @classmethod
+    def _blackbody_flux(cls, lbda, temperature, qe=None):
+        """ Calculate the blackbody photon flux for a given wavelength and temperature.
+         
+        Parameters
+        ----------
+        lbda : float
+            The wavelength in Angstrong.
+
+        temperature : float
+            The temperature in Kelvin.
+
+        qe: None, float, array, func
+            Quantum efficiency to convert ph->e-
+            - None: returned unit: ph/s
+            - function: qe => qe(lbda)
+            - float or array: should broadcast with lbda.shape
+
+        Returns
+        -------
+        float
+            The blackbody flux in photons (or e-) per second per steradian per square meter per micrometer.
+        """
+        flux_ph = cls._blackbody_photonflux(lbda, temperature)
+        
+        if qe is None:
+            flux = flux_ph
+            
+        elif callable(qe):
+            flux = flux_ph * qe(lbda)
+            
+        else: # must broadcast
+            flux = flux_ph * qe
+            
+        return flux
+        
     @staticmethod
     def _blackbody_photonflux(lbda, temperature):
         """ Calculate the blackbody photon flux for a given wavelength and temperature.
@@ -249,6 +376,7 @@ class ThermalRadiation():
         ----------
         lbda : float
             The wavelength in Angstrong.
+
         temperature : float
             The temperature in Kelvin.
 

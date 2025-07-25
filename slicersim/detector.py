@@ -24,7 +24,7 @@ from .utils import integ_gaussian1D_erf, complete_dims
 class SaturationWarning(AstropyWarning):
     """ Base class for saturation warnings. """
     
-class Detector:
+class Detector():
     """
     Detector simulation.
 
@@ -35,20 +35,20 @@ class Detector:
     """
 
     #: Mutable parameters (list)
-    mutable_parameters = ['ngroup',"nframe_per_group",
+    mutable_parameters = ['ngroup', "nframe_per_group",
                           'nmd', 'tframe',
-                          'ron', 'gain', 'qe', 'dark', 'thermal_dark',
+                          'ron', 'gain', 'qe', 'dark', 
                           'saturation', 'variance_model']
     # Do not mutate px_size, fixed to 10 µm in spectrograph
 
-    def __init__(self, config, lbda=10_000., verbose=False):
+    def __init__(self, config, lbda=10_000., thermaloptics=None):
         """ Initialize the detector properties from `config` dictionary.
 
         :param dict config: detector configuration dictionary
         :param lbda: wavelengths [Å]
-        :param bool verbose: verbose mode
         :return: detector instance
         """
+        # This needs to be refactured following the new structure __init__ and from_config()
         if "readout_mode" in config:
             if "nmd" in config:
                 warnings.warn("readout_mode ignore as nmd found in config")
@@ -61,9 +61,12 @@ class Detector:
         
         self.tframe = float(config["tframe"])      #: Frame time [s]
         self.dark = float(config["dark"])          #: Dark current [e-/s]
-        self.thermal_dark = float(config.get("thermal_dark", 0) )  #: thermal induced dark current [e-/s]
         self.ron = float(config["readout_noise"])  #: Read-Out Noise per frame [e-]
         self.gain = float(config["gain"])          #: Gain [ADU/e-]
+
+
+        # thermal contributions
+        self.thermaloptics = thermaloptics
 
         try:
             self.qe = float(config["QE"])          # Constant QE
@@ -73,23 +76,40 @@ class Detector:
             wname, qname = "wavelength", "qe"
             tab = iotools.read_ecsv(self.qe_name,
                                     colnames=[wname, qname],
-                                    description='QE' if verbose else '')
+                                    description="")
             #: QE interpolator (wavelengths in Å)
             self.qe_interp = iotools.chromatic_interpolator(
-                tab[wname].to(units.AA).value, tab[qname], ext='zeros')
+                tab[wname].to(units.AA).value, tab[qname],
+                k=1, ext='zeros') # k=1 to avoid artificial-wiggles.
             #: Quantum efficiency [e-/photon]
             self.qe = self.qe_interp(self.lbda)
+
+
+        self.lbda_range = config.get("lbda_range", self.lbda[[0, -1]]) #: range of consideration (e.g. thermal)
         self.saturation = int(config["saturation"])     #: Saturation limit [ADU]
         self.px_size = float(config["px_size"])         #: Pixel size [µm]
         self.variance_model = config["variance_model"]  #: Variance model
 
         self._meta_in = config.copy()                   #: Meta-parameters
         self._meta = config.copy()                      #: Meta-parameters
-        
+
+    @classmethod
+    def from_config(cls, config, lbda=10_000., thermaloptics=None):
+        """
+        Initialize from detector config.
+
+        .. Note:: added for consistency between classes.
+
+        :param dict config: detector configuration dictionary
+        :param lbda: wavelengths [Å]
+        """
+        # This needs to be refactured using the new __init__ and from_config format.
+        return cls(config, lbda, thermaloptics=thermaloptics)
+
     def __str__(self):
 
         s = f"Detector {self.name!r}:"
-        s += f"\n  {self.px_size:.0f} µm px, dark: {self.dark:.3f} e-/s, thermal_dark: {self.thermal_dark:.3f} e-/s, RoN: {self.ron:.0f} e-/frame"
+        s += f"\n  {self.px_size:.0f} µm px, dark: {self.dark:.3f} e-/s, RoN: {self.ron:.0f} e-/frame"
         if self.qe_name:
             s += f"\n  QE: {self.qe_name!r} (~{self.qe.mean():.2f} e-/ph)"
         else:
@@ -102,20 +122,7 @@ class Detector:
         s += f"\n  Variance model: {self.variance_model}"
 
         return s
-
-    @classmethod
-    def from_config(cls, config, lbda=10_000., verbose=False):
-        """
-        Initialize from detector config.
-
-        .. Note:: added for consistency between classes.
-
-        :param dict config: detector configuration dictionary
-        :param bool verbose: verbose mode
-        :param lbda: wavelengths [Å]
-        """
-        return cls(config, lbda, verbose=verbose)
-
+    
     # ============== #
     #   Methods      #
     # ============== #
@@ -169,7 +176,12 @@ class Detector:
         # Update QE if needed
         if self.qe_interp is not None:
             self.qe = self.qe_interp(self.lbda)
-    
+
+    def get_pixel_size(self, unit="micrometer"):
+        """ """
+        # px_size is in micrometer
+        return self.px_size * units.micrometer.to(unit)
+
     def get_exposure_time(self, nmd=None, tframe=None):
         """ Total integration time (to be used for sequences).
 
@@ -204,13 +216,47 @@ class Detector:
             tframe = self.tframe
 
         return self._get_integration_time(nmd=nmd, tframe=tframe)
-    
+
     @staticmethod
     def _get_integration_time(nmd, tframe):
         """ internal function for the integration time """
         n, m, d = nmd
         return (n - 1) * (m + d) * tframe  # = (n - 1) * tgroup
 
+    def get_thermal_dark(self, as_sum=True, units="ph/s", lbda_range=None):
+        """ """
+        if self.thermaloptics is None:
+            return 0
+
+        if units == "ph/s":
+            qe = None
+        elif units in ["e/s", "e-/s"]:
+            qe = self.qe_interp
+        else:
+            raise ValueError(f"could not parse requested units: ph/s or e/s accepted, {units} given")
+
+        if lbda_range is None:
+            lbda_range = self.lbda_range
+            
+        # properties at the detector
+        ## each pixels integrate the whole spectral range.
+
+
+        # the collective area of pixels in m
+        pixel_area = self.get_pixel_size("m") **2 # px_size is in micro
+
+        # the contribution from thermal emission of optcs, in ph/s
+        signals = self.thermaloptics.get_signal(lbda_bin = lbda_range,        # expectedin in [A]
+                                                area = pixel_area,          # Collecting area [m²]
+                                                qe=qe                       # ph/s or e-/s
+                                                )        
+                                          
+        # sum over 1 element if only 1 temperature
+        if as_sum:
+            signals = np.sum(signals, axis=0)
+        
+        return signals   
+    
     def estimate_slice_spectrum(self, flux):
         """ 
         [slicer mode]
@@ -291,7 +337,8 @@ class Detector:
 
         return signal, variance                  # flux.shape [ADU]
         
-    def estimate_pixel_signal(self, flux, withdark=False,
+    def estimate_pixel_signal(self, flux,
+                                  withdark=False,
                                   variance_model="default",
                                   saturation="default"):
         """ Estimate measured signal and variance from incident flux [ph/s].
@@ -335,10 +382,13 @@ class Detector:
         # Reshape qe (() or (nlbda,)) to match flux's shape (nlbda, ..., width)
         qe = complete_dims(self.qe, -np.ndim(flux))
 
+        # effective dark (thermal + current)
+        effective_dark = self.dark + self.get_thermal_dark(units="e-/s")
+        
         # Variance estimators works with input flux in e-/s (not ph/s)
         flux_e = flux * qe  # [e-/s]
         variance_prop = dict(flux=flux_e, nmd=self.nmd, tframe=self.tframe,
-                             ron=self.ron, dark=self.effective_dark, gain=self.gain)
+                             ron=self.ron, dark=effective_dark, gain=self.gain)
 
         # Variance estimate in [ADU²]
         if  variance_model in ["Rauscher07", "Rauscher+07"]:
@@ -350,7 +400,7 @@ class Detector:
             raise NotImplementedError(
                 f"Unknown variance model {self.variance_model!r}.")
 
-        signal = (flux_e + self.effective_dark) * self.electronpers2ADU  # Total signal [ADU]
+        signal = (flux_e + effective_dark) * self.electronpers2ADU  # Total signal [ADU]
 
         # Detect and mask saturated pixels
         if saturation is not None:
@@ -369,11 +419,11 @@ class Detector:
             self.nsaturated_detpx = None
 
         if not withdark:  # Remove dark contribution
-            signal -= self.effective_dark * self.electronpers2ADU  # [ADU]
+            signal -= effective_dark * self.electronpers2ADU  # [ADU]
 
         return signal, variance  # [ADU], [ADU²]
 
-        
+
     # - Internal
     @staticmethod
     def _estimate_variance_rauscher07(flux, nmd, tframe, ron, dark, gain):
@@ -470,10 +520,6 @@ class Detector:
     # ================ #
     #   Properties     #
     # ================ #
-    @property
-    def effective_dark(self):
-        """ sum of the detector dark current and that induced by thermal radiation in the detector vicinity  """
-        return self.dark + self.thermal_dark
     
     @property
     def meta(self):

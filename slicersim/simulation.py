@@ -23,25 +23,26 @@ from .telescope import Telescope
 
 __all__ = ["Simulation"]
 
-COLORS = {"target": "#283C48", 
-          "host":"#6E441E", 
-          "ron": "#80886D", 
-          "background": "#B08630", 
-          "dark": "#616B62",
-          "thermal_dark": "#7E8B80",
-          "thermal":"#662515"
+COLORS = {# detector
+          "dark": "#25283C",
+          "thermal_dark": "#005D8F",
+          "ron": "#80B056", 
+          # scene
+          "target": "#C2C1B0", 
+          "background": "#FFBC42",
+          "host":"#E56C10",
+          # thermal
+          "thermal":"#8C2B2B"
           }
 
-
-    
-class Simulation:
+class Simulation():
     """ Simulation setup.
 
     A simulation enables you to interact with the scene, the
     spectrograph and the detector to study their relative impact on
     the resulting target Signal-to-Noise Ratio.
     """
-    VARIANCE_SOURCES = ["dark", "thermal_dark", "ron", "target", "host", "background","thermal"]
+    VARIANCE_SOURCES = ["dark", "thermal_dark", "ron", "target", "background", "host", "thermal"]
     
     def __init__(self,
                  scene=None,
@@ -271,7 +272,9 @@ class Simulation:
 
 
         # Initialize the detector from config
-        detector = Detector.from_config(config["detector"], lbda=spectrograph.lbda)
+        detector = Detector.from_config(config["detector"],
+                                        lbda=spectrograph.lbda,
+                                        thermaloptics=spectrograph.optics)
 
         # Initialize extraction parameters from config
         extraction = config["extraction"]
@@ -480,7 +483,7 @@ class Simulation:
 
     def get_pixel_variance(self, flux=0):
         """ get variance associated to 1 pixel on the detector. """
-        _, pixel_var = self.detector.estimate_pixel_signal(flux)
+        _, pixel_var = self.detector.estimate_pixel_signal(flux, self.spectrograph)
         pixel_var *= self.extraction["nramp"] # incl. multi ramp approach.
         return pixel_var
         
@@ -765,12 +768,14 @@ class Simulation:
             self.update(detector__dark = 0)            # Switch off dark
         else:
             current_dark = None
+            
         # thermal induced dark-like signal.
         if "thermal_dark" in switch_off:
-            current_thermal_dark = self.get_parameter("detector__thermal_dark")
-            self.update(detector__thermal_dark = 0)    # Switch off dark            
+            # switch off optics emissivity
+            current_optics_emissivity = self.get_parameter("optics__emissivity")
+            self.update(optics__emissivity = 0)    # Switch off dark            
         else:
-            current_thermal_dark = None
+            current_optics_emissivity = None
             
         if "ron" in switch_off:
             current_ron = self.get_parameter("detector__ron")
@@ -805,8 +810,8 @@ class Simulation:
         if current_dark is not None:
             self.update(detector__dark=current_dark)
             
-        if current_thermal_dark is not None:
-            self.update(detector__thermal_dark=current_thermal_dark)
+        if current_optics_emissivity is not None:
+            self.update(optics__emissivity=current_optics_emissivity)
             
         if current_ron is not None:
             self.update(detector__ron=current_ron)
@@ -1085,21 +1090,20 @@ class Simulation:
         # Dark
         variance_contribution = {}
         for source in self.variance_sources:
-            _, variance_nosource = self.get_band_flux(
-                lbda_range,
-                switch_off=[source], **prop)
+            _, variance_nosource = self.get_band_flux( lbda_range,
+                                                       switch_off=[source],
+                                                       **prop)
             variance_contribution[source] = variance - variance_nosource
             variance_contribution[f"frac_{source}"] = variance_contribution[source]/variance
             
 
-        return {
-            "snr": signal / variance**0.5,
-            "exptime": self.detector.exposure_time,     # [s] (total per exp)
-            "inttime": self.detector.integration_time,  # [s] (between extrema groups per exp)
-            "obstime": self.observing_time,             # [s] (total observing time)
-            "signal": signal,                           # [ADU]
-            "variance": variance,                       # [ADU²]
-            } | variance_contribution
+        return {"snr": signal / variance**0.5,
+                "exptime": self.detector.exposure_time,     # [s] (total per exp)
+                "inttime": self.detector.integration_time,  # [s] (between extrema groups per exp)
+                "obstime": self.observing_time,             # [s] (total observing time)
+                "signal": signal,                           # [ADU]
+                "variance": variance,                       # [ADU²]
+                } | variance_contribution
 
     def estimate_variance_contribution_spectra(self, as_dataframe=True):
         """ Estimate different noise contributions to the total variance 
@@ -1647,16 +1651,18 @@ class Simulation:
         # Figure definition
         import matplotlib.pyplot as plt
         fig, (ax, axsnr, axv) = plt.subplots(3,1, figsize=[7,7], 
-                                             gridspec_kw={"hspace":0.1})    
+                                             gridspec_kw={"hspace":0.1})
+        
         # Data of interest
         flux = variance_contrib["flux"]/norm
         variance = variance_contrib["variance"]
         noise = np.sqrt(variance)/norm
         snr = flux/noise
+        
         # Main plot
-        ax.plot(variance_contrib["lbda"], flux, lw=1, color=COLORS["target"])
+        ax.plot(variance_contrib["lbda"], flux, lw=1, color="k")
         ax.fill_between(variance_contrib["lbda"], flux+noise, flux-noise, alpha=0.3, 
-                       color=COLORS["target"], lw=0)
+                       color="0.5", lw=0)
         ax.axhline(0, color="0.5", lw=1, zorder=1)
 
         # Loop over effects

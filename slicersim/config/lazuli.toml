@@ -7,7 +7,8 @@
 diameter_ext = 3.0         # Primary mirror external diameter [m]
 diameter_int = 0           # Primary mirror internal diameter [m]
 temperature = [283, 253, 283, 278]          # Mirror temperature [K] (0 for none)
-emissivity = [0.05, 0.02, 0.02, 0.02]           # Mirror emissivity
+emissivity = [0.05, 0.02, 0.02, 0.02]       # Mirror emissivity
+nelements = [1, 1, 1, 1]  		    # number of optics per elements
 
 # NOT USED
 # [spectrograph.camera]
@@ -22,10 +23,15 @@ emissivity = [0.05, 0.02, 0.02, 0.02]           # Mirror emissivity
 name = "NACRE (baseline)"
 spectral_range = [4_000, 17_000]  # Wavelength domain [Å]
 lbda_ref = 10_000               # reference wavelength [Å]
+
+## internal composition, used for thermal emission computation
+
+## disperion *or* spectral resolution
 dispersion_law = "dispersion_offner.ecsv"  # Dispersion law ECSV file
                                            # (wavelength, offset [px])
                                            # (should be consistent w/ px_size)
-dispersion_scale = 1.3                     # Dispersion law scaling
+dispersion_scale = 1.3                     # Dispersion law scaling 1.3: default, 1.7 = Bertin's
+dispersion_resolution = 2.0		   # number of pixel per resolution element.
 
 # spectral_resolution and dispersion_law are mutually exclusive
 # spectral_resolution = 100   # Constant 2-px resolving power (log sampling)
@@ -33,17 +39,20 @@ dispersion_scale = 1.3                     # Dispersion law scaling
 # ---- Spaxel structure
 spatial_scale = 0.040      	    # MLA sampling (spaxel scale) [arcsec/spx]
 spatial_shape = [58, 116]   	    # MLA shape (ny, nx) [spatial]
-# mla_fill_factor = 0.9: not implemented (to be incorporated in throughput)
-# scattered light: not implemented
 
 # ---- Throughput
-throughput = "throughput_baseline.ecsv"  # Total throughput, but QE (wavelength, throughput)
-# throughput = 0.7            		 # Total throughput (but QE) [% ph]
+throughput = "throughput_baseline.ecsv"  # Total throughput, but QE (wavelength, throughput) | could be a float
 
-#
-# Point Spread Function ---------------------
-#
 
+## Optics ---------------------
+[spectrograph.optics]
+temperature = [250, 210, 210, 250]          # Mirror temperature [K] (0 for none)
+emissivity = [0.05, 0.05, 0.03, 0.03]       # Mirror emissivity
+nelements = [5, 6, 1, 4]  		    # number of optics per elements
+fratio = [ [15, 30], [7.5, 5.2], [7.5, 5.2], [7.5, 5.2] ]
+geometry = ["circular", "square", "square", "square"] # optics geometrical shape
+
+## Point Spread Function ---------------------
 [spectrograph.psf.detector]
 xdisp_profile = "normal"
 xdisp_sigma_spectral = 0.9	# Chromatic (∝ λ) cross-dispersion PSF [px] at {lbda_ref}
@@ -67,6 +76,8 @@ name = "H4RG17"
 # QE = 0.8                   # Constant quantum efficiency [e-/ph]
 QE = "H4RG17.ecsv"         # Quantum efficiency ECSV file [e-/ph] (wavelength, qe)
 gain = 1.0                 # Gain [ADU/e-]
+# lbda_range = [2_000, 17_000] # range of accepted wavelengths, e.g. no cold stop at 1.8 microns (note: qe is applied on top).
+
 saturation = 65635         # Saturation limit [ADU] (0 for none)
 readout_noise = 10.0        #  read-out noise per frame [e-]
 tframe = 2.830             # Single frame (read) time [s]
@@ -76,10 +87,12 @@ readout_mode = [16, 8, 0]  # (N * (M + D) - D) = 256 frames, exptime = 12'05''
 max_group = 64 	           # maximum number of groups per ramp
 variance_model = "Rauscher+07"  # Variance model (Kubik20 or Rauscher+07)
 dark = 2.8e-3              # Dark current [e-/s/px] 
-thermal_dark = 1e-3        # thermal induced dark current [e-/s/px]
+
 # NOT IMPLEMENTED: dark current as function of detector temperature
 # cutoff = 1.7         # Cut-off wavelength [µm] (for dark current)
 # temperature = 0      # Temperature [K] (for dark current, 0 for none)
+
+
 
 
 #
