@@ -436,7 +436,7 @@ class Simulation():
         """ Effective total transmission of the spectrograph
         
         Product of the spectroscopic throughput: spectrograph.flambda2photon
-        and the detector efficiency: detector.photonflux2ADU
+        and the detector efficiency: detector.photonflux_to_adu
 
         Returns
         -------
@@ -448,7 +448,7 @@ class Simulation():
 
         """
         return self.spectrograph.lbda, \
-          self.spectrograph.flambda2photon * self.detector.photonflux2ADU
+          self.spectrograph.flambda2photon * self.detector.photonflux_to_adu
 
     def get_effective_waveresolution(self, npx=2, sigma=None):
         """ effective wavelength resolution
@@ -603,7 +603,7 @@ class Simulation():
         elif unit in ["ph", "photon", "photons"]:
             coef = self.spectrograph.flambda2photon
         elif unit in ["adu"]:
-            coef = self.spectrograph.flambda2photon * self.detector.photonflux2ADU
+            coef = self.spectrograph.flambda2photon * self.detector.photonflux_to_adu
         else:
             raise ValueError(f"unknown {unit=}")
             
@@ -651,7 +651,7 @@ class Simulation():
             coef = 1/self.spectrograph.flambda2photon[:, np.newaxis, np.newaxis]
             
         elif unit.lower() in ["adu", "default"]:
-            coef = self.detector.photonflux2ADU[:, np.newaxis, np.newaxis]
+            coef = self.detector.photonflux_to_adu[:, np.newaxis, np.newaxis]
         else:
             raise ValueError(f"cannot parse requested unit {unit=}, flambda, photons, adu available.")
         
@@ -963,7 +963,7 @@ class Simulation():
         # Assume the spectrum is perfectly extracted
         if "target" not in switch_off:
             _, target_phflux = self.scene.get_element_spectrum('target') * self.spectrograph.flambda2photon
-            spec_signal = target_phflux * self.detector.photonflux2ADU
+            spec_signal = target_phflux * self.detector.photonflux_to_adu
             if apply_lsf:
                 # apply LSF on true spectrum.
                 spec_signal = self.spectrograph.apply_line_spread_function(spec_signal)

@@ -31,7 +31,7 @@ dispersion_law = "dispersion_offner.ecsv"  # Dispersion law ECSV file
                                            # (wavelength, offset [px])
                                            # (should be consistent w/ px_size)
 dispersion_scale = 1.3                     # Dispersion law scaling 1.3: default, 1.7 = Bertin's
-dispersion_resolution = 2.0		   # number of pixel per resolution element.
+dispersion_resolution = 2.5		   # number of pixel per resolution element.
 
 # spectral_resolution and dispersion_law are mutually exclusive
 # spectral_resolution = 100   # Constant 2-px resolving power (log sampling)
@@ -81,11 +81,11 @@ gain = 1.0                 # Gain [ADU/e-]
 saturation = 65635         # Saturation limit [ADU] (0 for none)
 readout_noise = 10.0        #  read-out noise per frame [e-]
 tframe = 2.830             # Single frame (read) time [s]
-px_size = 10.0             # Pixel physical size [µm]
+pixel_size = 10.0             # Pixel physical size [µm]
                            # (should be consistent w/ dispersion_law)
 readout_mode = [16, 8, 0]  # (N * (M + D) - D) = 256 frames, exptime = 12'05''
 max_group = 64 	           # maximum number of groups per ramp
-variance_model = "Rauscher+07"  # Variance model (Kubik20 or Rauscher+07)
+variance_model = "Rauscher07"  # Variance model (Kubik20 or Rauscher07)
 dark = 2.8e-3              # Dark current [e-/s/px] 
 
 # NOT IMPLEMENTED: dark current as function of detector temperature

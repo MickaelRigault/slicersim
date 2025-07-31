@@ -1331,7 +1331,6 @@ class SlicerSpectrograph( Spectrograph ):
         self._spaxels = {"shape": shape, "spx_scale": spx_scale}
         self._spaxel_coords = {}
 
-
     def get_nea_pixels(self):
         """ noise equivalent area of a slice (per wavelength) in unit of pixels
 
