@@ -359,7 +359,13 @@ class Simulation():
                 updates_extraction[k] = v
 
         # Update spectrograph 1st because it sets the wavelengths
-        self.spectrograph.update(**updates_spectrograph)
+        spectro_change = self.spectrograph.update(**updates_spectrograph)
+        
+        # let's updaet scene and detector for the new wavelength.
+        if "lbda" in spectro_change:
+            updates_scene["lbda"] = self.spectrograph.lbda
+            updates_detector["lbda"] = self.spectrograph.lbda
+        
         self.scene.update(**updates_scene)
         self.detector.update(**updates_detector)
 

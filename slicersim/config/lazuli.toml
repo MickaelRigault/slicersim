@@ -79,10 +79,11 @@ gain = 1.0                 # Gain [ADU/e-]
 # lbda_range = [2_000, 17_000] # range of accepted wavelengths, e.g. no cold stop at 1.8 microns (note: qe is applied on top).
 
 saturation = 65635         # Saturation limit [ADU] (0 for none)
-readout_noise = 10.0        #  read-out noise per frame [e-]
+readout_noise = 10.0       #  read-out noise per frame [e-]
 tframe = 2.830             # Single frame (read) time [s]
-pixel_size = 10.0             # Pixel physical size [µm]
+pixel_size = 10.0          # Pixel physical size [µm]
                            # (should be consistent w/ dispersion_law)
+			   
 readout_mode = [16, 8, 0]  # (N * (M + D) - D) = 256 frames, exptime = 12'05''
 max_group = 64 	           # maximum number of groups per ramp
 variance_model = "Rauscher07"  # Variance model (Kubik20 or Rauscher07)

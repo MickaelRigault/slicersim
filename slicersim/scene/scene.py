@@ -117,6 +117,11 @@ class Scene:
         updates_background = {}
         
         for k, v in kwargs.items():
+            # special case
+            if k == "lbda":
+                self._lbda = v
+                continue
+            
             k = k.replace("__", ".") # django like 
             if k not in self.mutable_parameters:
                 warnings.warn(f"Parameter {k!r} is not mutable.")
@@ -124,11 +129,6 @@ class Scene:
 
             if v is None:        # Skip
                 continue
-
-            # special case
-            if k == "lbda":
-                self._lbda = v
-
 
             if k.startswith("target."):
                 updates_target[k.replace("target.","")] = v

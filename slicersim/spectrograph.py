@@ -63,7 +63,7 @@ def build_lbda(spectral_range, spectral_resolution=None, wsol=None, dsol=None, n
     (:attr:`nlbda` + 1 edge wavelengths).
     """
     if wsol is None:   # Compute from constant resolving power
-        lbda, lbda_edges = lbda_from_respow(spectral_range, spectral_resolution,
+        lbda, lbda_edges = lbda_from_respow(np.asarray(spectral_range, dtype="float32"), spectral_resolution,
                                                 npx_resolution=npx_resolution)
     else:              # Compute from wavelength solution
         wmin, wmax = spectral_range
@@ -75,12 +75,13 @@ def build_lbda(spectral_range, spectral_resolution=None, wsol=None, dsol=None, n
 
 def build_lbda_from_config(config):
     """ """
-    spectral_range = np.asarray(config["spectral_range"], dtype="float32")
+    spectral_range = config.get("spectral_range", None)
 
     dispersion_law = config.get("dispersion_law", None)
     dispersion_scale = float(config.get("dispersion_scale", 1))
     spectral_resolution = config.get("spectral_resolution", None)
     npx_resolution = config.get("dispersion_resolution", 2) # number of pixel per resolution element.
+    
     # Set by dispersion law ?
     if dispersion_law is not None:
         # => ok, you have a dispersion law
@@ -155,6 +156,7 @@ class Spectrograph:
     
     #: Mutable parameters (list)
     mutable_parameters = [#'spectral_range', 'spectral_resolution', # lbda
+                          "dispersion_resolution",
                           'xdisp_sigma_spectral', 'xdisp_sigma', # xdisp_profile,
                           'psf_sigma_spectral', 'guiding_sigma', # psf_profile
                           'spatial_scale','spatial_shape' , # spaxels
@@ -166,6 +168,7 @@ class Spectrograph:
                  spatial_psf={},
                  lbda_edges=None,
                  optics={},
+                 dispersion_resolution=2, 
                  meta={}):
         """ Initialize the spectrograph. 
         You likely want to create it using the .from_config() constructor
@@ -199,13 +202,8 @@ class Spectrograph:
         # Spaxels
         self.set_spaxels(**spaxels)
         
-        # Throughput
-        if callable(throughput): # this is a function
-            self._throughput_interp = throughput
-            self.throughput = self._throughput_interp(self.lbda)
-        else:
-            self._throughput_interp = None
-            self.throughput = throughput
+        # Throughput: flaot or func, see get_throughput()
+        self.throughput = throughput
 
         self.spatial_psf = spatial_psf
         
@@ -213,7 +211,8 @@ class Spectrograph:
         self.mutable_parameters = self.mutable_parameters + \
           [f"telescope.{k}" for k in self.telescope.mutable_parameters] + \
           [f"optics.{k}" for k in self.optics.mutable_parameters]
-        
+
+        meta["dispersion_resolution"] = dispersion_resolution
         self._meta_in = meta.copy()      #: Meta-parameters as input
         self._meta = meta.copy()         #: Meta-parameters as used
 
@@ -294,6 +293,12 @@ class Spectrograph:
                 continue            
 
             # lbda
+            if k == "dispersion_resolution":
+                # update the meta (for lsf)
+                updates["dispersion_resolution"] = v
+                # and update the wavelengths
+                lbda_updates["dispersion_resolution"] = v
+                
             # not allowed to change.
             
             # change PSF
@@ -307,42 +312,48 @@ class Spectrograph:
             else:
                 warning.warn(f"{k=} is unparsed")
             
-        
+        what_changed = []
         # update telescope
-        self.telescope.update(**telescope_updates, reset_others=reset_others)
+        if telescope_updates:
+            what_changed.append("telescope")
+            self.telescope.update(**telescope_updates, reset_others=reset_others)
 
         # update internal optics
-        self.optics.update(**optics_updates)
+        if optics_updates:
+            what_changed.append("optics")
+            self.optics.update(**optics_updates)
         
         # psf
-        self.spatial_psf = self.spatial_psf | psf_updates
+        if psf_updates:
+            what_changed.append("psf")
+            self.spatial_psf = self.spatial_psf | psf_updates
 
         # lbda
         if spaxel_updates:
+            what_changed.append("spaxels")
             spaxels = build_spaxels_from_config( self._meta | spaxel_updates )
             self.set_spaxels(**spaxels)
             
         if lbda_updates:
-            self.update_lbda(*build_lbda_from_config(lbda_updates),
-                             update_throughput=True)
-        
+            what_changed.append("lbda")            
+            self.update_lbda(*build_lbda_from_config(self._meta | lbda_updates) )
+
+        if updates:
+            what_changed.append("meta")
+            
         # the rest if any
         if reset_others:
             self._meta = self._meta_in | updates
         else:
-            self._meta = self._meta | spaxel_updates
+            self._meta = self._meta | updates
+            
+        return what_changed
+        
 
-    def update_lbda(self, lbda, lbda_edges, update_throughput=True):
+    def update_lbda(self, lbda, lbda_edges):
         """ """
         self.lbda = lbda
         self.lbda_edges = lbda_edges
-        if update_throughput:
-            self._update_throughput()
-            
-    def _update_throughput(self):
-        """ """
-        if self._throughput_interp is not None:
-            self.throughput = self.throughput_interp(self.lbda)
 
     def set_spaxels(self, shape, spx_scale):
         """ """
@@ -352,6 +363,13 @@ class Spectrograph:
     # --------- #
     #  GETTER   #
     # --------- #
+    def get_throughput(self):
+        """ """
+        if callable(self.throughput):
+            return self.throughput(self.lbda)
+        # float
+        return self.throughput
+    
     def get_spectrograph_shape(self, oversampling=None):
         """ """
         if oversampling is None or oversampling==1:
@@ -1078,7 +1096,7 @@ class Spectrograph:
 
         # erg/s/cm²/Å * (cm² * throughput * Å / erg/ph) = ph/s
         return (self.telescope.surface * 1e4 *
-                self.throughput * dlbda / hnu)  # (nlbda,) [ph/s]
+                self.get_throughput() * dlbda / hnu)  # (nlbda,) [ph/s]
 
     # Spaxels
     @property
@@ -1316,7 +1334,6 @@ class MLASpectrograph( Spectrograph ):
     def xdisp_sigma_spectral(self):
         """ """
         return self.xdispersion["sigma_spectral"]
-
 
 
 class SlicerSpectrograph( Spectrograph ):

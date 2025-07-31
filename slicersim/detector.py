@@ -2,7 +2,6 @@
 Detector module, to simulate:
 * various detector effects (readout noise, dark current)
 * Multiple Accumulated Sampling (MACC) readout modes
-* Optimal cross-dispersion summation
 
 .. autosummary::
 
@@ -35,7 +34,6 @@ class Detector():
                           'nmd', 'tframe',
                           'ron', 'gain', 'qe', 'dark', 
                           'saturation', 'variance_model']
-    # Do not mutate pixel_size, fixed to 10 µm in spectrograph
 
     def __init__(self, tframe, dark, ron, qe, pixel_size,
                      gain=1, saturation=65_635,
@@ -220,6 +218,7 @@ class Detector():
             Keyword arguments representing the mutable attributes to update.
         """
         lbda = kwargs.pop("lbda", None)  # removes it from the kwargs
+        
         updates = {}
         for k, v in kwargs.items():
             if k not in self.mutable_parameters:
