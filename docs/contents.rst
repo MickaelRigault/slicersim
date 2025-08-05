@@ -4,3 +4,4 @@
    :glob:
 
    api/index
+   notebooks
