@@ -8,7 +8,24 @@ from copy import deepcopy
 
 
 def fratio_to_solidangle(fratio, geometry="circular"):
-    """ """
+ """ Convert f-ratio to solid angle.
+
+    Parameters
+    ----------
+    fratio : float or array-like
+        The f-ratio of the optical system. If a single value is given, it is
+        assumed to be the same for both x and y directions. If an array-like
+        of two values is given, it is assumed to be (fratio_y, fratio_x).
+
+    geometry: str
+        shape of the optical element. Could be square or circular. This
+        affects the normalisation coefficient. 
+
+    Returns
+    -------
+    float
+        The solid angle in steradians.
+    """
     if np.ndim(fratio) == 0:
         fratio_y = fratio_x = fratio
     else:

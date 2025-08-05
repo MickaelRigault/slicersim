@@ -7,17 +7,23 @@ __author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>", "Mickael Rigault <m.rigaul
 import numpy as np
 
 
-def fratio_to_solidangle(fratio):
-    """ """
-    if np.ndim(fratio) == 0:
-        fratio_y = fratio_x = fratio
-    else:
-        fratio_y, fratio_x = fratio
-        
-    return np.pi / (4 * fratio_y*fratio_x)
-
 def recursive_get(dict_, key, default=None):
-    """ """
+    """ Recursively get a key from a nested dictionary.
+
+    Parameters
+    ----------
+    dict_ : dict
+        The dictionary to search.
+    key : str
+        The key to search for.
+    default : any, optional
+        The value to return if the key is not found. Defaults to None.
+
+    Returns
+    -------
+    any
+        The value of the key if found, otherwise the default value.
+    """
     if key in dict_.keys():
         return dict_.get(key)
         
@@ -55,18 +61,22 @@ def mesh_kwargs(**kwargs):
     return df_params
 
 def inspect_func( func ):
-    """ inspect the given function parameters
-    
+    """ Inspect the parameters of a function.
+
+    This function returns the names of all parameters (args and kwargs) and a
+    dictionary of the keyword arguments with their default values.
+
     Parameters
     ----------
-    func: function
-        function to inspect
+    func : function
+        The function to inspect.
 
     Returns
     -------
-    list, dict
-       - names of the parameters (args and kwargs)
-       - dict of the kwargs only.
+    list
+        A list of the names of all parameters.
+    dict
+        A dictionary of the keyword arguments and their default values.
     """
     import inspect
     inspect_full = inspect.getfullargspec( func )
