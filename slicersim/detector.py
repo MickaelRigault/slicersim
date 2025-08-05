@@ -2,10 +2,6 @@
 Detector module, to simulate:
 * various detector effects (readout noise, dark current)
 * Multiple Accumulated Sampling (MACC) readout modes
-
-.. autosummary::
-
-   Detector
 """
 
 __author__ = "Mickael Rigault <m.rigault@ip2i.in2p3.fr>, Yannick Copin <y.copin@ip2i.in2p3.fr>"

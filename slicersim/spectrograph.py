@@ -1,15 +1,5 @@
 """
-Spectrograph module, to simulate:
-
-* spatial stage and MLA sampling
-* spectral stage and dispersion law
-
-Astrophysical scene is handled by :class:`mlaperf.scene.Scene` and detector by
-:class:`mlaperf.detector.Detector`.
-
-.. autosummary::
-
-   Spectrograph
+Spectrograph module
 """
 
 __author__ = "Mickael Rigault <m.rigault@ip2i.in2p3.fr>, Yannick Copin <y.copin@ip2i.in2p3.fr>"

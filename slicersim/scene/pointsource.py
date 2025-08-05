@@ -220,7 +220,7 @@ def get_saltmodel(redshift=0.1,
                   MBmax=-19.3, source="salt2-extended", cosmo=cosmology,
                   x1=0, c=0, alpha=-0.14, beta=3.15):
     """
-    :pypi:`sncosmo` SALT2 SN Ia model at redshift z and with peak `MBmax`.
+    sncosmo SALT2 SN Ia model at redshift z and with peak `MBmax`.
 
     The returned model is monkey-patched with additional method `flux_extended`
     which returns null fluxes outside the valid spectral domain of the model.
