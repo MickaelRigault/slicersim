@@ -1,30 +1,20 @@
-{% if fullname == 'slicersim' %}
-slicersim
-=========
+{% if modules %}
+{# This is a package with submodules #}
+{{ fullname | escape | underline }}
 
-.. automodule:: slicersim
+.. automodule:: {{ fullname }}
 
 .. rubric:: Modules
 
 .. autosummary::
    :toctree: .
    :recursive:
-
-   slicersim.detector
-   slicersim.extra
-   slicersim.iotools
-   slicersim.lazuli
-   slicersim.nea
-   slicersim.profiles
-   slicersim.scene
-   slicersim.simulation
-   slicersim.spectrograph
-   slicersim.study
-   slicersim.telescope
-   slicersim.thermal
-   slicersim.utils
+{% for item in modules %}
+   {{ item }}
+{%- endfor %}
 
 {% else %}
+{# This is a regular module with code #}
 {{ fullname | escape | underline }}
 
 .. automodule:: {{ fullname }}
