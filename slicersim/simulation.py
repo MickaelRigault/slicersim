@@ -36,11 +36,42 @@ COLORS = {# detector
           }
 
 class Simulation():
-    """ Simulation setup.
+    """Main class to simulate an observation.
 
-    A simulation enables you to interact with the scene, the
-    spectrograph and the detector to study their relative impact on
-    the resulting target Signal-to-Noise Ratio.
+    This class is the main entry point to the simulation. It contains all the
+    necessary information to simulate an observation, from the scene to the
+    detector.
+
+    Parameters
+    ----------
+    scene : slicersim.Scene, optional
+        The scene to observe. Default is None.
+    spectrograph : slicersim.Spectrograph, optional
+        The spectrograph used for the observation. Default is None.
+    detector : slicersim.Detector, optional
+        The detector used for the observation. Default is None.
+    telescope : slicersim.Telescope, optional
+        The telescope used for the observation. Default is None.
+    extraction : dict, optional
+        A dictionary of parameters for the extraction. Default is {}.
+    meta : dict, optional
+        A dictionary of metadata. Default is {}.
+
+    Attributes
+    ----------
+    scene : slicersim.Scene
+        The scene to observe.
+    spectrograph : slicersim.Spectrograph
+        The spectrograph used for the observation.
+    detector : slicersim.Detector
+        The detector used for the observation.
+    telescope : slicersim.Telescope
+        The telescope used for the observation.
+    extraction : dict
+        A dictionary of parameters for the extraction.
+    meta : dict
+        A dictionary of metadata.
+
     """
     VARIANCE_SOURCES = ["dark", "thermal_dark", "ron", "target", "background", "host", "thermal"]
     
@@ -51,22 +82,23 @@ class Simulation():
                  telescope=None,                 
                  extraction={},
                  meta={}):
-        """
-        A simulation is made of 4 elements:
+        """Initialize the simulation.
 
-        1. a scene (what Mother Nature provides)
-        2. a telescope (which mirror size)
-        3. a spectrograph, incl. telescope (how the scene is observed)
-        4. a detector (how the signal is recorded)
-        5. some extraction parameters (how the signal is extracted)
+        Parameters
+        ----------
+        scene : slicersim.Scene, optional
+            The scene to observe. Default is None.
+        spectrograph : slicersim.Spectrograph, optional
+            The spectrograph used for the observation. Default is None.
+        detector : slicersim.Detector, optional
+            The detector used for the observation. Default is None.
+        telescope : slicersim.Telescope, optional
+            The telescope used for the observation. Default is None.
+        extraction : dict, optional
+            A dictionary of parameters for the extraction. Default is {}.
+        meta : dict, optional
+            A dictionary of metadata. Default is {}.
 
-        :param Scene scene: input scene
-        :param Spectrograph spectrograph: input spectrograph
-        :param Detector detector: input detector
-        :param Telescope telescope: input telescope
-        :param dict extraction: input extraction parameters
-        :param dict meta: meta-data
-        :param dict kwargs: elements to be added to meta-data
         """
         self.scene = scene                #: Scene instance
         self.spectrograph = spectrograph  #: Spectrograph instance

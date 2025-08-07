@@ -8,7 +8,7 @@ from copy import deepcopy
 
 
 def fratio_to_solidangle(fratio, geometry="circular"):
- """ Convert f-ratio to solid angle.
+    """ Convert f-ratio to solid angle.
 
     Parameters
     ----------
@@ -26,6 +26,7 @@ def fratio_to_solidangle(fratio, geometry="circular"):
     float
         The solid angle in steradians.
     """
+    
     if np.ndim(fratio) == 0:
         fratio_y = fratio_x = fratio
     else:
@@ -44,7 +45,31 @@ def fratio_to_solidangle(fratio, geometry="circular"):
 
 
 class ThermalOptics():
-    """ """
+    """Class to compute the thermal radiation of optical elements.
+
+    Parameters
+    ----------
+    temperature : float or array-like
+        The temperature of the optical elements in Kelvin.
+    emissivity : float or array-like
+        The emissivity of the optical elements.
+    fratio : float or array-like, optional
+        The f-ratio of the optical system. If a single value is given, it is
+        assumed to be the same for both x and y directions. If an array-like
+        of two values is given, it is assumed to be (fratio_y, fratio_x).
+        Default is None.
+    solid_angle : float or array-like, optional
+        The solid angle in steradians. If not given, it is computed from the
+        f-ratio. Default is None.
+    nelements : int, optional
+        The number of optical elements. Default is 1.
+    geometry : str, optional
+        The geometry of the optical elements. Can be "circular" or "square".
+        Default is "circular".
+    meta : dict, optional
+        A dictionary of metadata. Default is {}.
+
+    """
     mutable_parameters = ['temperature', 'emissivity'] # lbda
 
     def __init__(self, temperature, emissivity, fratio=None, solid_angle=None,
@@ -69,7 +94,22 @@ class ThermalOptics():
     
     @classmethod
     def from_config(cls, config, no_solidangle_ok=True):
-        """ """
+        """Create a `ThermalOptics` object from a configuration dictionary.
+
+        Parameters
+        ----------
+        config : dict
+            A dictionary of configuration parameters.
+        no_solidangle_ok : bool, optional
+            If True, do not raise a warning if both fratio and solid_angle are
+            None. Default is True.
+
+        Returns
+        -------
+        ThermalOptics
+            A `ThermalOptics` object.
+
+        """
         
         temperature = config.get("temperature", None)        
         emissivity = config.get("emissivity", None)
@@ -93,7 +133,16 @@ class ThermalOptics():
                   meta=config)
 
     def update(self, reset_thermal=True, **kwargs):
-        """ """
+        """Update the mutable parameters of the object.
+
+        Parameters
+        ----------
+        reset_thermal : bool, optional
+            If True, reset the thermal radiation object. Default is True.
+        **kwargs
+            The mutable parameters to update.
+
+        """
         for k, v in kwargs.items():
             if k not in self.mutable_parameters:
                 warnings.warn(f"Parameter {k!r} is not mutable.")
@@ -143,32 +192,35 @@ class ThermalOptics():
     # ============= #
     @property
     def temperature(self):
-        """Get the temperature [in K] of the components """
+        """The temperature of the components [K]."""
         return self._temperature
 
     @property
     def emissivity(self):
-        """Get the emissivity of the components. """
+        """The emissivity of the components."""
         return self._emissivity
 
     @property
     def nelements(self):
-        """ number of element at given temperature and emissivity """
+        """The number of elements at a given temperature and emissivity."""
         return self._nelements
 
     @property
     def fratio(self):
-        """ """
+        """The f-ratio of the optical system."""
         return self._fratio
 
     @property
     def geometry(self):
-        """ """
+        """The geometry of the optical elements."""
         return self._geometry
         
     @property
     def solid_angle(self):
-        """ """
+        """The solid angle of the optical system [sr].
+
+        If not provided at initialization, it is computed from the f-ratio.
+        """
         if self._solid_angle is None:
             if self.fratio is None: 
                 raise ValueError("both fratio and solid_angle are None. Cannot derive or get solid_angle")
@@ -179,7 +231,7 @@ class ThermalOptics():
 
     @property
     def thermal(self):
-        """ """
+        """The thermal radiation object."""
         if not hasattr(self, "_thermal") or self._thermal is None:
             self._thermal = ThermalRadiation(self.temperature, self.emissivity, self.nelements)
             
@@ -191,6 +243,15 @@ class ThermalRadiation():
     This class calculates the thermal radiation signal based on the black body radiation
     principles. It allows for the computation of photon flux within specified wavelength
     ranges, taking into account the temperature and emissivity of the components.
+
+    Parameters
+    ----------
+    temperature : float, numpy.ndarray
+        The temperature of the components in Kelvin.
+    emissivity : float, numpy.ndarray
+        The emissivity of the components.
+    nelements : int, optional
+        The number of elements. Default is 1.
 
     Attributes
     ----------
@@ -414,16 +475,16 @@ class ThermalRadiation():
     # ============ #
     @property
     def temperature(self):
-        """Get the temperature [in K] of the components """
+        """The temperature of the components [K]."""
         return self._temperature
 
     @property
     def emissivity(self):
-        """Get the emissivity of the components. """
+        """The emissivity of the components."""
         return self._emissivity
 
     @property
     def nelements(self):
-        """ number of element at given temperature and emissivity """
+        """The number of elements at a given temperature and emissivity."""
         return self._nelements
     

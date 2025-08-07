@@ -1,7 +1,7 @@
-"""
-Detector module, to simulate:
-* various detector effects (readout noise, dark current)
-* Multiple Accumulated Sampling (MACC) readout modes
+"""Detector module.
+
+This module simulates detector effects such as readout noise and dark current,
+and Multiple Accumulated Sampling (MACC) readout modes.
 """
 
 __author__ = "Mickael Rigault <m.rigault@ip2i.in2p3.fr>, Yannick Copin <y.copin@ip2i.in2p3.fr>"
@@ -20,15 +20,51 @@ class SaturationWarning(AstropyWarning):
     """ Base class for saturation warnings. """
     
 class Detector():
-    """
-    Simulates a detector for a spectrograph, handling signal and variance estimation
-    from input flux and providing methods for optimal extraction of spectra.
-    """
+    """Simulates a detector for a spectrograph.
 
+    This class handles signal and variance estimation from input flux and provides
+    methods for optimal extraction of spectra.
+
+    Parameters
+    ----------
+    tframe : float
+        Frame time in seconds.
+    dark : float
+        Dark current in electrons per second.
+    ron : float
+        Read-out noise per frame in electrons.
+    qe : float or callable
+        Quantum efficiency, either as a constant or a function of wavelength.
+    pixel_size : float
+        Size of each pixel in micrometers.
+    gain : float, optional
+        Gain in ADU per electron. Default is 1.
+    saturation : int, optional
+        Saturation level in ADU. Default is 65635.
+    nmd : tuple, optional
+        Number of groups, frames per group, and drops. Default is (64, 8, 0).
+    lbda_range : array_like, optional
+        Wavelength range accepted by the detector in Angstroms.
+    max_group : int, optional
+        Maximum number of groups per ramp. Default is 64.
+    lbda : float, optional
+        Wavelength in Angstroms. Default is 10000.
+    variance_model : str, optional
+        Variance model to use. Default is "rauscher07".
+    thermaloptics : object, optional
+        Object handling thermal optics.
+    meta : dict, optional
+        Metadata dictionary.
+
+    Attributes
+    ----------
+    mutable_parameters : list
+        List of parameters that can be changed after initialization.
+    """
     #: Mutable parameters (list)
     mutable_parameters = ['ngroup', "nframe_per_group",
                           'nmd', 'tframe',
-                          'ron', 'gain', 'qe', 'dark', 
+                          'ron', 'gain', 'qe', 'dark',
                           'saturation', 'variance_model']
 
     def __init__(self, tframe, dark, ron, qe, pixel_size,
@@ -38,52 +74,6 @@ class Detector():
                      variance_model="rauscher07",
                      thermaloptics=None,
                      meta={} ):
-        """ Initialize the detector with given properties.
-
-        Parameters
-        ----------
-        tframe : float
-            Frame time in seconds.
-
-        dark : float
-            Dark current in electrons per second.
-
-        ron : float
-            Read-out noise per frame in electrons.
-
-        qe : float or callable
-            Quantum efficiency, either as a constant or a function of wavelength.
-
-        pixel_size : float
-            Size of each pixel in micrometers.
-
-        gain : float, optional
-            Gain in ADU per electron, default is 1.
-
-        saturation : int, optional
-            Saturation level in ADU, default is 65635.
-
-        nmd : tuple, optional
-            Number of groups, frames per group, and drops, default is (64, 8, 0).
-
-        lbda_range : array_like, optional
-            Wavelength range accepted by the detector in Angstroms 
-
-        max_group : int, optional
-            Maximum number of groups per ramp, default is 64.
-
-        lbda : float, optional
-            Wavelength in Angstroms, default is 10000.
-
-        variance_model : str, optional
-            Variance model to use, default is "rauscher07".
-
-        thermaloptics : object, optional
-            Object handling thermal optics.
-
-        meta : dict, optional
-            Metadata dictionary.
-        """
         # from other components
         self._lbda = lbda
         self._thermaloptics = thermaloptics
@@ -111,8 +101,7 @@ class Detector():
 
     @classmethod
     def from_config(cls, config, lbda=10_000., thermaloptics=None):
-        """
-        Initialize the detector from a configuration dictionary.
+        """Initialize the detector from a configuration dictionary.
 
         Parameters
         ----------
@@ -123,13 +112,10 @@ class Detector():
             - ron
             - dark
             - tframe
-            - dark
             - qe
             - pixel_size
-
-        lbda : float, array, optional
-            Wavelength [Å], default is 10000.
-
+        lbda : float or array_like, optional
+            Wavelength in Angstroms. Default is 10000.
         thermaloptics : object, optional
             Thermal optics object.
 
@@ -202,14 +188,14 @@ class Detector():
     #   Methods      #
     # ============== #
     def update(self, reset_others=False, **kwargs):
-        """ Change any mutable attribute of the detector.
-        (see self.mutable_parameters) 
+        """Change any mutable attribute of the detector.
+
+        (see self.mutable_parameters)
 
         Parameters
         ----------
         reset_others : bool, optional
-            If True, reset other parameters to their initial values, default is False.
-
+            If True, reset other parameters to their initial values. Default is False.
         **kwargs : dict
             Keyword arguments representing the mutable attributes to update.
         """
@@ -247,12 +233,12 @@ class Detector():
             self._meta = self._meta | updates
         
     def update_lbda(self, lbda):
-        """ Update chromatic components.
+        """Update chromatic components.
 
         Parameters
         ----------
         lbda : array_like or float
-            Wavelength [Å].
+            Wavelength in Angstroms.
         """
         self._lbda = lbda
 
@@ -260,12 +246,12 @@ class Detector():
     #  GETTER  #
     # ======= #
     def get_qe(self, lbda=None):
-        """ Get the quantum efficiency.
+        """Get the quantum efficiency.
 
         Parameters
         ----------
         lbda : array_like or float, optional
-            Wavelength [Å]. If None, use the current wavelength.
+            Wavelength in Angstroms. If None, use the current wavelength.
 
         Returns
         -------
@@ -283,13 +269,13 @@ class Detector():
         return self.qe(self.lbda)
         
     def get_pixel_size(self, unit="micrometer"):
-        """ Get the pixel size in the specified unit.
+        """Get the pixel size in the specified unit.
 
         Parameters
         ----------
         unit : str, optional
-            Unit for the pixel size, default is "micrometer".
-            (must be a known astropy units)
+            Unit for the pixel size. Must be a known astropy unit.
+            Default is "micrometer".
 
         Returns
         -------
@@ -300,18 +286,18 @@ class Detector():
         return self.pixel_size * units.micrometer.to(unit)
 
     def get_thermal_dark(self, as_sum=True, units="ph/s", lbda_range=None):
-        """ Get the thermal dark current if any provided (see self.thermaloptics)
+        """Get the thermal dark current.
+
+        This is based on the `thermaloptics` object, if provided.
 
         Parameters
         ----------
         as_sum : bool, optional
-            If True, return the sum of signals, default is True.
-        
+            If True, return the sum of signals. Default is True.
         units : str, optional
-            Units for the output, either "ph/s" or "e/s", default is "ph/s".
-
+            Units for the output, either "ph/s" or "e/s". Default is "ph/s".
         lbda_range : array_like, optional
-            Wavelength range [Å]. If None, use the current wavelength range.
+            Wavelength range in Angstroms. If None, use the current wavelength range.
 
         Returns
         -------
@@ -409,25 +395,21 @@ class Detector():
                                   withdark=False,
                                   variance_model="default",
                                   saturation="default"):
-        """
-        Estimate measured signal and variance from incident flux [ph/s].
+        """Estimate measured signal and variance from incident flux.
 
         Parameters
         ----------
         flux : array_like
-            Incident flux (arbitrary shape, e.g., (nlbda, ny, nx)) [ph/s/px].
-
+            Incident flux in ph/s/px (arbitrary shape, e.g., (nlbda, ny, nx)).
         withdark : bool, optional
-            Include dark contribution to output signal, default is False.
-
+            Include dark contribution to output signal. Default is False.
         variance_model : str, optional
-            Variance model to use. Rauscher07 or Kubik20. 
-            If "default", self.variance_model is used, default is "default".
-
+            Variance model to use (e.g., 'rauscher07', 'kubik20').
+            If "default", `self.variance_model` is used. Default is "default".
         saturation : int or str, optional
-            If given, this attempts to detect saturation. 
-            If "default", self.saturation is used. 
-            If None, no saturation, default is "default".
+            Saturation level in ADU. If given, this attempts to detect saturation.
+            If "default", `self.saturation` is used.
+            If None, no saturation is applied. Default is "default".
 
         Returns
         -------
@@ -475,23 +457,22 @@ class Detector():
         return signal, variance  # [ADU], [ADU²]
 
     def estimate_variance(self, flux, model=None, incl_thermal=True):
-        """ Estimate the variance associated to input flux.
+        """Estimate the variance associated with the input flux.
 
         Parameters
         ----------
         flux : array_like
-            Incident flux [e-/s].
-
+            Incident flux in e-/s.
         model : str, optional
-            Variance model to use. If None, self.variance_model is used, default is None.
-
+            Variance model to use. If None, `self.variance_model` is used.
+            Default is None.
         incl_thermal : bool, optional
-            Include thermal contribution, default is True.
+            Include thermal contribution. Default is True.
 
         Returns
         -------
         array_like
-            Variance [ADU²].
+            Variance in ADU².
         """
         if model is None:
             model = self.variance_model
@@ -516,31 +497,32 @@ class Detector():
     # - Internal
     @staticmethod
     def _estimate_variance_rauscher07(flux, nmd, tframe, ron, dark, gain):
-        """ Variance from Rauscher+2007 (corrected in Rauscher+2010).
-        
-        Note: in Rauscher+07, flux estimate (eqs 2, 3 & 4) is 
-        unbiased and naturally falls back to incident flux in
-        the noiseless limit.
-        
+        """Variance from Rauscher+2007 (corrected in Rauscher+2010).
+
+        Note
+        ----
+        In Rauscher+07, the flux estimate (eqs 2, 3 & 4) is unbiased and
+        naturally falls back to the incident flux in the noiseless limit.
+
         Parameters
         ----------
         flux : array_like
-            Flux in units of [e-/s].
+            Flux in e-/s.
         nmd : tuple
             MACC(N=#group, M=#frame, D=#drop).
         tframe : float
-            Frame time [s].
+            Frame time in seconds.
         ron : float
-            Read noise per frame in units of [e-].
+            Read noise per frame in e-.
         dark : float
-            Dark current in [e-/s].
+            Dark current in e-/s.
         gain : float
-            Gain [ADU/e-].
+            Gain in ADU/e-.
 
         Returns
         -------
         array_like
-            Total variance [ADU²].
+            Total variance in ADU².
         """
         n, m, d = nmd
         if (n == 0) or (m == 0):
@@ -559,27 +541,27 @@ class Detector():
 
     @staticmethod
     def _estimate_variance_kubik20(flux, nmd, tframe, ron, dark, gain):
-        """ Variance from Kubik2020 (private communication).
+        """Variance from Kubik+2020 (private communication).
 
         Parameters
         ----------
         flux : array_like
-            Flux in units of [e-/s].
+            Flux in e-/s.
         nmd : tuple
             MACC(N=#group, M=#frame, D=#drop).
         tframe : float
-            Frame time [s].
+            Frame time in seconds.
         ron : float
-            Read noise per frame in units of [e-].
+            Read noise per frame in e-.
         dark : float
-            Dark current in [e-/s].
+            Dark current in e-/s.
         gain : float
-            Gain [ADU/e-].
+            Gain in ADU/e-.
 
         Returns
         -------
         array_like
-            Total variance [ADU²].
+            Total variance in ADU².
         """
         n, m, d = nmd
 
@@ -604,17 +586,17 @@ class Detector():
     # - Core
     @property
     def lbda(self):
-        """ Wavelength [Å] """
+        """Wavelength in Angstroms."""
         return self._lbda
 
     @property
     def thermaloptics(self):
-        """ ThermalOptics object procuding signal onto the detector. """
+        """ThermalOptics object producing signal onto the detector."""
         return self._thermaloptics
 
     @property
     def meta(self):
-        """ metadata containing the current detector parameters. """
+        """Metadata containing the current detector parameters."""
         # info: self._meta_in contains the input meta.
         return self._meta
 
@@ -623,17 +605,20 @@ class Detector():
     #
     @property
     def name(self):
-        """  Name of the detector if any """
+        """Name of the detector, if any."""
         return self.meta.get("name", "unknown")
 
     @property
     def variance_model(self):
-        """ Variance model name """
+        """Variance model name."""
         return self.meta.get("variance_model")
         
     @property
     def lbda_range(self):
-        """ Wavelength accepted by the detector (first and last of self.lbda if not specified) """
+        """Wavelength range accepted by the detector.
+
+        This is the first and last value of `self.lbda` if not specified.
+        """
         lbda_range = self.meta.get("lbda_range", None)
         if lbda_range is None:
             lbda_range = self.lbda[[0, -1]]
@@ -642,87 +627,97 @@ class Detector():
     # - pixels properties
     @property
     def dark(self):
-        """ Detector dark current [e-/s]
+        """Detector dark current in e-/s.
 
-        Note: the total effective_dark = self.dark + self.get_thermal_dark() """
+        Note
+        ----
+        The total effective dark current is `self.dark` + `self.get_thermal_dark()`.
+        """
         return self.meta.get("dark")
     
     @property
     def ron(self):
-        """ detector Read-Out Noise per frame [e-] """
+        """Detector Read-Out Noise per frame in e-."""
         return self.meta.get("ron")
         
     @property
     def qe(self):
-        """ Quantum efficiency (float, array or func) 
-        
-        Note: use self.get_qe() to get the actual qe for the input self.lbda
+        """Quantum efficiency (float, array, or function).
+
+        Note
+        ----
+        Use `self.get_qe()` to get the actual QE for the input `self.lbda`.
         """
         return self.meta.get("qe")
 
     @property
     def pixel_size(self):
-        """ Detector  Pixel size [µm] """
+        """Detector pixel size in micrometers."""
         return self.meta.get("pixel_size")
 
     @property
     def saturation(self):
-        """ Saturation level [ADU]. """
+        """Saturation level in ADU."""
         return self.meta["saturation"]
         
     @property
     def gain(self):
-        """ Gain [ADU/e-]. """
+        """Gain in ADU/e-."""
         return self.meta.get("gain")
 
     @property
     def tframe(self):
-        """ Frame time [s]. """
+        """Frame time in seconds."""
         return self.meta.get("tframe")
 
     # - read-out model and co.        
     @property
     def nmd(self):
-        """ Read-out mode (n, m, d): (Number of groups, frames per group, and drops). """
+        """Read-out mode (n, m, d).
+
+        n: number of groups
+        m: frames per group
+        d: dropped frames
+        """
         return self.meta.get("nmd")
 
     @property
     def macc(self):
-        """ nmd using the 'MACC' description 'N:M:D'. (based on self.nmd) """
+        """Read-out mode in MACC description 'N:M:D'."""
         return ':'.join([ str(_) for _ in self.nmd ])
 
     @property
     def max_group(self):
-        """ Maximum allowed number of groups per ramp. (n_max, m, d)"""
+        """Maximum allowed number of groups per ramp (n_max, m, d)."""
         return self.meta.get("max_group")
 
     @property
     def nframes(self):
-        """ Total number of individual frames in the ramp. """
+        """Total number of individual frames in the ramp."""
         n, m, d = self.nmd
         return (n * (m + d) - d)
     
     @property
     def tgroup(self):
-        """ Time between two groups (including drops). """
+        """Time between two groups, including drops."""
         n, m, d = self.nmd
         return (m + d) * self.tframe
 
     @property
     def integration_time(self):
-        """ Effective integration time (to be used for flux computations). """
+        """Effective integration time for flux computations."""
         n, m, d = self.nmd
         return (n - 1) * (m + d) * self.tframe  # = (n - 1) * tgroup        
 
     @property
     def exposure_time(self):
-        """ Total integration time (to be used for sequences). """
+        """Total integration time for sequences."""
         return self.nframes * self.tframe
 
     # - conversion
     @property
     def photonflux_to_adu(self):
-        """ Conversion factor from photon flux [ph/s] to integrated signal [ADU].
+        """Conversion factor from photon flux [ph/s] to integrated signal [ADU].
 
         This is effective exposure time [s] * QE [e-/ph] * gain [ADU/e-].
         """
@@ -731,7 +726,7 @@ class Detector():
 
     @property
     def electronpers_to_adu(self):
-        """ Conversion factor from electron/s to integrated signal [ADU].
+        """Conversion factor from electron/s to integrated signal [ADU].
 
         This is effective exposure time [s] * gain [ADU/e-].
         """

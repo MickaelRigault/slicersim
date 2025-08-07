@@ -1,13 +1,4 @@
-"""
-Access package data files.
-
-.. autosummary::
-
-   expand_path
-   get_config
-   read_ecsv
-   chromatic_interpolator
-"""
+"""Access package data files."""
 
 import os
 import sys
@@ -31,14 +22,20 @@ MLAPERF_PATH = files("slicersim.config")     #: Path to data & config files.
 
 
 def expand_path(filename):
-    """
-    Get full file path, including config path if necessary.
+    """Get the full file path, including the config path if necessary.
 
-    If the input filename does not specifically include a path, it
-    will be looked for in the default :data:`MLAPERF_PATH` directory.
+    If the input filename does not specifically include a path, it will be
+    looked for in the default :data:`MLAPERF_PATH` directory.
 
-    :param str filename: file name
-    :return: filename including default path if needed
+    Parameters
+    ----------
+    filename : str
+        File name.
+
+    Returns
+    -------
+    str
+        Filename including the default path if needed.
     """
 
     if os.path.dirname(filename):  # filename includes a path
@@ -49,8 +46,21 @@ def expand_path(filename):
     return fname
 
 def merge_dicts(d1, d2):
-    """ recursively merges d2 into (a copy of) d1 and returns the result.
+    """Recursively merge d2 into a copy of d1 and return the result.
+
     Values in d2 will override values in d1 in case of conflicts.
+
+    Parameters
+    ----------
+    d1 : dict
+        First dictionary.
+    d2 : dict
+        Second dictionary.
+
+    Returns
+    -------
+    dict
+        Merged dictionary.
     """
     from copy import deepcopy
     d1 = deepcopy(d1) # do not change input d1.
@@ -68,62 +78,71 @@ def merge_dicts(d1, d2):
 
 
 def get_config(scene="supernova.toml", instrument="lazuli.toml"):
-    """
-    Read configuration files.
+    """Read configuration files.
 
-    Final configuration has the following structure::
+    The final configuration has the following structure::
 
-      {'scene': {'point_source': {...}
-                 'zodi': {...}
-                },
-       'spectrograph': {...},
-       'detector': {...},
-       'extraction': {...},
-      }
+        {'scene': {'point_source': {...},
+                   'zodi': {...}
+                  },
+         'spectrograph': {...},
+         'detector': {...},
+         'extraction': {...},
+        }
 
     Parameters
     ----------
-    scene: string, dict
-        filename of the scene, or list of filename as dict 
-        e.g.: scene="supernovae", or {"pointsource": "supernovae", "background": "zodi", etc.}
-    
-    instrument: string, dict
-        filename defining the instrument (or dict giving details)
-        
-    Return
-    ------
+    scene : str or dict, optional
+        Filename of the scene, or a dictionary of filenames.
+        For example, `scene="supernovae"` or
+        `{"pointsource": "supernovae", "background": "zodi"}`.
+        Default is "supernova.toml".
+    instrument : str or dict, optional
+        Filename defining the instrument, or a dictionary giving details.
+        Default is "lazuli.toml".
+
+    Returns
+    -------
     dict
+        Configuration dictionary.
     """
     return read_config(scene) | read_config(instrument)
 
 
 def read_config(filename, verbose=False):
-    """
-    Read single configuration file.
+    """Read a single configuration file.
 
-    * If the input filename does not specifically include a path, it will be
+    - If the input filename does not specifically include a path, it will be
       looked for in the default :data:`MLAPERF_PATH` directory.
-    * As for now, only `toml` configuration files are supported.
+    - Currently, only `.toml` configuration files are supported.
 
     Parameters
     ----------
-    filename: str, list
-        filename of the config file. If no extension, .toml is assumed
-        such that filename="supernova" is equivalent to filename="supernova.toml".
-        
-        filename could be a list of names or names and dict. 
-        These nested dictonary are merged from left to right, such that
-        filename = ["supernova", "zodi"], config from "zodi" will overwrite
-        the corresponding (nested) entry from supernova.
-        if an element of the list is a dict, it will be assumed to be a config.
-        e.g., ["supernova", {"scene": {"point_source": {"source": [lbda_ref, flux_ref]}}}]
-        any scene__point_source__source from supernovae will be overwriten.
-        
+    filename : str or list
+        Filename of the configuration file. If no extension is provided,
+        `.toml` is assumed. `filename="supernova"` is equivalent to
+        `filename="supernova.toml".
 
-    :param str filename: configuration file name
-    :param bool verbose: verbose mode
-    :return dict: configuration (nested dictionary)
-    :raise NotImplementedError: unknown configuration extension
+        `filename` can also be a list of names or a mix of names and dicts.
+        These nested dictionaries are merged from left to right, such that for
+        `filename = ["supernova", "zodi"]`, the configuration from "zodi" will
+        overwrite the corresponding (nested) entry from "supernova".
+        If an element of the list is a dict, it will be assumed to be a config.
+        For example, `["supernova", {"scene": {"point_source": {"source":
+        [lbda_ref, flux_ref]}}}]` will overwrite the `scene.point_source.source`
+        from the "supernova" configuration.
+    verbose : bool, optional
+        Verbose mode. Default is False.
+
+    Returns
+    -------
+    dict
+        Configuration as a nested dictionary.
+
+    Raises
+    ------
+    NotImplementedError
+        If the configuration file extension is not supported.
     """
     # dict structure
     if type(filename) is dict:
@@ -157,24 +176,35 @@ def read_config(filename, verbose=False):
 
 
 def override_config(cfg, copy=False, **kwargs):
-    """
-    Override elements of a (nested dict) configuration using dot notation.
+    """Override elements of a (nested dict) configuration using dot notation.
 
-    :param dict cfg: nested dictionary configuration
-    :param bool copy: return a modified deep copy (original left untouched)
-    :param kwargs: override values `{'key1.key2.key3': newval}`
-    :return: modified (copy of) configuration
+    Parameters
+    ----------
+    cfg : dict
+        Nested dictionary configuration.
+    copy : bool, optional
+        Return a modified deep copy (original left untouched). Default is False.
+    **kwargs : dict
+        Override values, e.g., `{'key1.key2.key3': newval}`.
 
+    Returns
+    -------
+    dict
+        Modified (copy of) configuration.
+
+    Examples
+    --------
     >>> cfg = dict(a=1, b=dict(c=2, d=3))
     >>> override_config(cfg, **{'b.c': 4})
     {'a': 1, 'b': {'c': 4, 'd': 3}}
     >>> override_config(cfg, **{'b.e': 5})
-    KeyError: "Unknwown key 'b.e'."
+    KeyError: "Unknown key 'b.e'."
 
-    .. Note:: Multi-key override is supported:
+    .. note::
+        Multi-key override is supported:
 
-       >>> override_config(cfg, **{'b': dict(c=3, d=4)})
-       {'a': 1, 'b': {'c': 3, 'd': 4}}
+        >>> override_config(cfg, **{'b': dict(c=3, d=4)})
+        {'a': 1, 'b': {'c': 3, 'd': 4}}
     """
 
     if copy:
@@ -197,14 +227,22 @@ def override_config(cfg, copy=False, **kwargs):
 
 
 def read_ecsv(filename, colnames=None, description=''):
-    """
-    Read ECSV file.
+    """Read an ECSV file.
 
-    :param str filename: ECSV file name
-    :param list colnames: list of requested column names (or None for all)
-    :param str description: description string (used as a verbose flag)
-    :return: file content as a table
-    :rtype: astropy.table.Table
+    Parameters
+    ----------
+    filename : str
+        ECSV file name.
+    colnames : list, optional
+        List of requested column names. If None, all columns are returned.
+        Default is None.
+    description : str, optional
+        Description string (used as a verbose flag). Default is ''.
+
+    Returns
+    -------
+    astropy.table.Table
+        File content as a table.
     """
 
     fname = expand_path(filename)
@@ -238,25 +276,35 @@ CALSPEC_URL = "https://archive.stsci.edu/hlsps/reference-atlases/cdbs/current_ca
 
 def read_calspec(filename, url=CALSPEC_URL, wrange=[3_990, 17_010],
                  description=''):
-    """
-    Read CalSpec reference flux FITS file.
+    """Read a CalSpec reference flux FITS file.
 
-    :param str filename: name of the reference flux file
-    :param str url: URL to the reference flux file
-    :param list wrange: wavelength domain [Å]
-    :param str description: description string (used as a verbose flag)
-    :return: file content as a table with columns `["wavelength", "flux"]`
-    :rtype: astropy.table.Table
+    Parameters
+    ----------
+    filename : str
+        Name of the reference flux file.
+    url : str, optional
+        URL to the reference flux file. Default is `CALSPEC_URL`.
+    wrange : list, optional
+        Wavelength domain in Angstroms. Default is `[3_990, 17_010]`.
+    description : str, optional
+        Description string (used as a verbose flag). Default is ''.
 
+    Returns
+    -------
+    astropy.table.Table
+        File content as a table with columns `["wavelength", "flux"]`.
+
+    Examples
+    --------
     >>> tab = read_calspec('gd71_mod_011.fits',
-    ...                    description='GD71) # doctest: +ELLIPSIS
+    ...                    description='GD71') # doctest: +ELLIPSIS
     Reading GD71 CalSpec file 'https://archive.stsci.edu/...
     >>> tab.info()
     <Table length=43736>
-    name     dtype           unit           format
-    ---------- ------- ---------------------- --------
-    wavelength float64               Angstrom {:10.4g}
-          flux float32 erg / (Angstrom cm2 s) {:12.4e}
+     name       dtype                   unit                 format
+    ---------- ------- ------------------------------------ --------
+    wavelength float64                             Angstrom {:10.4g}
+          flux float32 erg / (Angstrom s cm2) {:12.4e}
     """
 
     fname = expand_path(filename)  # use explicit or config/ file
@@ -283,14 +331,21 @@ def read_calspec(filename, url=CALSPEC_URL, wrange=[3_990, 17_010],
 
 
 def read_xshooter(filename, wrange=[3_990, 17_010], description=''):
-    """
-    Read XShooter PN spectrum FITS file.
+    """Read an XShooter PN spectrum FITS file.
 
-    :param str filename: name of the spectrum file
-    :param list wrange: wavelength domain [Å]
-    :param str description: description string (used as a verbose flag)
-    :return: file content as a table with columns `["wavelength", "flux"]`
-    :rtype: astropy.table.Table
+    Parameters
+    ----------
+    filename : str
+        Name of the spectrum file.
+    wrange : list, optional
+        Wavelength domain in Angstroms. Default is `[3_990, 17_010]`.
+    description : str, optional
+        Description string (used as a verbose flag). Default is ''.
+
+    Returns
+    -------
+    astropy.table.Table
+        File content as a table with columns `["wavelength", "flux"]`.
     """
 
     fname = expand_path(filename)  # use explicit or config/ file
@@ -313,17 +368,26 @@ def read_xshooter(filename, wrange=[3_990, 17_010], description=''):
 
 def chromatic_interpolator(wavelength, quantity,
                            k=3, ext='raise', inverse=False):
-    """
-    Build a chromatic interpolator.
+    """Build a chromatic interpolator.
 
-    :param list wavelength: wavelength array (in interpolated units)
-    :param list quantity: quantity to be interpolated
-    :param int k: degree of the smoothing spline
-    :param str ext: extrapolation mode
-                    ('extrapolate', 'zeros', 'raise', 'const')
-    :param bool inverse: inverse interpolation (e.g. wavelength solution)
-    :return: chromatic interpolator
-    :rtype: scipy.interpolate.UnivariateSpline
+    Parameters
+    ----------
+    wavelength : array_like
+        Wavelength array in interpolated units.
+    quantity : array_like
+        Quantity to be interpolated.
+    k : int, optional
+        Degree of the smoothing spline. Default is 3.
+    ext : str, optional
+        Extrapolation mode ('extrapolate', 'zeros', 'raise', 'const').
+        Default is 'raise'.
+    inverse : bool, optional
+        Inverse interpolation (e.g., wavelength solution). Default is False.
+
+    Returns
+    -------
+    scipy.interpolate.UnivariateSpline
+        Chromatic interpolator.
     """
 
     options = dict(s=0, k=k, ext=ext)
