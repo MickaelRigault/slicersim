@@ -37,6 +37,11 @@ A collection of notebooks demonstrating how to use ``slicersim``.
       Dive deep into quantum efficiency and spectral resolution.
 
 
+   .. grid-item-card:: Advanced: Scene structure
+      :link: notebooks/advanced_scene_tutorial.ipynb
+
+      Learn how to build your own "Scene".
+      
 .. toctree::
    :hidden:
 
@@ -46,3 +51,4 @@ A collection of notebooks demonstrating how to use ``slicersim``.
    notebooks/beginner_variancesource.ipynb
    notebooks/advanced_change_detector_and_spectrograph.ipynb
    notebooks/advanced_access_qe_spectral_resolution_etc.ipynb
+   notebooks/advanced_scene_tutorial.ipynb

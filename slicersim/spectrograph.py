@@ -1799,11 +1799,4 @@ class SlicerSpectrograph(Spectrograph):
         int
             Noise equivalent area in pixels (1 for a slicer).
         """
-        def get_nea_pixels(self):
-        """Noise equivalent area of a slice (per wavelength) in unit of pixels.
-
-        Returns
-        -------
-        int
-            Noise equivalent area in pixels (1 for a slicer).
-        """
+        return 1
