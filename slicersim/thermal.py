@@ -75,7 +75,30 @@ class ThermalOptics():
     def __init__(self, temperature, emissivity, fratio=None, solid_angle=None,
                      nelements=1, geometry="circular",
                      meta={}):
-        """ """
+        """Initialize the ThermalOptics class.
+
+        Parameters
+        ----------
+        temperature : float or array-like
+            The temperature of the optical elements in Kelvin.
+        emissivity : float or array-like
+            The emissivity of the optical elements.
+        fratio : float or array-like, optional
+            The f-ratio of the optical system. If a single value is given, it is
+            assumed to be the same for both x and y directions. If an array-like
+            of two values is given, it is assumed to be (fratio_y, fratio_x).
+            Default is None.
+        solid_angle : float or array-like, optional
+            The solid angle in steradians. If not given, it is computed from the
+            f-ratio. Default is None.
+        nelements : int, optional
+            The number of optical elements. Default is 1.
+        geometry : str, optional
+            The geometry of the optical elements. Can be "circular" or "square".
+            Default is "circular".
+        meta : dict, optional
+            A dictionary of metadata. Default is {}.
+        """
         self._temperature = np.atleast_1d(temperature)[:, None].astype(float)
         self._emissivity = np.atleast_1d(emissivity)[:, None].astype(float)
         self._nelements = np.atleast_1d(nelements)[:, None].astype(int)

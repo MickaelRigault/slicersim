@@ -18,14 +18,26 @@ from copy import deepcopy
 from .thermal import ThermalOptics
 
 class Telescope():
-    """ Telescope """
+    """Telescope class."""
 
     mutable_parameters = ['temperature', 'emissivity',
                           "diameter_ext", "diameter_int",
                           "surface"]
 
     def __init__(self, surface=None, optics=None, meta={}):
-        """ """
+        """Initialize the Telescope.
+
+        Parameters
+        ----------
+        surface : float, optional
+            Collecting area in m^2. If None, it is computed from the diameters.
+            Default is None.
+        optics : ThermalOptics, optional
+            ThermalOptics object containing the thermal properties of the telescope.
+            Default is None.
+        meta : dict, optional
+            Dictionary of metadata. Default is {}.
+        """
         
         self._surface = surface
         self._optics = optics
@@ -40,7 +52,18 @@ class Telescope():
                                           
     @classmethod
     def from_config(cls, config):
-        """ """
+        """Build the class from a configuration file.
+
+        Parameters
+        ----------
+        config : dict
+            Dictionary containing the configuration.
+
+        Returns
+        -------
+        Telescope
+            An instance of the Telescope class.
+        """
         surface = config.get("surface", None) # if None, diameter_ext and diameter_int used.
         optics = ThermalOptics.from_config( config, no_solidangle_ok=True)
         return cls(surface=surface, optics=optics, meta=config) # core information stored in meta
@@ -63,7 +86,16 @@ class Telescope():
     #   Methods        #
     # ================ #
     def update(self, reset_others=False, **kwargs):
-        """ """
+        """Update mutable parameters.
+
+        Parameters
+        ----------
+        reset_others : bool, optional
+            If True, parameters not given in `kwargs` are reset to their
+            initial values. Default is False.
+        **kwargs
+            Parameters to update.
+        """
         updates = {}
         for k, v in kwargs.items():
             if k not in self.mutable_parameters:
@@ -110,8 +142,7 @@ class Telescope():
         Returns
         -------
         float, array
-            thermal signal(s) [ph/s/spx/Δλ] 
-            # see as_sum for output format.
+            thermal signal(s) in ph/s/spx/Δλ.
         """
         signals = self.optics.get_signal(lbda_bin=lbda_bin,        # expectedin in [A]
                                          solid_angle=solid_angle,  # expectedin in [sr]
@@ -125,10 +156,11 @@ class Telescope():
         return signals                              # [ph/s/spx/Δλ]
 
     def get_airy_radius(self, lbda, norm_scale=1):
-        """ returns the airy disk first radius caused by the primary mirror 
-        
-        radius [radian] = 1.22 * lambda [meter] / diameter [meter]
-        
+        """Return the Airy disk radius.
+
+        The radius of the first minimum of the Airy disk is computed as:
+        radius [rad] = 1.22 * lambda [m] / diameter [m]
+
         Parameters
         ----------
         lbda: float, array
@@ -141,9 +173,26 @@ class Telescope():
         """
         return 1.22 * np.atleast_1d(lbda) * units.angstrom.to("m") / self.diameter_ext * units.radian.to("arcsec") / norm_scale
     
-    def get_nea_airy(self, lbda, norm_scale=1, padding=5, position=(0 ,0), **kwargs):
-        """ 
-        
+    def get_nea_airy(self, lbda, norm_scale=1, padding=5, position=(0, 0), **kwargs):
+        """Get the Noise Equivalent Area of the Airy disk.
+
+        Parameters
+        ----------
+        lbda : float or array_like
+            Wavelength in Angstrom.
+        norm_scale : float, optional
+            Normalization scale. Default is 1.
+        padding : int, optional
+            Padding for the PSF grid. Default is 5.
+        position : tuple, optional
+            Position of the PSF. Default is (0, 0).
+        **kwargs
+            Additional arguments passed to `get_2dpsf_nea`.
+
+        Returns
+        -------
+        array_like
+            Noise Equivalent Area of the Airy disk.
         """
         from .nea import get_2dpsf_nea
         radius = self.get_airy_radius(lbda, norm_scale=norm_scale)[:,None, None] 
@@ -155,8 +204,8 @@ class Telescope():
                                  position=position, **kwargs)
     
     def to_poppy(self, opticalsys=None):
-        """ add component to a poppy opitcal system 
-        
+        """Add the telescope to a poppy optical system.
+
         Parameters
         ----------
         opticalsys: poppy.OpticalSystem
@@ -184,7 +233,7 @@ class Telescope():
     def get_psfprofile(self, lbda, profile="airy", shape=None,
                            normal_scatter=None,
                            oversampling=10, **kwargs):
-        """ get the psf profile. 
+        """Get the PSF profile.
 
         Parameters
         ---------
@@ -237,12 +286,30 @@ class Telescope():
         return psf, pixelarea, arcsec_to_pixels, radius
 
     def get_encircled_energy(self, lbda, radius, profile="airy",
-                                 normal_scatter=None,
-                                 size=2, **kwargs):
-        """ 
+                             normal_scatter=None,
+                             size=2, **kwargs):
+        """Get the encircled energy.
+
         Parameters
         ----------
-        size: float
+        lbda : float or array_like
+            Wavelength in Angstrom.
+        radius : float or array_like
+            Radius or radii to compute the encircled energy for.
+        profile : str, optional
+            PSF profile to use. Default is "airy".
+        normal_scatter : float, optional
+            Sigma of an additional normal convolution scatter in arcsec.
+            Default is None.
+        size : float, optional
+            Size of the PSF image. Default is 2.
+        **kwargs
+            Additional arguments passed to `get_psfprofile`.
+
+        Returns
+        -------
+        array_like
+            The encircled energy.
         """
         from .profiles import psfimage_to_encircledenergy
         
@@ -263,9 +330,33 @@ class Telescope():
         return psfimage_to_encircledenergy(psf, radius_eff, position=centroid)
 
     def get_encircled_energy_radius(self, lbda, ee,
-                                        profile="airy", normal_scatter=None,
-                                        max_radius=2, nbins=1_000, **kwargs):
-        """ """
+                                    profile="airy", normal_scatter=None,
+                                    max_radius=2, nbins=1_000, **kwargs):
+        """Get the radius for a given encircled energy.
+
+        Parameters
+        ----------
+        lbda : float or array_like
+            Wavelength in Angstrom.
+        ee : float or array_like
+            Encircled energy or energies to find the radius for.
+        profile : str, optional
+            PSF profile to use. Default is "airy".
+        normal_scatter : float, optional
+            Sigma of an additional normal convolution scatter in arcsec.
+            Default is None.
+        max_radius : float, optional
+            Maximum radius to search for. Default is 2.
+        nbins : int, optional
+            Number of bins to use for the search. Default is 1000.
+        **kwargs
+            Additional arguments passed to `get_encircled_energy`.
+
+        Returns
+        -------
+        array_like
+            The radius or radii for the given encircled energy.
+        """
         ee_radius = np.linspace(0, max_radius, nbins)
         encirle_energy = self.get_encircled_energy(lbda, ee_radius, profile=profile,
                                                    normal_scatter=normal_scatter,
@@ -277,11 +368,38 @@ class Telescope():
     #  Plotting #
     # --------- #
     def show_psfprofile(self, lbda, ax=None, profile="airy",
-                            oversampling=10,
-                          show_radius=False, shape=None, 
-                          normal_scatter=None,
-                          **kwargs):
-        """ """
+                        oversampling=10,
+                        show_radius=False, shape=None,
+                        normal_scatter=None,
+                        **kwargs):
+        """Show the PSF profile.
+
+        Parameters
+        ----------
+        lbda : float
+            Wavelength in Angstrom.
+        ax : matplotlib.axes.Axes, optional
+            Axes to plot on. If None, a new figure and axes are created.
+            Default is None.
+        profile : str, optional
+            PSF profile to use. Default is "airy".
+        oversampling : int, optional
+            Oversampling factor. Default is 10.
+        show_radius : bool, optional
+            If True, show the Airy radius. Default is False.
+        shape : tuple, optional
+            Shape of the PSF image. Default is None.
+        normal_scatter : float, optional
+            Sigma of an additional normal convolution scatter in arcsec.
+            Default is None.
+        **kwargs
+            Additional arguments passed to `ax.imshow()`.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+            The figure containing the plot.
+        """
         from matplotlib.colors import LogNorm
         
 
@@ -316,12 +434,12 @@ class Telescope():
     # ============= #
     @property
     def meta(self):
-        """ metadata containing the mirror specifications """
+        """Metadata containing the mirror specifications."""
         return self._meta
     
     @property
     def surface(self):
-        """ Collecting area from outer and inner diameters [m^2] """
+        """Collecting area from outer and inner diameters in m^2."""
         if self._surface is None:
             return np.pi/4 * (self.diameter_ext ** 2 - self.diameter_int ** 2)
         
@@ -329,29 +447,29 @@ class Telescope():
 
     @property
     def diameter_ext(self):
-        """ external diameter (assumed circular) """
+        """External diameter (assumed circular) in m."""
         return self.meta.get("diameter_ext", None)
 
     @property
     def optics(self):
-        """ Thermal Optics element """
+        """ThermalOptics object."""
         return self._optics
     @property
     def diameter_int(self):
-        """ internal diameter (assumed circular) """
+        """Internal diameter (assumed circular) in m."""
         return self.meta.get("diameter_int", None)
     
     @property
     def temperature(self):
-        """ mirror temperature (in K) """
+        """Mirror temperature in K."""
         return self.optics.temperature
     
     @property
     def emissivity(self):
-        """ Emissivity of the mirror  """
+        """Emissivity of the mirror."""
         return self.optics.emissivity
 
     @property
     def nelements(self):
-        """ numer of mirrors """
+        """Number of mirrors."""
         return self.optics.nelements

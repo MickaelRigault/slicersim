@@ -6,9 +6,22 @@ import numpy as np
 from ..utils import inspect_func
 
 class SceneElement:
+    """Base class for scene elements."""
     
     def __init__(self, model_func, lbda=None, meta={}):
-        """ """
+        """Initialize the SceneElement.
+
+        Parameters
+        ----------
+        model_func : callable
+            Function that returns the spectrum of the element.
+            It must take `lbda` as first argument.
+        lbda : array_like, optional
+            Wavelength array in Angstrom. Default is None.
+        meta : dict, optional
+            Dictionary of parameters for the `model_func`.
+            Default is {}.
+        """
         self._model_func = model_func
         self._meta = meta.copy()
         self._meta_in = meta.copy()
@@ -24,14 +37,34 @@ class SceneElement:
 
     @classmethod
     def from_config(cls, config):
-        """ """
+        """Build the class from a configuration file.
+
+        Parameters
+        ----------
+        config : dict
+            Dictionary containing the configuration.
+
+        Returns
+        -------
+        SceneElement
+            An instance of the class.
+        """
         raise NotImplementedError("No from_config implemented")
     
     # ================ #
     #   Methods        #
     # ================ #                
     def update(self, reset_others=False, **kwargs):
-        """ change any mutable_parameters (see self.mutable_parameters) """
+        """Update mutable parameters.
+
+        Parameters
+        ----------
+        reset_others : bool, optional
+            If True, parameters not given in `kwargs` are reset to their
+            initial values. Default is False.
+        **kwargs
+            Parameters to update. See `self.mutable_parameters`.
+        """
         model_update = {}
         for k, v in kwargs.items():
             if k not in self.mutable_parameters:
@@ -55,18 +88,20 @@ class SceneElement:
             self._meta = self._meta | model_update
 
     def get_spectrum(self, lbda=None):
-        """ get the spectrum 
+        """Get the spectrum of the scene element.
 
         Parameters
         ----------
-        lbda: array
-            wavelength of definition in Angstrom
+        lbda : array_like, optional
+            Wavelength array in Angstrom. If None, `self.lbda` is used.
+            Default is None.
 
         Returns
         -------
-        lbda, flux
-            lbda (input unit) 
-            flux (see self.model_func)
+        lbda : array_like
+            Wavelength array in Angstrom.
+        flux : array_like
+            Flux of the scene element. Unit depends on the model_func.
         """
         if lbda is None:
             lbda = self._lbda
@@ -79,7 +114,13 @@ class SceneElement:
         return lbda, flux
 
     def _parse_model_kwargs_(self):
-        """ get default model_func parameters updated by current meta """
+        """Get default `model_func` parameters updated by current meta.
+
+        Returns
+        -------
+        dict
+            Dictionary of parameters for `model_func`.
+        """
         # get default
         list_parameters, default_param = inspect_func(self.model_func)
         list_parameters.remove("lbda") # this should not be there.
@@ -96,26 +137,26 @@ class SceneElement:
     # ================ #        
     @property
     def model_func(self):
-        """ """
+        """Function that returns the spectrum of the element."""
         return self._model_func
     
     @property
     def meta(self):
-        """ meta parameters of the object, if any """
+        """Meta parameters of the object."""
         return self._meta
 
     @property
     def lbda(self):
-        """ wavelegnth of definition [A] """
+        """Wavelength of definition in Angstrom."""
         return self._lbda
 
     @property
     def mutable_parameters(self):
-        """ list of mutable parameters """
+        """List of mutable parameters."""
         # no extra so far
         return self._model_mutables
 
     @property
     def _model_mutables(self):
-        """ list of model mutable parameters"""
+        """List of model mutable parameters."""
         return list(inspect_func(self.model_func)[0])

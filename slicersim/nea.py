@@ -165,13 +165,51 @@ def get_2d_nea(func, xx="-7:7:15j", yy="-7:7:15j",
 #  Gaussian Shortcut #
 # ------------------ #
 def get_1dnorm_nea(sigma, xx="-7:7:15j", mean=0):
-    """ """
+    """Get the Noise Equivalent Area (NEA) of a 1D Gaussian.
+
+    This is a shortcut for `get_1d_nea` with `func=get_gaussian1d`.
+
+    Parameters
+    ----------
+    sigma : float
+        Standard deviation of the Gaussian.
+    xx : str or array_like, optional
+        Coordinates where the PSF is evaluated. Default is "-7:7:15j".
+    mean : float, optional
+        Mean of the Gaussian. Default is 0.
+
+    Returns
+    -------
+    array_like
+        NEA integrated over xx.
+    """
     from .profiles import get_gaussian1d
     return get_1d_nea(get_gaussian1d, xx=xx, sigma=sigma, mean=mean)
 
 def get_2dnorm_nea(sigma, xx="-7:7:15j", yy="-7:7:15j", mean=(0,0),
                   norm_by_step = True):
-    """ """
+    """Get the Noise Equivalent Area (NEA) of a 2D Gaussian.
+
+    This is a shortcut for `get_2d_nea` with `func=get_gaussian2d`.
+
+    Parameters
+    ----------
+    sigma : float or tuple
+        Standard deviation of the Gaussian. If a float, the same sigma is
+        used for both x and y. If a tuple, it's (sigma_x, sigma_y).
+    xx, yy : str or array_like, optional
+        Coordinates where the PSF is evaluated. Default is "-7:7:15j".
+    mean : tuple, optional
+        Mean of the Gaussian (mean_x, mean_y). Default is (0, 0).
+    norm_by_step : bool, optional
+        Should the xx, yy binning be accounted for? If so, binning should be
+        linearly increasing. Default is True.
+
+    Returns
+    -------
+    array_like
+        NEA integrated over xx and yy.
+    """
     from .profiles import get_gaussian2d    
     return get_2d_nea( get_gaussian2d, xx=xx, yy=yy, norm_by_step=True,
                        sigma=sigma, mean=mean)

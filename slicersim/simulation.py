@@ -322,7 +322,18 @@ class Simulation():
     #   Methods       #
     # =============== #
     def _fetch_mutable_parameters(self, key):
-        """ """
+        """Fetch mutable parameters matching a key.
+
+        Parameters
+        ----------
+        key : str
+            The key to search for in the mutable parameters.
+
+        Returns
+        -------
+        list or None
+            A list of matching mutable parameters, or None if no match is found.
+        """
         mutable_ = [l for l in self.mutable_parameters if key in l]
         if len(mutable_)==0:
             return None
@@ -520,24 +531,62 @@ class Simulation():
           self.spectrograph.effective_resolution(npx=npx, sigma=sigma)
 
     def get_pixel_variance(self, flux=0):
-        """ get variance associated to 1 pixel on the detector. """
+        """Get the variance associated with a single pixel on the detector.
+
+        Parameters
+        ----------
+        flux : float, optional
+            The flux in the pixel in ADU. Default is 0.
+
+        Returns
+        -------
+        float
+            The variance of the pixel in ADU^2.
+        """
         _, pixel_var = self.detector.estimate_pixel_signal(flux, self.spectrograph)
         pixel_var *= self.extraction["nramp"] # incl. multi ramp approach.
         return pixel_var
         
     def get_nea(self, nea_spatial=None, nea_pixels=None):
-        """ Noise effective area  (nea_spatial * nea_pixel) """
+        """Get the Noise Equivalent Area (NEA).
+
+        The NEA is the product of the spatial NEA and the pixel NEA.
+
+        Parameters
+        ----------
+        nea_spatial : float or array_like, optional
+            The spatial NEA in spaxels^2. If None, it is computed.
+            Default is None.
+        nea_pixels : float or array_like, optional
+            The pixel NEA in pixels. If None, it is computed.
+            Default is None.
+
+        Returns
+        -------
+        float or array_like
+            The total NEA.
+        """
         return self.spectrograph.get_nea(position = self.scene.target.position,
                                           nea_spatial=nea_spatial, nea_pixels=nea_pixels)
             
     def get_nea_variance(self, spectrum=None, nea_spatial=None, nea_pixels=None):
-        """ get variance estimatation from the noise equivalent area. 
+        """Get the variance estimated from the Noise Equivalent Area.
 
         Parameters
         ----------
-        spectrum: None
-            * limited to test config...*
-            Provide a spectrum in [erg/s/cm2/A]. 
+        spectrum : array_like, optional
+            The input spectrum in erg/s/cm^2/A. Default is None.
+        nea_spatial : float or array_like, optional
+            The spatial NEA in spaxels^2. If None, it is computed.
+            Default is None.
+        nea_pixels : float or array_like, optional
+            The pixel NEA in pixels. If None, it is computed.
+            Default is None.
+
+        Returns
+        -------
+        float or array_like
+            The estimated variance.
         """
         nea = self.get_nea(nea_spatial=nea_spatial, nea_pixels=nea_pixels)
     
