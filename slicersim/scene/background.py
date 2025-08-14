@@ -4,7 +4,7 @@ from .base import SceneElement
 from ..utils import inspect_func
 
 
-def def get_background_model_func(name):
+def get_background_model_func(name):
     """Get the model function for a background name.
 
     Parameters
