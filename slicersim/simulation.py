@@ -474,7 +474,7 @@ class Simulation():
 
         """
         if which == "stacked":
-            lbda, specs = sim.scene.get_stacked_spectra()
+            lbda, specs = self.scene.get_stacked_spectra()
             flux = np.sum(specs, axis=0)
         else:
             lbda, flux = self.scene.get_element_spectrum(which)

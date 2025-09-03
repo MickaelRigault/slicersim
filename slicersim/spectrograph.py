@@ -60,7 +60,9 @@ def lbda_from_respow(spectral_range, res_power, npx_resolution=2):
     return 10 ** loglbda_mid, 10 ** loglbda_edges
 
 
-def build_lbda(spectral_range, spectral_resolution=None, wsol=None, dsol=None, npx_resolution=2):
+def build_lbda(spectral_range, spectral_resolution=None,
+                   wsol=None, dsol=None,
+                   npx_resolution=2):
     """Set wavelength coordinates.
 
     This function sets the mid-bin wavelengths (`lbda`) and the bin edge
@@ -87,8 +89,9 @@ def build_lbda(spectral_range, spectral_resolution=None, wsol=None, dsol=None, n
         Bin edge wavelengths.
     """
     if wsol is None:  # Compute from constant resolving power
-        lbda, lbda_edges = lbda_from_respow(np.asarray(spectral_range, dtype="float32"), spectral_resolution,
-                                            npx_resolution=npx_resolution)
+        lbda, lbda_edges = lbda_from_respow(np.asarray(spectral_range, dtype="float32"),
+                                                spectral_resolution,
+                                             npx_resolution=npx_resolution)
     else:  # Compute from wavelength solution
         wmin, wmax = spectral_range
         npx = round(dsol(wmax) - dsol(wmin)) + 1  # Total nb of px
@@ -146,6 +149,7 @@ def build_lbda_from_config(config):
     lbda, lbda_edges = build_lbda(spectral_range, wsol=wsol, dsol=dsol,
                                   spectral_resolution=spectral_resolution,
                                   npx_resolution=npx_resolution)
+    
     return lbda, lbda_edges
 
 
@@ -302,6 +306,7 @@ class Spectrograph:
         """
         # spectrograph that inherit Spectrograph simply need to update _parse_config()
         init_prop, _ = cls._parse_config(config)
+        
         return cls(telescope=telescope, **init_prop)
 
     @staticmethod
@@ -505,6 +510,7 @@ class Spectrograph:
         """
         if callable(self.throughput):
             return self.throughput(self.lbda)
+        
         # float
         return self.throughput
 
@@ -726,6 +732,7 @@ class Spectrograph:
         # gaussian convolution | guiding_sigma is given in arcsec
         # works by itself if spx_spatial_scale is a list or a float.
         sigma_guiding_pixels = guiding_arcsec / (self.spx_spatial_scale / oversampling)  # in arcsec=>spaxels
+        
         return gaussian_filter(image, sigma_guiding_pixels, axes=(-2, -1))
 
     @staticmethod
@@ -746,6 +753,8 @@ class Spectrograph:
         array_like
             Downsampled image.
         """
+        from astropy import nddata
+        
         if np.ndim(image) == 2:
             block_size = (oversampling, oversampling)
         elif np.ndim(image) == 3:
@@ -753,7 +762,6 @@ class Spectrograph:
         else:
             raise ValueError(f"image ndim must be 2 or 3 {np.ndim(image)=} given.")
 
-        from astropy import nddata
         return nddata.block_reduce(image, block_size=(1, oversampling, oversampling), func=func)
 
     #  internal tricks
@@ -1130,7 +1138,7 @@ class Spectrograph:
         signals = self.optics.get_signal(lbda_bin=lbda_bin,  # expectedin in [A]
                                          area=pixel_area)  # Collecting area [m²]
 
-        # sum over 1 element if only 1 temperature
+        # note: this sums over 1 element if only 1 temperature
         if as_sum:
             signals = np.sum(signals, axis=0)
 
@@ -1154,6 +1162,7 @@ class Spectrograph:
         """
         # no apply LSF as zeros...
         ny, nx = self.get_spectrograph_shape(oversampling=oversampling)
+        
         return filled * np.ones((self.nlbda, ny, nx))
 
     # ------------ #
@@ -1187,6 +1196,7 @@ class Spectrograph:
         sigma_at_spectro = self.get_psf_sigma_spectral(in_spaxels=in_spaxels,
                                                        guiding_sigma=guiding_sigma,
                                                        xdims=2)
+        
         return get_2dnorm_nea(sigma_at_spectro, mean=position)
 
     #
@@ -1255,6 +1265,9 @@ class Spectrograph:
 
         return sigma
 
+    # -------- #
+    #  SHOW    #
+    # -------- #
     def show_nea(self, ax=None, position=(0, 0), legend=True):
         """Show the Noise Equivalent Area.
 
