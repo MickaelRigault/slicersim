@@ -1,4 +1,4 @@
-[scene.point_source]
+[scene.pointsource]
 name = "StdStar"
 source = "GD71"            # Standard star name (CalSpec) *mandatory*
 bandpass = "BessellV"      # Bandpass (sncosmo)

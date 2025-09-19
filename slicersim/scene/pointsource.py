@@ -1,4 +1,5 @@
-"""Scene point source."""
+""" Scene: pointsource module """
+
 import inspect
 import warnings
 

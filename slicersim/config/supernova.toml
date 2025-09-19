@@ -1,4 +1,4 @@
-[scene.point_source]
+[scene.pointsource]
 name = "SN Ia"
 source = "salt2-extended"  # sncosmo model (flux in [erg/cm²/s/Å²])
 redshift = 1.5

@@ -64,7 +64,7 @@ class Scene:
         ----------
         config : dict
             Configuration dictionary containing (or not)
-            `{"point_source": {}, "background": {}, "host":{}}`.
+            `{"pointsource": {}, "background": {}, "host":{}}`.
             A missing element has no contribution to the scene.
         lbda : array_like, optional
             Wavelength array in Angstrom. Default is None.
@@ -77,7 +77,7 @@ class Scene:
         from . import pointsource, background
 
         config = config.copy()
-        pointsource_config = config.pop("point_source", {})  # rename pointsource ?
+        pointsource_config = config.pop("pointsource", {})  # rename pointsource ?
         background_config = config.pop("background", {})
         host_config = config.pop("host", {})
 

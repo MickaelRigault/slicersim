@@ -40,7 +40,7 @@ def get_sn_scene(model="salt", background="zodi", host={}, **kwargs):
     # host
     host = {}
 
-    return {"scene":{"point_source": snia_pointsource, 
+    return {"scene":{"pointsource": snia_pointsource, 
                      "background": background, 
                      "host": host
                     }}

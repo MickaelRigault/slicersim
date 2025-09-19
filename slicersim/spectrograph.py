@@ -1,6 +1,4 @@
-"""Spectrograph module."""
-
-__author__ = "Mickael Rigault <m.rigault@ip2i.in2p3.fr>, Yannick Copin <y.copin@ip2i.in2p3.fr>"
+""" Spectrograph module. """
 
 import warnings
 from copy import deepcopy
@@ -851,7 +849,7 @@ class Spectrograph:
     # ------------- #
     #   Others      #
     # ------------- #
-    def point_source_variance(self, varcube, position=(0, 0), radius=5,
+    def pointsource_variance(self, varcube, position=(0, 0), radius=5,
                               psf_profile="default",
                               optimal=True, verbose=False):
         """Point-source extracted variance from variance cube.
@@ -990,7 +988,7 @@ class Spectrograph:
     #    generate   #
     # ------------- #
     # Point Souce
-    def generate_point_source(self, spectrum, position=(0, 0),
+    def generate_pointsource(self, spectrum, position=(0, 0),
                               psf_profile="default",
                               oversampling=None,
                               as_oversampled=False,

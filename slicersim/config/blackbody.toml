@@ -1,4 +1,4 @@
-[scene.point_source]
+[scene.pointsource]
 name = "blackbody"
 source = "blackbody"	# 
 temperature = 6000	# temperature in Kelvin

@@ -183,7 +183,7 @@ class VirtualLazuliTarget():
         ----------
         scene : dict, optional
             Scene configuration with the given format:
-            `scene = {scene: {point_source:{}, # PSF
+            `scene = {scene: {pointsource:{}, # PSF
                              background: {}, # spatially flat
                              host: {} }} # structured background`
             Default is None.

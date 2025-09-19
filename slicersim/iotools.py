@@ -82,7 +82,7 @@ def get_config(scene="supernova.toml", instrument="lazuli.toml"):
 
     The final configuration has the following structure::
 
-        {'scene': {'point_source': {...},
+        {'scene': {'pointsource': {...},
                    'zodi': {...}
                   },
          'spectrograph': {...},
@@ -128,8 +128,8 @@ def read_config(filename, verbose=False):
         `filename = ["supernova", "zodi"]`, the configuration from "zodi" will
         overwrite the corresponding (nested) entry from "supernova".
         If an element of the list is a dict, it will be assumed to be a config.
-        For example, `["supernova", {"scene": {"point_source": {"source":
-        [lbda_ref, flux_ref]}}}]` will overwrite the `scene.point_source.source`
+        For example, `["supernova", {"scene": {"pointsource": {"source":
+        [lbda_ref, flux_ref]}}}]` will overwrite the `scene.pointsource.source`
         from the "supernova" configuration.
     verbose : bool, optional
         Verbose mode. Default is False.

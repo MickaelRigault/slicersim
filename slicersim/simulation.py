@@ -179,7 +179,7 @@ class Simulation():
         """
         # build the scene config
         scene_config = [{"scene":
-                            {"point_source":
+                            {"pointsource":
                                  {"source": [lbda, flux],
                                   "mag": mag,
                                   "band": band,
@@ -763,7 +763,7 @@ class Simulation():
         apply_lsf : bool, optional
             If True, apply the line spread function. Default is True.
         **kwargs
-            Goes to :meth:`spectrograph.generate_point_source`.
+            Goes to :meth:`spectrograph.generate_pointsource`.
 
         Returns
         -------
@@ -776,7 +776,7 @@ class Simulation():
         # by default spectrograph. give flux in ph/s.
         
         # pointsource
-        pointsource_cube = self.spectrograph.generate_point_source(pointsource,
+        pointsource_cube = self.spectrograph.generate_pointsource(pointsource,
                                                             position=self.scene.pointsource_position,
                                                             psf_profile=psf_profile,
                                                             oversampling=oversampling,
@@ -845,7 +845,7 @@ class Simulation():
         apply_lsf : bool, optional
             If True, apply the line spread function. Default is True.
         **kwargs
-            Goes to :meth:`spectrograph.generate_point_source`.
+            Goes to :meth:`spectrograph.generate_pointsource`.
 
         Returns
         -------
@@ -866,7 +866,7 @@ class Simulation():
 
         # Fill the cube with scene elements in photons/s/spx
         if "pointsource" not in switch_off:
-            cube += self.spectrograph.generate_point_source(pointsource,
+            cube += self.spectrograph.generate_pointsource(pointsource,
                                                             position=self.scene.pointsource_position,
                                                             psf_profile=psf_profile,
                                                             oversampling=oversampling,
@@ -1210,9 +1210,9 @@ class Simulation():
             radius = (self.extraction["aperture_radius_insigma"] *
                       self.spectrograph.psf_sigma_spectral /  # [arcsec]
                       self.spectrograph.spx_spatial_scale)    # [arcsec/spx]
-            # radius is used to limit where PSF and variance are considered, see point_source_variance()
+            # radius is used to limit where PSF and variance are considered, see pointsource_variance()
             
-        spec_variance = self.spectrograph.point_source_variance(
+        spec_variance = self.spectrograph.pointsource_variance(
             var_cube, position=self.scene.pointsource_position, radius=radius,
             psf_profile=psf_profile)
 
