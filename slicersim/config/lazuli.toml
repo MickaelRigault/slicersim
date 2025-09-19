@@ -102,7 +102,7 @@ dark = 2.8e-3              # Dark current [e-/s/px]
 [extraction]
 xdisp_width_insigma = 10	# Spectrogram cross-disp. aperture width [xdisp_sigma]
 aperture_radius_insigma = 10  	# Spatial aperture radius [spatial_sigma]
-nramp = 1                     	# Number of (similar) ramps
+nramps = 1                     	# Number of (similar) ramps
 
 # All extractions are optimal (i.e. profile weighted least-squares)
 #xdisp_width = 10      # Spectrogram *integer* cross-disp. aperture width [px]

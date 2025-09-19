@@ -16,7 +16,7 @@ class Scene:
     """Scene description.
 
     A scene can contain three elements:
-    - a target point source (e.g., a supernova or a standard star).
+    - a pointsource point source (e.g., a supernova or a standard star).
     - a uniform background (e.g., the zodiacal background).
     - a structured background (e.g., the host galaxy).
 
@@ -25,14 +25,14 @@ class Scene:
         include the thermal background from the telescope.
     """
 
-    def __init__(self, target=None, background=None, host=None,
+    def __init__(self, pointsource=None, background=None, host=None,
                  lbda=None, meta={}):
         """Initialize the Scene.
 
         Parameters
         ----------
-        target : PointSource, optional
-            Target point source. Default is None.
+        pointsource : PointSource, optional
+            Pointsource point source. Default is None.
         background : Background, optional
             Uniform background. Default is None.
         host : SceneElement, optional
@@ -47,7 +47,7 @@ class Scene:
         from_config : Load the scene from a configuration file.
         """
 
-        self._target = target
+        self._pointsource = pointsource
         self._background = background
         self._host = host
         self._lbda = lbda
@@ -77,14 +77,14 @@ class Scene:
         from . import pointsource, background
 
         config = config.copy()
-        target_config = config.pop("point_source", {})  # rename target ?
+        pointsource_config = config.pop("point_source", {})  # rename pointsource ?
         background_config = config.pop("background", {})
         host_config = config.pop("host", {})
 
-        if target_config:  # initialize point-source spectrum from config
-            target = pointsource.PointSource.from_config(target_config)
+        if pointsource_config:  # initialize point-source spectrum from config
+            pointsource = pointsource.PointSource.from_config(pointsource_config)
         else:
-            target = None
+            pointsource = None
 
         if background_config:  # initialize background spectrum from config
             background = background.Background.from_config(background_config)
@@ -98,7 +98,7 @@ class Scene:
         else:
             host = None
 
-        return cls(target=target,
+        return cls(pointsource=pointsource,
                    background=background,
                    host=host,
                    lbda=lbda,
@@ -110,7 +110,7 @@ class Scene:
         Parameters
         ----------
         element : str
-            Name of the element ("target", "background", "host").
+            Name of the element ("pointsource", "background", "host").
 
         Returns
         -------
@@ -124,9 +124,12 @@ class Scene:
         """Update mutable parameters.
 
         For convenience, the update method respects the django '__' format,
-        such that, e.g. 'target__phase' is understood as 'target.phase'.
+        such that, e.g. 'pointsource__phase' is understood as 'pointsource.phase'.
         This way, one can do:
-        >>> scene.update(target__phase=-1)
+        >>> scene.update(pointsource__phase=-1)
+
+        For convenience and backward compatiblity, you can use 
+        "target__" in place of "pointsource__".
 
         Parameters
         ----------
@@ -136,7 +139,7 @@ class Scene:
         **kwargs
             Parameters to update.
         """
-        updates_target = {}
+        updates_pointsource = {}
         updates_host = {}
         updates_background = {}
 
@@ -146,7 +149,10 @@ class Scene:
                 self._lbda = v
                 continue
 
+
             k = k.replace("__", ".")  # django like
+            k = k.replace("target.", "pointsource.") # convenience and backward compatiblity
+            
             if k not in self.mutable_parameters:
                 warnings.warn(f"Parameter {k!r} is not mutable.")
                 continue
@@ -154,8 +160,8 @@ class Scene:
             if v is None:  # Skip
                 continue
 
-            if k.startswith("target."):
-                updates_target[k.replace("target.", "")] = v
+            if k.startswith("pointsource."):
+                updates_pointsource[k.replace("pointsource.", "")] = v
 
             elif k.startswith("background."):
                 updates_background[k.replace("background.", "")] = v
@@ -166,8 +172,8 @@ class Scene:
             else:
                 raise ValueError(f"Unknown scene parameter {k!r}.")
 
-        if self.target is not None:
-            self.target.update(reset_others=reset_others, **updates_target)
+        if self.pointsource is not None:
+            self.pointsource.update(reset_others=reset_others, **updates_pointsource)
 
         if self.background is not None:
             self.background.update(reset_others=reset_others, **updates_background)
@@ -181,7 +187,7 @@ class Scene:
         Parameters
         ----------
         which : str
-            Name of the element ("target", "background", "host").
+            Name of the element ("pointsource", "background", "host").
         lbda : array_like, optional
             Wavelength array in Angstrom. If None, `self.lbda` is used.
             Default is None.
@@ -214,7 +220,7 @@ class Scene:
     def get_stacked_spectra(self, lbda=None, fillna=0):
         """Get the stack of all scene element spectra.
 
-        The stack contains the spectra of the target, host, and background.
+        The stack contains the spectra of the pointsource, host, and background.
 
         Parameters
         ----------
@@ -238,7 +244,7 @@ class Scene:
                 raise ValueError("no lbda given and None loading as self.lbda")
 
         spectra = [s_.get_spectrum(lbda)[1] if s_ is not None else np.full_like(lbda, fillna)
-                   for s_ in [self.target, self.host, self.background]]
+                   for s_ in [self.pointsource, self.host, self.background]]
 
         return lbda, np.stack(spectra)
 
@@ -281,8 +287,8 @@ class Scene:
 
         return ax
 
-    def plot_target(self, ax=None, in_log=True, **kwargs):
-        """Plot the target spectrum.
+    def plot_pointsource(self, ax=None, in_log=True, **kwargs):
+        """Plot the pointsource spectrum.
 
         Parameters
         ----------
@@ -304,18 +310,18 @@ class Scene:
             import matplotlib.pyplot as plt
             fig, ax = plt.subplots()
 
-        flux = self.target  # point-source spectrum [erg/s/cm²/Å]
+        flux = self.pointsource  # point-source spectrum [erg/s/cm²/Å]
         if in_log:
             flux = np.log10(flux)
             ylabel = "log(Flux [fλ])"
         else:
             ylabel = "Flux [fλ]"
 
-        if self.meta.get("target", None) is None:
+        if self.meta.get("pointsource", None) is None:
             title = None
         else:
-            title = (f"{self.meta['target']['name']} "
-                     f"({self.meta['target']['source']})")
+            title = (f"{self.meta['pointsource']['name']} "
+                     f"({self.meta['pointsource']['source']})")
 
         default = dict()  # ds='steps-mid')
         ax.plot(self.lbda / 1e4, flux, **{**default, **kwargs})
@@ -329,9 +335,9 @@ class Scene:
     #  Properties     #
     # =============== #
     @property
-    def target(self):
+    def pointsource(self):
         """The scene's point source."""
-        return self._target
+        return self._pointsource
 
     @property
     def background(self):
@@ -347,10 +353,10 @@ class Scene:
     def mutable_parameters(self):
         """List of mutable parameters."""
         # lbda is special. it is a shared parameters
-        if self.target is not None:
-            target_ = [f"target.{pname_}" for pname_ in self.target.mutable_parameters if pname_ != "lbda"]
+        if self.pointsource is not None:
+            pointsource_ = [f"pointsource.{pname_}" for pname_ in self.pointsource.mutable_parameters if pname_ != "lbda"]
         else:
-            target_ = []
+            pointsource_ = []
 
         if self.background is not None:
             background_ = [f"background.{pname_}" for pname_ in self.background.mutable_parameters if pname_ != "lbda"]
@@ -362,17 +368,17 @@ class Scene:
         else:
             host_ = []
 
-        return ["lbda"] + target_ + background_ + host_
+        return ["lbda"] + pointsource_ + background_ + host_
 
     @property
     def meta(self):
         """Metaparameters of the scene."""
-        return {"target": self.target.meta if self.target is not None else None,
+        return {"pointsource": self.pointsource.meta if self.pointsource is not None else None,
                 "background": self.background.meta if self.background is not None else None,
                 "host": self.host.meta if self.host is not None else None
                 } | self._scene_meta
 
     @property
-    def target_position(self):
-        """Position of the target."""
-        return self.target.position
+    def pointsource_position(self):
+        """Position of the pointsource."""
+        return self.pointsource.position

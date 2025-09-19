@@ -285,13 +285,15 @@ class Detector():
         # self.pixel_size is in micrometer
         return self.pixel_size * units.micrometer.to(unit)
 
-    def get_thermal_dark(self, as_sum=True, units="ph/s", lbda_range=None):
+    def get_thermal_dark(self, thermaloptics=None, as_sum=True, units="ph/s", lbda_range=None):
         """Get the thermal dark current.
 
         This is based on the `thermaloptics` object, if provided.
 
         Parameters
         ----------
+        thermaloptics : object, optional
+            Thermal optics object. Uses self.thermaloptics is not provided.
         as_sum : bool, optional
             If True, return the sum of signals. Default is True.
         units : str, optional
@@ -302,13 +304,20 @@ class Detector():
         Returns
         -------
         float or array_like
-            Thermal dark current.
+            Thermal dark current (see units)
         """
-        if self.thermaloptics is None:
+        # which thermaloptics to consider.
+        if thermaloptics is None:
+            thermaloptics = self.thermaloptics
+
+        # nothing given ? returns 0, i.e. no thermal dark. 
+        if thermaloptics is None:
             return 0
 
+        # select the coefficient to match the request output units.
         if units == "ph/s":
             qe = None
+            
         elif units in ["e/s", "e-/s"]:
             qe = self.qe # float or func
         else:
@@ -329,67 +338,7 @@ class Detector():
         if as_sum:
             signals = np.sum(signals, axis=0)
         
-        return signals   
-    
-    def estimate_slice_spectrum(self, flux):
-        """ DEPRECATED """ 
-        warnings.warn("DEPRECATED: detector.estimate_slice_spectrum() is deprecated, see spectrograph.")        
-        # Reshape photonflux2adu (() or (nlbda,)) to match flux's shape
-        photonflux_to_adu = complete_dims(self.photonflux_to_adu, -np.ndim(flux))
-
-        # Detector signal [ADU], shape is (width,) + flux.shape  | take ~200ms
-        signal_at_detector, variance = self.estimate_pixel_signal(signal, withdark=False)
-        
-        # "optimal" extraction | signal_at_detector ignored then.
-        signal = flux * photonflux_to_adu   # Total incident signal [ADU]
-        
-        return signal, variance
-        
-    # - estimators
-    def estimate_spx_spectrum(self, flux, sigma=1, width=5):
-        """ DEPRECATED """ 
-        warnings.warn("DEPRECATED: detector.estimate_spx_spectrum() is deprecated, see spectrograph.")
-        
-        # Reshape photonflux2adu (() or (nlbda,)) to match flux's shape
-        photonflux_to_adu = complete_dims(self.photonflux_to_adu, -np.ndim(flux))
-
-        # Cross-dispersion weighted least-square ("optimal") extraction
-        signal = flux * photonflux_to_adu   # Total incident signal [ADU]
-
-        # Normalized cross-dispersion profile, flux.shape + (width,)
-        sigma = complete_dims(sigma, -np.ndim(flux))
-        p = self._xdisp_profile(sigma=sigma, width=width)
-
-        # Incident flux [ph/s], flux.shape + (width,) | take~50ms
-        profiles = p * complete_dims(flux, 1)
-
-        # Detector signal [ADU], shape is (width,) + flux.shape  | take ~200ms
-        sig, var = self.estimate_pixel_signal(profiles, withdark=False)
-
-        # One should have signal almost equal to sig.sum(axis=0)
-        # (up to aperture corrections)
-        # Saturated px with infinite variance will not contribute
-        variance = 1 / (p**2 / var).sum(axis=-1)  # Variance on signal [ADU²]
-
-        return signal, variance                  # flux.shape [ADU]
-        
-    @staticmethod
-    def _xdisp_profile(sigma=1, width=5, xdims=0):
-        """ DEPRECATED """
-        from .utils import integ_gaussian1D_erf
-        assert int(width) == width, \
-            f"Non-integer x-disp. width not supported: {width}, {type(width)}."
-
-        warnings.warn("_xdisp_profile is DEPRECATED")
-        
-        y_edges = np.r_[-width/2:+width/2:(width+1)*1j]  # (width+1,)
-        sigma = complete_dims(sigma, 1)                  # sigma.shape + (1,)
-        # sigma.shape + (width,)
-        p = integ_gaussian1D_erf(y_edges, sigma, normed=True)
-        if xdims:                   # N-dim. embedding: (width,) + (1, ...)
-            p = p.reshape(p.shape + (1,) * xdims)
-
-        return p        
+        return signals
         
     def estimate_pixel_signal(self, flux,
                                   withdark=False,
@@ -404,7 +353,7 @@ class Detector():
         withdark : bool, optional
             Include dark contribution to output signal. Default is False.
         variance_model : str, optional
-            Variance model to use (e.g., 'rauscher07', 'kubik20').
+            Variance model to use (e.g., 'rauscher07', 'kubik16').
             If "default", `self.variance_model` is used. Default is "default".
         saturation : int or str, optional
             Saturation level in ADU. If given, this attempts to detect saturation.
@@ -456,6 +405,49 @@ class Detector():
 
         return signal, variance  # [ADU], [ADU²]
 
+    def estimate_spx_spectrum(self, flux, sigma=1, width=5):
+        """ Function dedicated for MLA spectrograph. 
+        
+        Parameters
+        ----------
+        flux : array_like
+            Incident flux in ph/s/px (arbitrary shape, e.g., (nlbda, ny, nx)).
+        sigma : float, array_like, optional
+            width of the gaussian cross-dispersion profile
+        width : int, optional
+            width of the cross dispersion aperture long the wavelength direction.
+
+        Returns
+        -------
+        tuple of array_like
+            - Pixel signal [ADU].
+            - Variance [ADU²].
+        """ 
+        warnings.warn("DEPRECATED: detector.estimate_spx_spectrum() is deprecated, see spectrograph.")
+        
+        # Reshape photonflux2adu (() or (nlbda,)) to match flux's shape
+        photonflux_to_adu = complete_dims(self.photonflux_to_adu, -np.ndim(flux))
+
+        # Cross-dispersion weighted least-square ("optimal") extraction
+        signal = flux * photonflux_to_adu   # Total incident signal [ADU]
+
+        # Normalized cross-dispersion profile, flux.shape + (width,)
+        sigma = complete_dims(sigma, -np.ndim(flux))
+        p = self._xdisp_profile(sigma=sigma, width=width)
+
+        # Incident flux [ph/s], flux.shape + (width,) | take~50ms
+        profiles = p * complete_dims(flux, 1)
+
+        # Detector signal [ADU], shape is (width,) + flux.shape  | take ~200ms
+        sig, var = self.estimate_pixel_signal(profiles, withdark=False)
+
+        # One should have signal almost equal to sig.sum(axis=0)
+        # (up to aperture corrections)
+        # Saturated px with infinite variance will not contribute
+        variance = 1 / (p**2 / var).sum(axis=-1)  # Variance on signal [ADU²]
+
+        return signal, variance                  # flux.shape [ADU]    
+
     def estimate_variance(self, flux, model=None, incl_thermal=True):
         """Estimate the variance associated with the input flux.
 
@@ -489,10 +481,10 @@ class Detector():
         if model.lower() in ["rauscher07", "rauscher10" "rauscher+07"]: # allowing old format
             return self._estimate_variance_rauscher07(flux,**variance_input)
             
-        elif model.lower() == "kubik20":
-            return self._estimate_variance_kubik20(flux,**variance_input)
+        elif model.lower() in ["kubik16", "kubik16"]:
+            return self._estimate_variance_kubik16(flux,**variance_input)
         else:
-            raise NotImplementedError(f"unknown variance model {model=} ; rauscher07 or kubik20 available.")
+            raise NotImplementedError(f"unknown variance model {model=} ; rauscher07 or kubik16 available.")
         
     # - Internal
     @staticmethod
@@ -540,8 +532,8 @@ class Detector():
         return var / gain**2        # [ADU²]
 
     @staticmethod
-    def _estimate_variance_kubik20(flux, nmd, tframe, ron, dark, gain):
-        """Variance from Kubik+2020 (private communication).
+    def _estimate_variance_kubik16(flux, nmd, tframe, ron, dark, gain):
+        """Variance from Kubik+2016 (as updated by ).
 
         Parameters
         ----------
@@ -565,7 +557,7 @@ class Detector():
         """
         n, m, d = nmd
 
-        # Kubik20 works in ADU
+        # Kubik16 works in ADU
         tint = Detector._get_integration_time(nmd, tframe)  # [s]
         signal = (flux + dark) * gain * tint    # e-/s * ADU/e- * s [ADU]
 
@@ -658,7 +650,7 @@ class Detector():
     @property
     def saturation(self):
         """Saturation level in ADU."""
-        return self.meta["saturation"]
+        return self.meta.get("saturation")
         
     @property
     def gain(self):

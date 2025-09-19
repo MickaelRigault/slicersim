@@ -207,7 +207,7 @@ class VirtualLazuliTarget():
     # =============== #
     #   Methods       #
     # =============== #
-    def change_detector_mode(self, nmd=None, max_group=None, nramp=None):
+    def change_detector_mode(self, nmd=None, max_group=None, nramps=None):
         """Change the detector configuration.
 
         Parameters
@@ -220,7 +220,7 @@ class VirtualLazuliTarget():
             Default is None.
         max_group : int, optional
             Maximum number of groups for a single ramp. Default is None.
-        nramp : int, optional
+        nramps : int, optional
             Number of ramps. Default is None.
         """
         if max_group is not None:
@@ -229,8 +229,8 @@ class VirtualLazuliTarget():
         if nmd is not None:
             self.simulation.update(nmd=nmd)
 
-        if nramp is not None:
-            self.simulation.update(nramp=nramp)
+        if nramps is not None:
+            self.simulation.update(nramps=nramps)
 
     def change_spectrograph_mode(self, sampling=None, spatial_shape=None, spatial_scale=None):
         """Change the spectrograph configuration.
@@ -273,7 +273,7 @@ class VirtualLazuliTarget():
         """Shortcut to change the pointsource properties.
 
         This method allows to change the properties of the point source of the
-        scene. The available properties are defined in the `target_properties`
+        scene. The available properties are defined in the `pointsource_properties`
         property.
 
         Parameters
@@ -284,10 +284,10 @@ class VirtualLazuliTarget():
 
         """
         # list of mutable properties
-        mutable_allowed = self.target_properties
+        mutable_allowed = self.pointsource_properties
         
-        # Adding 'target__' as favored by the update method.
-        updates = {f"target__{k}":v for k,v in kwargs.items()}
+        # Adding 'pointsource__' as favored by the update method.
+        updates = {f"pointsource__{k}":v for k,v in kwargs.items()}
         _ = self.simulation.update(**updates)
         
     def setup_to_snr(self, snr,
@@ -369,9 +369,9 @@ class VirtualLazuliTarget():
         -------
         dict
             - nmd: (ngroup, nframe_per_group, ndrop)
-            - nramp: number of ramps (1-ramp = 1-nmd)
+            - nramps: number of ramps (1-ramp = 1-nmd)
         """
-        return self.get_properties(["nmd", "nramp"])
+        return self.get_properties(["nmd", "nramps"])
 
     def get_spectrograph_sampling(self):
         """Get the current spectrograph sampling configuration.
@@ -445,7 +445,7 @@ class VirtualLazuliTarget():
         pandas.DataFrame
             Variance contribution.
         """
-        return self.simulation.estimate_variance_contribution_spectra()
+        return self.simulation.get_variance_contribution()
 
     def get_properties(self, which, default=None, as_dict=True):
         """Get the properties of the target.
@@ -472,9 +472,9 @@ class VirtualLazuliTarget():
     #  Properties    #
     # ============== #
     @property
-    def target_properties(self):
-        """Get mutable properties of the target."""
-        return [l for l in self.simulation.scene.mutable_parameters if l.startswith("target__")]
+    def pointsource_properties(self):
+        """Get mutable properties of the pointsource."""
+        return [l for l in self.simulation.scene.mutable_parameters if l.startswith("pointsource__")]
         
     @property
     def simulation(self):
