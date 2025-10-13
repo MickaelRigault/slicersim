@@ -457,6 +457,13 @@ class Simulation():
     # -------- #
     #  GETTER  #
     # -------- #
+    def get_lbda(self):
+        """ Get the wavelength array
+        
+        This is a shortcut to self.spectrograph.lbda
+        """
+        return self.spectrograph.lbda
+    
     def get_input_spectrum(self, which="pointsource"):
         """Get the input spectrum.
 
@@ -1463,13 +1470,14 @@ class Simulation():
                            "erg/s/a/cm2": "flambda",
                            "adu/frame": "framerate",
                            "adu/s": "rate"}
-        
-        if units_in == units_out:
-            coefs = 1
 
         # allowing other names
         units_in = NAME_CONVERTION.get(units_in, units_in)
         units_out = NAME_CONVERTION.get(units_out, units_out)
+
+        
+        if units_in == units_out:
+            coefs = 1
         
         # ADU
         # adu <=> flambda 

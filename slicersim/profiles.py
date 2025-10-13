@@ -201,10 +201,7 @@ def get_profilemodel(name, position=(0,0), normalized=True, **kwargs):
         kwargs["x_mean"], kwargs["y_mean"] = position
         if "sigma" in kwargs:
             std = kwargs.pop("sigma")
-            if np.ndim(std) == 0:
-                kwargs["x_stddev"] = kwargs["y_stddev"] = std
-            else:
-                kwargs["x_stddev"], kwargs["y_stddev"] = std
+            kwargs["x_stddev"] = kwargs["y_stddev"] = std
                 
     else:
         kwargs["x_0"], kwargs["y_0"] = position
@@ -214,15 +211,14 @@ def get_profilemodel(name, position=(0,0), normalized=True, **kwargs):
             # See e.g. photutils => #AiryDiskPSF.evaluate()
             from scipy.special import jn_zeros
             radius = kwargs.get("radius", 1)
-            if np.ndim(radius) == 0:
-                radius_x = radius_y = radius
-            else:
-                radius_x, radius_y = radius 
+            radius_x = radius_y = radius
+            
             _rz = jn_zeros(1, 1)[0] / np.pi
             norm = (4.0 / np.pi) * (radius_x*radius_y / _rz**2) 
-                
+        elif name == "Gaussian2D":
+            norm = np.sqrt(2*np.pi * kwargs["x_stddev"] * kwargs["y_stddev"]) 
         else:
-            raise ValueError(f"Only AiryDisk2D norm has been implemented, not {name=}")
+            raise ValueError(f"Only AiryDisk2D & Gaussian2D norms havs been implemented, not {name=}")
             
         kwargs["amplitude"] = 1/norm
         

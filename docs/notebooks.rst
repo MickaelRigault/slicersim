@@ -51,4 +51,5 @@ A collection of notebooks demonstrating how to use ``slicersim``.
    notebooks/beginner_variancesource.ipynb
    notebooks/advanced_change_detector_and_spectrograph.ipynb
    notebooks/advanced_access_qe_spectral_resolution_etc.ipynb
+   notebooks/advanced_change_resolution_dispersion.ipynb
    notebooks/advanced_scene_tutorial.ipynb
