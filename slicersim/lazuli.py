@@ -265,7 +265,6 @@ class VirtualLazuliTarget():
         if spatial_scale is not None:
             config["spatial_scale"] = spatial_scale
 
-        print(f"{config=}")
         return self.simulation.update(**config)
         
     # SETTER

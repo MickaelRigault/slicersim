@@ -18,7 +18,7 @@ from .utils import recursive_get
 #   Spectrograph   #
 #                  #
 # ================ #
-def lbda_from_respow(spectral_range, res_power, npx_resolution=2):
+def lbda_from_resolution_power(spectral_range, res_power, npx_resolution=2):
     """Compute wavelength ramp for constant n-px resolving power.
 
     Parameters
@@ -50,12 +50,13 @@ def lbda_from_respow(spectral_range, res_power, npx_resolution=2):
     """
 
     wmin, wmax = spectral_range
-    dlog = 1 / (2.302585092994046 * res_power * npx_resolution)  # ln(10)=2.303...
+    # ln(10)=2.303...
+    dlog = 1 / (2.302585092994046 * res_power * npx_resolution)  
     npx = round((np.log10(wmax) - np.log10(wmin)) / dlog)
     loglbda_edges = np.linspace(np.log10(wmin), np.log10(wmax), npx + 1)
     loglbda_mid = (loglbda_edges[:-1] + loglbda_edges[1:]) / 2  # mean
 
-    return 10 ** loglbda_mid, 10 ** loglbda_edges
+    return 10**loglbda_mid, 10**loglbda_edges
 
 
 def build_lbda(spectral_range, spectral_resolution=None,
@@ -87,9 +88,9 @@ def build_lbda(spectral_range, spectral_resolution=None,
         Bin edge wavelengths.
     """
     if wsol is None:  # Compute from constant resolving power
-        lbda, lbda_edges = lbda_from_respow(np.asarray(spectral_range, dtype="float32"),
-                                                spectral_resolution,
-                                             npx_resolution=npx_resolution)
+        lbda, lbda_edges = lbda_from_resolution_power(np.asarray(spectral_range, dtype="float32"),
+                                                          spectral_resolution,
+                                                          npx_resolution=npx_resolution)
     else:  # Compute from wavelength solution
         wmin, wmax = spectral_range
         npx = round(dsol(wmax) - dsol(wmin)) + 1  # Total nb of px
@@ -106,6 +107,12 @@ def build_lbda_from_config(config):
     ----------
     config : dict
         Configuration dictionary.
+        - spectral_range
+        - dispersion_law # is a file
+        - dispersion_scale # float
+        - spectral_resolution
+        - dispersion_resolution
+        - 
 
     Returns
     -------
@@ -118,6 +125,7 @@ def build_lbda_from_config(config):
 
     dispersion_law = config.get("dispersion_law", None)
     dispersion_scale = float(config.get("dispersion_scale", 1))
+    
     spectral_resolution = config.get("spectral_resolution", None)
     npx_resolution = config.get("dispersion_resolution", 2)  # number of pixel per resolution element.
 
@@ -130,12 +138,12 @@ def build_lbda_from_config(config):
 
         # dispersion solution (wavelengths in Å, offset in pix)
         dsol = iotools.chromatic_interpolator(
-            tab[wname].to(u.AA), tab[dname] * dispersion_scale * npx_resolution / 2,
+            tab[wname].to(u.AA), tab[dname] * dispersion_scale * npx_resolution / 2, # 2. is the expected nyquist limit
             ext='extrapolate')
 
         # wavelength solution (wavelengths in Å, offset in pix)
         wsol = iotools.chromatic_interpolator(
-            tab[wname].to(u.AA), tab[dname] * dispersion_scale * npx_resolution / 2,
+            tab[wname].to(u.AA), tab[dname] * dispersion_scale * npx_resolution / 2,# 2. is the expected nyquist limit
             ext='extrapolate', inverse=True)
 
     elif spectral_resolution is None:
@@ -149,7 +157,6 @@ def build_lbda_from_config(config):
                                   npx_resolution=npx_resolution)
     
     return lbda, lbda_edges
-
 
 def build_spaxels_from_config(config):
     """Build spaxel coordinates from a configuration dictionary.
@@ -218,12 +225,12 @@ class Spectrograph:
 
     #: Mutable parameters (list)
     mutable_parameters = [  # 'spectral_range', 'spectral_resolution', # lbda
-        "dispersion_resolution",
+        "dispersion_resolution", "spotsize", "dispersion_scale",
         'xdisp_sigma_spectral', 'xdisp_sigma',  # xdisp_profile,
         'psf_sigma_spectral', 'guiding_sigma',  # psf_profile
         'spatial_scale', 'spatial_shape',  # spaxels
         'spx_scale', 'spx_shape',  # spaxels
-    ]
+        ]
 
     def __init__(self, lbda, telescope=None,
                  spaxels={}, throughput=None,
@@ -374,6 +381,15 @@ class Spectrograph:
     def update(self, reset_others=False, **kwargs):
         """Update any mutable attribute of the spectrograph.
 
+        Information:
+        ------------
+           # lbda:
+           - changing `dispersion_resolution` redefines self.lbda such that 
+             the resolving_power() is unchanged
+           - changing `spotsize` updates self.dispersion_resolution 
+             *without* updating lbda, effectively changing the resolving_power()
+
+
         Parameters
         ----------
         reset_others : bool, optional
@@ -413,11 +429,16 @@ class Spectrograph:
                 continue
 
             # lbda
-            if k == "dispersion_resolution":
-                # update the meta (for lsf)
+            if k in ["dispersion_resolution", "spotsize"]:
+                # update the meta (for lsf and instrumental psf)
                 updates["dispersion_resolution"] = v
                 # and update the wavelengths
-                lbda_updates["dispersion_resolution"] = v
+                if k == "dispersion_resolution":
+                    # you changed the actual dispersion resolution, so let's change lbda
+                    lbda_updates["dispersion_resolution"] = v
+
+            elif k == "dispersion_scale":
+                lbda_updates["dispersion_scale"] = v
 
             # not allowed to change.
 
@@ -530,6 +551,19 @@ class Spectrograph:
 
         return (np.asarray(self.spx_shape) * oversampling).astype(int)
 
+    def get_resolving_power(self):
+        """ this is 'R' such as $\mathcal{R} = \lambda/\Delta\lambda$ 
+        
+        it is computed as lbda / np.difflbda_edges) / dispersion_resolution
+        
+        Returns
+        -------
+        'R': array
+            the resolving power for shape (nlbda, )
+        """
+        return self.lbda / np.diff(self.lbda_edges) / self.dispersion_resolution
+
+
     def get_spaxel_centroids(self, in_arcsec=False, squeeze=False, oversampling=None):
         """Get the spaxel centroids.
 
@@ -613,6 +647,63 @@ class Spectrograph:
 
         return sigma
 
+    def get_additonal_spatial_scatter(self, guiding_sigma=None, incl_instrument=True,
+                                          in_spaxels=True):
+        """ scale of the scatter induced by telescope jitter and instrumental psf
+        
+        Note: current implementation assumes scatter to the gaussian.
+        
+        Parameters
+        ----------
+        guiding_sigma : float, optional
+            Gaussian noise convolution (in arcsec) caused by jitter.
+            Default is None.
+        incl_instrument: bool
+            should this also include instrumental induced PSF
+            = this only apply to slicer spectrograph =
+        Returns
+        -------
+        scatter: 
+            (x, y) gaussian sigma
+        """
+        if guiding_sigma is None:
+            guiding_sigma = self.spatial_psf["guiding_sigma"]
+
+        if guiding_sigma is not None:
+            # make sure it is 2d (RA, Dec) 
+            guiding_sigma = np.full((2,), guiding_sigma) / self.spx_spatial_scale # in spaxels
+
+        # Note:
+        # Slicer: instrumental PSF affects the LSF along the "x" direction
+        #     and the PSF along the "y" direction.
+        #     => The effective "sigma" this thus guiding_sigma & (0, inst_psf[1])
+        # MLA: it affects the LSF and the x-dispersion profile.
+        #     Not the spatial PSF
+        #     => the effective "sigma" this thus just guiding_sigma
+        if self._SPECTROGRAPH_TYPE == "slicer" and incl_instrument:
+            inst_psf = self.get_instrumental_psf() # in spaxels
+            if inst_psf is not None: # if None, nothing to do.
+                # make sure the inst_psf is 2d (x and y)
+                inst_psf = np.full((2,), inst_psf)
+                # and remove the "x" contribution (see LSF)
+                inst_psf[0] = 0
+        
+            if guiding_sigma is None and inst_psf is None:
+                effective_sigma = None
+            elif guiding_sigma is None:
+                effective_sigma = inst_psf
+            elif inst_psf is None:
+                effective_sigma = guiding_sigma
+            else:
+                effective_sigma = np.hypot(guiding_sigma, inst_psf)
+        else:
+            effective_sigma = guiding_sigma
+
+        if in_spaxels:
+            return effective_sigma
+        
+        return effective_sigma * self.spx_spatial_scale
+
     def get_spatial_psf(self, profile="default", position=(0, 0),
                         guiding_sigma=None, oversampling=5,
                         as_oversampled=False,
@@ -652,42 +743,19 @@ class Spectrograph:
         if oversampling is None:
             oversampling = 5
 
-        if guiding_sigma is not None:
-            # make sure it is 2d (RA, Dec) and in spaxel
-            guiding_sigma = np.full((2,), guiding_sigma) /self.spx_spatial_scale
 
-        # if a slicer, instrumental PSF affects the LSF along the "x" direction
-        #     and the PSF along the "y" direction.
-        #     => The effective "sigma" this thus guiding_sigma & (0, inst_psf[1])
-        # if an MLA, if affects the LSF and the x-dispersion profile.
-        #     Not the spatial PSF
-        #     => the effective "sigma" this thus just guiding_sigma
-        if self._SPECTROGRAPH_TYPE == "slicer":
-            inst_psf = self.get_instrumental_psf()
-            if inst_psf is not None: # if None, nothing to do.
-                # make sure the inst_psf is 2d (x and y)
-                inst_psf = np.full((2,), inst_psf)
-                # and remove the "x" contribution that is accounted for
-                # in the LSF
-                inst_psf[0] = 0
+        # effective_sigma is 2d (x-scatter, y-scatter) | x == dispersion y=slice  
+        effective_sigma = self.get_additonal_spatial_scatter(guiding_sigma=guiding_sigma,
+                                                              incl_instrument=True)
         
-            if guiding_sigma is None and inst_psf is None:
-                effective_sigma = None
-            elif guiding_sigma is None:
-                effective_sigma = inst_psf
-            else:
-                effective_sigma = np.hypot(guiding_sigma, inst_psf)
-        else:
-            effective_sigma = guiding_sigma
-
-#        print(f"{guiding_sigma=}, {inst_psf=}=>{effective_sigma=}")
-            
         # 
         # Gaussian, special as convolution with additional gaussan scatter is analytic
         #
         if profile in ["default", "gaussian", "normal", "norm"]:
             # adding gaussian_sigma in arcsec (in_spaxels=False)| e.g. jitter
-            sigmas = self.get_psf_sigma_spectral(in_spaxels=True) # in spaxels
+            sigmas = self.get_psf_sigma_spectral(in_spaxels=True,
+                                                 guiding_sigma=None, # explicitely null, see after.
+                                                     ) # in spaxels
             
             # adding gaussian scatter (e.g. jitter)
             if effective_sigma is not None:
@@ -750,17 +818,17 @@ class Spectrograph:
 
         return psf  # (nlbda, ny, nx)
 
-    def get_instrumental_psf(self, spot_size=None, expected_size=2,
+    def get_instrumental_psf(self, spotsize=None, expected_size=2,
                                  in_spaxels=True):
         """ get the contribution of the spectrograph to the total spot size.
         This contribution is null if spot_size <= expected_size.
 
         This simply provides: 
-        extra_pixels = np.sqrt(spot_size**2 - expected_size**2)
+        extra_pixels = np.sqrt(spotsize**2 - expected_size**2)
 
         Parameters
         ----------
-        spot_size: float
+        spotsize: float
             total size of a pointsource on the detector. 
             This is the total contribution, Telescope + Spectrograph.
 
@@ -778,14 +846,14 @@ class Spectrograph:
         extra_pixels: array, float
             extra scattering. Format depends of in_spaxels and self.spx_spatial_scale
         """
-        if spot_size is None:
-            spot_size = self.dispersion_resolution
+        if spotsize is None:
+            spotsize = self.dispersion_resolution
 
-        if spot_size <= expected_size:
+        if spotsize <= expected_size:
             return None # nothing to do | should a warning be added ? This should not happen
     
-        # additional contribution (assumed gaussian) for the effective spot_size
-        extra_pixels = np.sqrt(spot_size**2 - expected_size**2)
+        # additional contribution (assumed gaussian) for the effective spotsize
+        extra_pixels = np.sqrt(spotsize**2 - expected_size**2)
     
         # get the scatter scale in pixels/spaxels 
         # pixels/spaxels: same for a slicer in that direction

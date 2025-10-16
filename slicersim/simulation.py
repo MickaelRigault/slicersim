@@ -507,8 +507,8 @@ class Simulation():
             Effective throughput (ADU/ (erg/s/cm^2/A)).
 
         """
-        return self.spectrograph.lbda, \
-          self.spectrograph.flambda2photon * self.detector.photonflux_to_adu
+        lbda = self.spectrograph.lbda # make sure it is up to date.
+        return lbda, self.spectrograph.flambda2photon * self.detector.photonflux_to_adu(lbda)
 
     def get_effective_waveresolution(self, npx=2, sigma=None):
         """Effective wavelength resolution.
@@ -553,7 +553,8 @@ class Simulation():
             The variance of the pixel in ADU^2.
 
         """
-        _, pixel_var = self.detector.estimate_pixel_signal(flux, self.spectrograph)
+        lbda = self.spectrograph.lbda
+        _, pixel_var = self.detector.estimate_pixel_signal(flux, lbda=self.spectrograph.lbda)
         pixel_var *= self.extraction["nramps"] # incl. multi ramp approach.
         return pixel_var
         
@@ -732,7 +733,7 @@ class Simulation():
         elif unit in ["ph", "photon", "photons"]:
             coef = self.spectrograph.flambda2photon
         elif unit in ["adu"]:
-            coef = self.spectrograph.flambda2photon * self.detector.photonflux_to_adu
+            coef = self.spectrograph.flambda2photon * self.detector.photonflux_to_adu(self.spectrograph.lbda)
         else:
             raise ValueError(f"unknown {unit=}")
             
@@ -807,7 +808,7 @@ class Simulation():
             coef = 1/self.spectrograph.flambda2photon[:, np.newaxis, np.newaxis]
             
         elif unit.lower() in ["adu", "default"]:
-            coef = self.detector.photonflux_to_adu[:, np.newaxis, np.newaxis]
+            coef = self.detector.photonflux_to_adu(self.spectrograph.lbda)[:, np.newaxis, np.newaxis]
         else:
             raise ValueError(f"cannot parse requested unit {unit=}, flambda, photons, adu available.")
         
@@ -869,7 +870,8 @@ class Simulation():
         # * point source spectrum [erg/s/cm²/Å]
         # * host (not yet implemented)
         # * background spectrum [erg/s/cm²/Å/arcsec²]
-        lbda, (pointsource, host, background) = self.scene.get_stacked_spectra(fillna=0)
+        lbda = self.spectrograph.lbda # make sure this is up to date
+        _, (pointsource, host, background) = self.scene.get_stacked_spectra(lbda=lbda, fillna=0)
 
         # Fill the cube with scene elements in photons/s/spx
         if "pointsource" not in switch_off:
@@ -1055,7 +1057,8 @@ class Simulation():
                                         **kwargs)  # (nlbda, nslices_with_anamorphose, npixels)
                                         
         # slicers projected onto the detector: 1 lbda for 1 slice corresponds to 1 pixel
-        sig_cube, var_cube = self.detector.estimate_pixel_signal( cube ) # expects input in [ph/...] 
+        lbda = self.spectrograph.lbda # make sure it is up to date
+        sig_cube, var_cube = self.detector.estimate_pixel_signal( cube, lbda=lbda) # expects input in [ph/...] 
         
         return sig_cube, var_cube
         
@@ -1201,7 +1204,7 @@ class Simulation():
         Returns
         -------
         lbda, signal, variance
-            (nlbda,) signal and variance [ADU].
+            (nlbda,) signal and variance [ADU, ADU**2].
 
         """
         # (lbda, nx, ny) [ADU]
@@ -1225,9 +1228,10 @@ class Simulation():
 
         # Assume the spectrum is perfectly extracted
         if "pointsource" not in switch_off:
-            # the input spectrum *is not* derived from the cube. 
-            _, pointsource_phflux = self.scene.get_element_spectrum('pointsource') * self.spectrograph.flambda2photon
-            spec_signal = pointsource_phflux * self.detector.photonflux_to_adu
+            # the input spectrum *is not* derived from the cube.
+            lbda = self.spectrograph.lbda
+            _, pointsource_phflux = self.scene.get_element_spectrum('pointsource', lbda=lbda) * self.spectrograph.flambda2photon
+            spec_signal = pointsource_phflux * self.detector.photonflux_to_adu(lbda)
             if apply_lsf:
                 # apply LSF on *true* spectrum.
                 spec_signal = self.spectrograph.apply_line_spread_function(spec_signal)
@@ -1503,9 +1507,9 @@ class Simulation():
             
         # adu <=> photons
         elif units_in == "adu" and units_out == "fphoton":
-            coefs = 1/self.detector.photonflux_to_adu
+            coefs = 1/self.detector.photonflux_to_adu(self.spectrograph.lbda)
         elif units_in == "fphoton" and units_out == "adu":
-            coefs = self.detector.photonflux_to_adu
+            coefs = self.detector.photonflux_to_adu(self.spectrograph.lbda)
     
         # not implemented
         else:
@@ -1519,6 +1523,8 @@ class Simulation():
     def fetch_snr(self, target_snr,
                       max_group=None,
                       nframe_per_group=None,
+                      nframe_per_group_small=4,
+                      small_ngroup_range=[32, 8],
                       ndrop=None,
                       guess=None,
                       fitter="native",
@@ -1579,6 +1585,7 @@ class Simulation():
         # default values are these from the current config.
         if nframe_per_group is None:
             nframe_per_group = input_nmd[1]
+            
         if ndrop is None:
             ndrop = input_nmd[2]
             
@@ -1596,22 +1603,46 @@ class Simulation():
         single_fullramp_snr = self.get_band_snr(lbda_range=lbda_range,
                                                 frame=frame,
                                                 statistic=statistic)
+
         
         # is one ramp enought ?
         if single_fullramp_snr >= (target_snr-tol):
-            # yes ? do 1 ramp and loop over ngroup
-            if guess is None:
-                guess = int(max_group/2)
+            # yes ? Check if small ramp ok ?
+            self.update( nramps = 1, nmd=(np.max(small_ngroup_range), nframe_per_group_small, 0) ) # e.g., 1* (n, 4, 0)
+            single_ramp_smallgroup_snr = self.get_band_snr(lbda_range=lbda_range,
+                                                                   frame=frame,
+                                                                   statistic=statistic)
+            # do you reach the SNR with `np.max(small_ngroup_range)` "small ramps"
+            if single_ramp_smallgroup_snr <= (target_snr-tol):
+                # no ? use larger groups
+                if guess is None:
+                    guess = int(max_group/2)
+                    
+                self.update( nramps = 1, nmd=(guess, nframe_per_group, 0) ) # e.g., 1* (n, 8, 0)    
+            else:
+                # yes ? then it's a bright target.
+                # => Is that so bright that (np.min(small_ngroup_range), 4, 0) would do the jobs ?
+                self.update( nramps = 1, nmd=(np.min(small_ngroup_range), nframe_per_group_small, 0) ) # e.g., 1* (8, 4, 0)
+                single_framegroup_snr = self.get_band_snr(lbda_range=lbda_range,
+                                                                   frame=frame,
+                                                                   statistic=statistic)
+                if single_framegroup_snr >= (target_snr-tol):
+                    # yes ? then super bright, let's move to signel frame ramps starting from np.max(small_ngroup_range)
+                    self.update( nramps = 1, nmd=(np.max(small_ngroup_range), 1, 0) ) # e.g., 1* (n, 1, 0)
+                else:
+                    # no ? then not that bright, let's stay in the 4 group ramps
+                    self.update( nramps = 1, nmd=( int(np.mean(small_ngroup_range)), nframe_per_group_small, 0) ) # e.g., 1* (n, 4, 0)    
+                    
+            # In any case, you do 1 ramp, so loop over ngroup                
             free_parameter = "ngroup"
-            self.update( nramps = 1, nmd=(guess, nframe_per_group, ndrop) ) # e.g., 1* (n, 8, 0)
             
         else:
-             # yes ? fix nmd at fullramp and  loop over ngroup
+             # no ? fix nmd at fullramp and  loop over ngroup
             free_parameter = "nramps"
             if guess is None:
                 guess = 4 # we expect less than, say, 20 ramps and at least 2.
             self.update( nramps=guess, nmd=(max_group, nframe_per_group, ndrop) )
-            prop_fetch |= {"min_value":2}
+            prop_fetch |= {"min_value": 2}
 
         if fitter == "native":
             read_config, snr, integration_time = self._fetch_snr(target_snr,
@@ -1669,7 +1700,7 @@ class Simulation():
         """
         from scipy import stats, optimize
         
-        minimal_values = {"ngroup": 2, "nramps": 1, 'nframe':2}
+        minimal_values = {"ngroup": self.detector.min_group, "nramps": 1, 'nframe':2}
         if min_value is None:
             min_value = minimal_values.get(free_parameter)
         
@@ -1810,7 +1841,6 @@ class Simulation():
             free_parameter = "ngroup" # 1 frame per group, so ngroup=nframe
         else:
             input_nmd = None
-
 
         # initial state
         current_value = self.get_parameter(free_parameter)

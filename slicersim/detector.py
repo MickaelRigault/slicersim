@@ -45,6 +45,8 @@ class Detector():
         Number of groups, frames per group, and drops. Default is (64, 8, 0).
     lbda_range : array_like, optional
         Wavelength range accepted by the detector in Angstroms.
+    min_group : int, optional
+        Minimal number of groups per ramp. Default is 2.
     max_group : int, optional
         Maximum number of groups per ramp. Default is 64.
     lbda : float, optional
@@ -70,7 +72,8 @@ class Detector():
     def __init__(self, tframe, dark, ron, qe, pixel_size,
                      gain=1, saturation=65_635,
                      nmd=(64, 8, 0), lbda_range=None,
-                     max_group=64, lbda=10_000.,
+                     min_group=2, max_group=64,
+                     lbda=10_000.,
                      variance_model="rauscher07",
                      thermaloptics=None,
                      meta={} ):
@@ -93,6 +96,7 @@ class Detector():
         
         # extra
         meta["max_group"] = max_group
+        meta["min_group"] = min_group        
         meta["saturation"] = saturation
         meta["lbda_range"] = lbda_range
 
@@ -142,7 +146,10 @@ class Detector():
         ### max group in readout_mode allowed
         if "max_group" in config:
             dict_init["max_group"] = int(config.get("max_group"))     #: maximum number of group per ramp
-        
+
+        if "min_group" in config:
+            dict_init["min_group"] = int(config.get("min_group"))     #: maximum number of group per ramp
+            
         ## readout_noise
         dict_init["ron"] = float(config.get("readout_noise"))         #: Read-Out Noise per frame [e-]
 
@@ -266,7 +273,7 @@ class Detector():
         if lbda is None:
             lbda = self.lbda
             
-        return self.qe(self.lbda)
+        return self.qe(lbda)
         
     def get_pixel_size(self, unit="micrometer"):
         """Get the pixel size in the specified unit.
@@ -340,7 +347,7 @@ class Detector():
         
         return signals
         
-    def estimate_pixel_signal(self, flux,
+    def estimate_pixel_signal(self, flux, lbda=None,
                                   withdark=False,
                                   variance_model="default",
                                   saturation="default"):
@@ -350,6 +357,9 @@ class Detector():
         ----------
         flux : array_like
             Incident flux in ph/s/px (arbitrary shape, e.g., (nlbda, ny, nx)).
+        lbda : array_like, optional
+            Wavelength array in Angstrom. If None, `self.lbda` is used.
+            Default is None.
         withdark : bool, optional
             Include dark contribution to output signal. Default is False.
         variance_model : str, optional
@@ -373,7 +383,7 @@ class Detector():
             saturation = self.saturation
             
         # Variance estimators works with input flux in e-/s (not ph/s)
-        qe = complete_dims(self.get_qe(), -np.ndim(flux))
+        qe = complete_dims(self.get_qe(lbda=lbda), -np.ndim(flux))
         flux_e = flux * qe  # [e-/s]
 
         # Variance estimate in [ADU²]
@@ -382,7 +392,7 @@ class Detector():
 
         # actual signal registered, including darks for staturation tests.
         effective_dark = self.dark + self.get_thermal_dark(units="e-/s")
-        signal = (flux_e + effective_dark) * self.electronpers_to_adu  # Total signal [ADU]
+        signal = (flux_e + effective_dark) * self.electronpers_to_adu()  # Total signal [ADU]
 
         # Detect and mask saturated pixels
         if saturation is not None:
@@ -401,52 +411,9 @@ class Detector():
             self.nsaturated_detpx = None
 
         if not withdark:  # Remove dark contribution
-            signal -= effective_dark * self.electronpers_to_adu  # [ADU]
+            signal -= effective_dark * self.electronpers_to_adu()  # [ADU]
 
         return signal, variance  # [ADU], [ADU²]
-
-    def estimate_spx_spectrum(self, flux, sigma=1, width=5):
-        """ Function dedicated for MLA spectrograph. 
-        
-        Parameters
-        ----------
-        flux : array_like
-            Incident flux in ph/s/px (arbitrary shape, e.g., (nlbda, ny, nx)).
-        sigma : float, array_like, optional
-            width of the gaussian cross-dispersion profile
-        width : int, optional
-            width of the cross dispersion aperture long the wavelength direction.
-
-        Returns
-        -------
-        tuple of array_like
-            - Pixel signal [ADU].
-            - Variance [ADU²].
-        """ 
-        warnings.warn("DEPRECATED: detector.estimate_spx_spectrum() is deprecated, see spectrograph.")
-        
-        # Reshape photonflux2adu (() or (nlbda,)) to match flux's shape
-        photonflux_to_adu = complete_dims(self.photonflux_to_adu, -np.ndim(flux))
-
-        # Cross-dispersion weighted least-square ("optimal") extraction
-        signal = flux * photonflux_to_adu   # Total incident signal [ADU]
-
-        # Normalized cross-dispersion profile, flux.shape + (width,)
-        sigma = complete_dims(sigma, -np.ndim(flux))
-        p = self._xdisp_profile(sigma=sigma, width=width)
-
-        # Incident flux [ph/s], flux.shape + (width,) | take~50ms
-        profiles = p * complete_dims(flux, 1)
-
-        # Detector signal [ADU], shape is (width,) + flux.shape  | take ~200ms
-        sig, var = self.estimate_pixel_signal(profiles, withdark=False)
-
-        # One should have signal almost equal to sig.sum(axis=0)
-        # (up to aperture corrections)
-        # Saturated px with infinite variance will not contribute
-        variance = 1 / (p**2 / var).sum(axis=-1)  # Variance on signal [ADU²]
-
-        return signal, variance                  # flux.shape [ADU]    
 
     def estimate_variance(self, flux, model=None, incl_thermal=True):
         """Estimate the variance associated with the input flux.
@@ -485,6 +452,34 @@ class Detector():
             return self._estimate_variance_kubik16(flux,**variance_input)
         else:
             raise NotImplementedError(f"unknown variance model {model=} ; rauscher07 or kubik16 available.")
+
+    # - conversion
+    def photonflux_to_adu(self, lbda=None):
+        """Conversion factor from photon flux [ph/s] to integrated signal [ADU].
+
+        This is effective exposure time [s] * QE [e-/ph] * gain [ADU/e-].
+
+        Parameters
+        ----------
+        lbda : array_like, optional
+            used to estimated the qe (see.get_qe())
+            Wavelength array in Angstrom. If None, `self.lbda` is used.
+            Default is None.
+
+        Returns
+        -------
+        adu: array
+        """
+        qe = self.get_qe(lbda=lbda) # applied the lbda if needed.
+        return self.integration_time * qe * self.gain
+
+    # could be propery but not to consistancy with photonflux_to_adu
+    def electronpers_to_adu(self):
+        """Conversion factor from electron/s to integrated signal [ADU].
+
+        This is effective exposure time [s] * gain [ADU/e-].
+        """
+        return self.integration_time * self.gain
         
     # - Internal
     @staticmethod
@@ -679,6 +674,11 @@ class Detector():
         return ':'.join([ str(_) for _ in self.nmd ])
 
     @property
+    def min_group(self):
+        """Minimal allowed number of groups per ramp (n_min, m, d)."""
+        return self.meta.get("min_group")
+    
+    @property
     def max_group(self):
         """Maximum allowed number of groups per ramp (n_max, m, d)."""
         return self.meta.get("max_group")
@@ -705,21 +705,3 @@ class Detector():
     def exposure_time(self):
         """Total integration time for sequences."""
         return self.nframes * self.tframe
-
-    # - conversion
-    @property
-    def photonflux_to_adu(self):
-        """Conversion factor from photon flux [ph/s] to integrated signal [ADU].
-
-        This is effective exposure time [s] * QE [e-/ph] * gain [ADU/e-].
-        """
-        qe = self.get_qe() # applied the lbda if needed.
-        return self.integration_time * qe * self.gain
-
-    @property
-    def electronpers_to_adu(self):
-        """Conversion factor from electron/s to integrated signal [ADU].
-
-        This is effective exposure time [s] * gain [ADU/e-].
-        """
-        return self.integration_time * self.gain
