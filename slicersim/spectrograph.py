@@ -5,6 +5,7 @@ from copy import deepcopy
 
 import astropy.units as u
 import numpy as np
+import pandas
 
 from . import iotools
 from .profiles import build_pixels
@@ -195,7 +196,6 @@ def build_throughput_from_config(config):
     try:
         # throughput is a constant
         throughput = float(config["throughput"])
-        throughput_name = self.throughput_name_interp = None
 
     except ValueError:
         # throughput is a filename
@@ -280,7 +280,7 @@ class Spectrograph:
         self.set_spaxels(**spaxels)
 
         # Throughput: flaot or func, see get_throughput()
-        self.throughput = throughput
+        self.set_throughput(throughput)
 
         self.spatial_psf = spatial_psf
 
@@ -381,6 +381,12 @@ class Spectrograph:
     def update(self, reset_others=False, **kwargs):
         """Update any mutable attribute of the spectrograph.
 
+        remark: the method accepts django like format such that
+                a__b is understood as a.b. 
+                For instance: optics__temperature => optics.temperature.
+                so update(**{'optics.temperature':220}) is equivalent to 
+                update(optics__temperature=220)
+
         Information:
         ------------
            # lbda:
@@ -410,14 +416,15 @@ class Spectrograph:
 
         # == Filling the update == #
         for k, v in kwargs.items():
-            k = NAME_ALT.get(k, k)
+            k = NAME_ALT.get(k, k).replace("__", ".") # accept django like format
+            
             if k not in self.mutable_parameters:
                 warnings.warn(f"Parameter {k!r} is not mutable.")
                 continue
 
             if v is None:  # Skip
                 continue
-
+            
             # telescope
             if k.startswith("telescope."):
                 telescope_updates[k.replace("telescope.", "")] = v
@@ -516,9 +523,66 @@ class Spectrograph:
         self._spaxels = {"shape": shape, "spx_scale": spx_scale}
         self._spaxel_coords = {}
 
+    def set_throughput(self, throughput):
+        """ set the throughput of the spectrograph
+
+        Parameters
+        ----------
+        throughput: pandas.Series, float, array, func
+            The throughput of the system as a function of wavelength (0->1)
+            - float: constant throughput
+            - array: must broadcast with self.lbda
+            - func: function that input self.lbda such that throughput_array = throughput(self.lbda)
+            - pandas.Series: throughput with lbda [AA] as index. This is converted input a function 
+              using a cubic interpolation.
+        
+        Returns
+        -------
+        None
+        """
+        
+        # 
+        if type(throughput) == pandas.DataFrame:
+            throughput = throughput.iloc[:,0] # convert as serie
+
+        # Serie => func
+        if type(throughput) == pandas.Series:
+            from . import iotools            
+            throughput = iotools.chromatic_interpolator(
+                throughput.index, throughput.values, ext='zeros')
+
+        self.throughput = throughput
+        
     # --------- #
     #  GETTER   #
     # --------- #
+    def get_lbda(self, units=None, oversample=None):
+        """ get the wavelength array 
+
+        Parameters
+        ----------
+        units: None,string, astropy.units
+            the unit of the returned array. 
+            None (default) corresponds to AA (Angstrom).
+
+        oversample: None, int
+            specify if you want to oversample the wavelength binning.
+
+        Returns
+        -------
+        lbda: array
+            wavelength array (see units).
+        """
+        lbda = self.lbda.copy() # in AA
+        if units is not None:
+            lbda *= getattr(units, "AA").to(units)
+
+        if oversample is not None:
+            nlbda = len(lbda)
+            lbda = np.interp( np.arange(nlbda, step=1/oversample), np.arange(nlbda), lbda)
+
+        return lbda
+        
     def get_throughput(self):
         """Get the spectrograph throughput.
 
@@ -585,17 +649,18 @@ class Spectrograph:
         if oversampling is None or (np.asarray(oversampling) == self.spaxels["oversampling"]).all():
             spaxels_coords = self.spaxels
         else:
+            print("get_spaxels")
             spaxels_coords = build_pixels(self.spx_shape, oversampling=oversampling)
 
-        x, y = spaxels_coords["centroids"]
+        x, y = spaxels_coords["centroids"] # dense if oversampling
         if in_arcsec:
             if np.ndim(self.spx_spatial_scale) == 0:
                 spx_y = spx_x = self.spx_spatial_scale
             else:
                 spx_y, spx_x = self.spx_spatial_scale
             # not /= not to change
-            x = x * spx_x / spaxels_coords["oversampling"]  # in arcsec
-            y = y * spx_y / spaxels_coords["oversampling"]  # in arcsec
+            x = x * spx_x # / spaxels_coords["oversampling"]  # in arcsec
+            y = y * spx_y # / spaxels_coords["oversampling"]  # in arcsec
 
         if squeeze:
             x, y = np.squeeze(x), np.squeeze(y)
@@ -755,7 +820,7 @@ class Spectrograph:
             # adding gaussian_sigma in arcsec (in_spaxels=False)| e.g. jitter
             sigmas = self.get_psf_sigma_spectral(in_spaxels=True,
                                                  guiding_sigma=None, # explicitely null, see after.
-                                                     ) # in spaxels
+                                                ) # in spaxels
             
             # adding gaussian scatter (e.g. jitter)
             if effective_sigma is not None:
@@ -770,15 +835,10 @@ class Spectrograph:
             (xx, yy), oversampling = self.get_spaxel_centroids(**prop)
 
             psf = profiles.get_gaussian2d(xx, yy, sigma=sigmas, mean=position, **kwargs)
-
-            if as_oversampled:
-                if np.ndim(oversampling) == 1:
-                    oversampling_y, oversampling_x = oversampling
-                else:
-                    oversampling_y = oversampling_x = oversampling
-
-                psf *= oversampling_x * oversampling_y  # to conserve energy
-
+            # remark: if oversampled, the flux need to be *summed*, not *averaged*
+            #         as the energy is conserved in the current structure.
+            #         => smaller pixel (oversampled) -> less flux.
+            
             return psf
 
         # ----------------------------------------------------- #
@@ -789,15 +849,27 @@ class Spectrograph:
         #
         # ----------------------------------------------------- #
         #
+        
         # to accomodate with non-square spaxels (like slicer)
         # we work in arcsec, not in spaxels.
         if profile in ["airy", "mirror", "telescope", "airydisk"]:
             radius = self.telescope.get_airy_radius(self.lbda)  # in arcsec
             # assumed symetric on x and y
-            position = np.asarray(position)  # in spaxels
+            position = np.asarray(position) * self.spx_spatial_scale # in spaxels => arcsec
+            position /= oversampling
             psf_func = profiles.get_profilemodel("airy", position=position,
                                                   radius=radius[:, None, None],
                                                   normalized=True)
+        elif profile in ["Gaussian2D", "gaussian2d", "gaussian"]:
+            sigmas = self.get_psf_sigma_spectral(in_spaxels=False,
+                                                 guiding_sigma=None, # explicitely null, see after.
+                                                ) # in arcsec 
+            position = np.asarray(position) * self.spx_spatial_scale # in spaxels => arcsec
+            position /= oversampling
+            psf_func = profiles.get_profilemodel("Gaussian2D", position=position,
+                                                  sigma=sigmas,
+                                                  normalized=True)
+
         else:
             raise ValueError(f"psf profile {profile=} not implemented")
 
@@ -806,6 +878,24 @@ class Spectrograph:
         (xx, yy), oversampling = self.get_spaxel_centroids(in_arcsec=True, squeeze=False,
                                                            oversampling=oversampling)
         psf = psf_func(xx, yy)
+        # Since we are working in arcsec, let's make sure this goes away.
+        psf *= self.spx_area
+
+        # Note: Normalisation have been tested. See:
+        # - psf_scipy = self.get_spatial_psf("normal") # works in spaxels
+        # - psf_profile = self.get_spatial_psf("Gaussian2D") # works in arcsec
+        #   they must both agree within numerical errors.
+        
+
+        # oversampling: The PSF intensity need to be devided by oversampling area 
+        #               to conserve energy. Hence the rebinning needs to sum (not average)
+        if oversampling is not None:
+            if np.ndim(oversampling) == 1:
+                oversampling_y, oversampling_x = oversampling
+            else:
+                oversampling_y = oversampling_x = oversampling
+                
+            psf /= oversampling_y*oversampling_x
 
         # effective_sigma is either None or [sigma_x, sigma_y]
         if effective_sigma is not None and np.any(effective_sigma > 0):
@@ -814,7 +904,8 @@ class Spectrograph:
                                           in_units="spaxels")
 
         if oversampling != 1 and not as_oversampled:
-            psf = self._remove_oversampling(psf, oversampling=oversampling, func=np.nanmean)
+            # in the current structure, you need to sum oversampled pixels as energy is conserved.
+            psf = self._remove_oversampling(psf, oversampling=oversampling, func=np.nansum)
 
         return psf  # (nlbda, ny, nx)
 

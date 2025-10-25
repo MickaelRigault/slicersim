@@ -289,7 +289,7 @@ class VirtualLazuliTarget():
         updates = {f"pointsource__{k}":v for k,v in kwargs.items()}
         _ = self.simulation.update(**updates)
         
-    def setup_to_snr(self, snr,
+    def setup_to_snr(self, snr, per_resolution=True,
                      lbda_range=[4000, 6800], frame='rest',
                      statistic=np.nanmean, inplace=True, **kwarg):
         """Set the simulation parameters to achieve a specified Signal-to-Noise Ratio (SNR).
@@ -298,6 +298,13 @@ class VirtualLazuliTarget():
         ----------
         snr : float
             The target Signal-to-Noise Ratio to achieve.
+        per_resolution: bool
+            Did you provide the snr per spectral resolution element (True) or 
+            per wavelength bins (False). 
+            If per resolution, this method will convert this into snr per 
+            wavelength bin (snr_lbdabin = snr / sqrt(dispersion_resolution))
+            and feed this to the fetch_snr() Simulation methods that expects it
+            per wavelength bin.
         lbda_range : list of int, optional
             The wavelength range in Angstroms over which to calculate the SNR.
             Default is [4000, 6800].
@@ -320,6 +327,10 @@ class VirtualLazuliTarget():
         reached_snr : float
             The actual SNR achieved with the returned configuration.
         """
+        if per_resolution:
+            # get the snr per wavelength bin as expected by fetch_snr
+            snr = snr / np.sqrt(self.simulation.spectrograph.dispersion_resolution)
+
         # get configuration to reach this SNR
         config, reached_snr, exptime = self.simulation.fetch_snr(target_snr=snr, 
                                                     lbda_range=lbda_range, frame=frame,

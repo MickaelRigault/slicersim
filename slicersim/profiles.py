@@ -202,6 +202,9 @@ def get_profilemodel(name, position=(0,0), normalized=True, **kwargs):
         if "sigma" in kwargs:
             std = kwargs.pop("sigma")
             kwargs["x_stddev"] = kwargs["y_stddev"] = std
+        elif "radius" in kwargs:
+            std = kwargs.pop("radius")
+            kwargs["x_stddev"] = kwargs["y_stddev"] = std
                 
     else:
         kwargs["x_0"], kwargs["y_0"] = position
@@ -214,9 +217,12 @@ def get_profilemodel(name, position=(0,0), normalized=True, **kwargs):
             radius_x = radius_y = radius
             
             _rz = jn_zeros(1, 1)[0] / np.pi
-            norm = (4.0 / np.pi) * (radius_x*radius_y / _rz**2) 
+            norm = (4.0 / np.pi) * (radius_x*radius_y / _rz**2)
+            
         elif name == "Gaussian2D":
-            norm = np.sqrt(2*np.pi * kwargs["x_stddev"] * kwargs["y_stddev"]) 
+            # norm of a 2D symetric gaussian (no ellipticity)
+            norm = 2*np.pi * kwargs["x_stddev"] * kwargs["y_stddev"]
+            
         else:
             raise ValueError(f"Only AiryDisk2D & Gaussian2D norms havs been implemented, not {name=}")
             
