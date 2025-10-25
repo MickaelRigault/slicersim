@@ -239,8 +239,8 @@ class VirtualLazuliTarget():
         ----------
         sampling : str, optional
             Sampling mode to use:
-            - "fine": well-spatially sampled grid (~[58, 116] with 40mas spaxels)
-            - "medium": coarser grid sampling (~[58, 116] with 80mas spaxels)
+            - "fine": well-spatially sampled grid (~[58/2, 58] with 40mas spaxels)
+            - "medium": coarser grid sampling (~[58/2, 58] with 80mas spaxels)
             Default is None.
         spatial_shape : tuple of float, optional
             Manually set the grid shape (e.g., (40, 40)).

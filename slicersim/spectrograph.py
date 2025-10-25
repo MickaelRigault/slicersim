@@ -219,8 +219,8 @@ class Spectrograph:
     """
     _SPECTROGRAPH_TYPE = "Unknown"
 
-    _SAMPLING = {"fine": {'spatial_shape': [58, 116], 'spatial_scale': 0.04},
-                 "medium": {'spatial_shape': [58, 116], 'spatial_scale': 0.08}
+    _SAMPLING = {"fine": {'spatial_shape': [24, 58], 'spatial_scale': 0.04},
+                 "medium": {'spatial_shape': [24, 58], 'spatial_scale': 0.08}
                  }
 
     #: Mutable parameters (list)
@@ -792,7 +792,7 @@ class Spectrograph:
             Default is None.
         oversampling : int, optional
             Oversampling factor used for the PSF (except if profile is gaussian, where erf is used).
-            If oversampling is None, 5 is used by default. Set oversampling=1 for no oversampling.
+            If oversampling is None, 3 is used by default. Set oversampling=1 for no oversampling.
             Default is None.
         as_oversampled : bool, optional
             If True, return the oversampled PSF. Default is False.
@@ -806,9 +806,12 @@ class Spectrograph:
         """
         from . import profiles
         if oversampling is None:
-            oversampling = 5
+            oversampling = 3 # like ~10 (9) subpixels
 
-
+        # to solve the numpy vs. plot confusion
+        position_xy = position[::-1]
+            
+            
         # effective_sigma is 2d (x-scatter, y-scatter) | x == dispersion y=slice  
         effective_sigma = self.get_additonal_spatial_scatter(guiding_sigma=guiding_sigma,
                                                               incl_instrument=True)
@@ -834,7 +837,7 @@ class Spectrograph:
 
             (xx, yy), oversampling = self.get_spaxel_centroids(**prop)
 
-            psf = profiles.get_gaussian2d(xx, yy, sigma=sigmas, mean=position, **kwargs)
+            psf = profiles.get_gaussian2d(xx, yy, sigma=sigmas, mean=position_xy, **kwargs)
             # remark: if oversampled, the flux need to be *summed*, not *averaged*
             #         as the energy is conserved in the current structure.
             #         => smaller pixel (oversampled) -> less flux.
@@ -851,15 +854,16 @@ class Spectrograph:
         #
 
         # This part of the code works in arcsec.
-        position = np.asarray(position) * self.spx_spatial_scale # in spaxels => arcsec
-#        position /= oversampling
+        position_xy = np.asarray(position_xy) * self.spx_spatial_scale # in spaxels => arcsec
+        if self.type == "slicer": # inject the anamorphone back in
+            position_xy *= self._ANAMORPHOSE
 
         # to accomodate with non-square spaxels (like slicer)
         # we work in arcsec, not in spaxels.
         if profile in ["airy", "mirror", "telescope", "airydisk"]:
             radius = self.telescope.get_airy_radius(self.lbda)  # in arcsec
             # assumed symetric on x and y
-            psf_func = profiles.get_profilemodel("airy", position=position,
+            psf_func = profiles.get_profilemodel("airy", position=position_xy,
                                                   radius=radius[:, None, None],
                                                   normalized=True)
             
@@ -867,7 +871,7 @@ class Spectrograph:
             sigmas = self.get_psf_sigma_spectral(in_spaxels=False,
                                                  guiding_sigma=None, # explicitely null, see after.
                                                 ) # in arcsec 
-            psf_func = profiles.get_profilemodel("Gaussian2D", position=position,
+            psf_func = profiles.get_profilemodel("Gaussian2D", position=position_xy,
                                                   sigma=sigmas,
                                                   normalized=True)
 
