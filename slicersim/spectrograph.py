@@ -649,7 +649,6 @@ class Spectrograph:
         if oversampling is None or (np.asarray(oversampling) == self.spaxels["oversampling"]).all():
             spaxels_coords = self.spaxels
         else:
-            print("get_spaxels")
             spaxels_coords = build_pixels(self.spx_shape, oversampling=oversampling)
 
         x, y = spaxels_coords["centroids"] # dense if oversampling
