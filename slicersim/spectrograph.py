@@ -849,23 +849,24 @@ class Spectrograph:
         #
         # ----------------------------------------------------- #
         #
-        
+
+        # This part of the code works in arcsec.
+        position = np.asarray(position) * self.spx_spatial_scale # in spaxels => arcsec
+#        position /= oversampling
+
         # to accomodate with non-square spaxels (like slicer)
         # we work in arcsec, not in spaxels.
         if profile in ["airy", "mirror", "telescope", "airydisk"]:
             radius = self.telescope.get_airy_radius(self.lbda)  # in arcsec
             # assumed symetric on x and y
-            position = np.asarray(position) * self.spx_spatial_scale # in spaxels => arcsec
-            position /= oversampling
             psf_func = profiles.get_profilemodel("airy", position=position,
                                                   radius=radius[:, None, None],
                                                   normalized=True)
+            
         elif profile in ["Gaussian2D", "gaussian2d", "gaussian"]:
             sigmas = self.get_psf_sigma_spectral(in_spaxels=False,
                                                  guiding_sigma=None, # explicitely null, see after.
                                                 ) # in arcsec 
-            position = np.asarray(position) * self.spx_spatial_scale # in spaxels => arcsec
-            position /= oversampling
             psf_func = profiles.get_profilemodel("Gaussian2D", position=position,
                                                   sigma=sigmas,
                                                   normalized=True)
