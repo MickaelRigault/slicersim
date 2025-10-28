@@ -861,10 +861,15 @@ class Simulation():
             (nlbda, ny, nx) cube.
 
         """
-        if not as_oversampled:
-            oversampling = None
+        if oversampling is None:
+            oversampling = 3
 
-        cube = self.spectrograph.get_empty_cube(filled=0, oversampling=oversampling)
+        #if not as_oversampled:
+        #    oversampling = None
+        
+            
+
+        cube = self.spectrograph.get_empty_cube(filled=0, oversampling=None if not as_oversampled else oversampling)
         
         # spectra (3, nlbda):
         # * point source spectrum [erg/s/cm²/Å]
@@ -888,11 +893,11 @@ class Simulation():
                 warnings.warn("Host cube not implemented.")
 
         if "background" not in switch_off:                    
-            cube += self.spectrograph.generate_background(background, oversampling=oversampling,
+            cube += self.spectrograph.generate_background(background, oversampling=None if not as_oversampled else oversampling,
                                                               apply_lsf=False)
 
         if "thermal" not in switch_off:
-            cube += self.spectrograph.generate_thermal_signal(as_cube=True, oversampling=oversampling,
+            cube += self.spectrograph.generate_thermal_signal(as_cube=True, oversampling=None if not as_oversampled else oversampling,
                                                                 apply_lsf=False) # [ph/s]
 
         if not in_photons:      # Convert back to flambda

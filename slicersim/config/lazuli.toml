@@ -38,7 +38,7 @@ dispersion_resolution = 2.0		   # number of pixel per resolution element.
 
 # ---- Spaxel structure
 spatial_scale = 0.040      	    # MLA sampling (spaxel scale) [arcsec/spx]
-spatial_shape = [24, 58]   	    # MLA shape (ny, nx) [spatial] Anamorphone will make that square
+spatial_shape = [29, 58]   	    # MLA shape (ny, nx) [spatial] Anamorphone will make that square
 
 # ---- Throughput
 throughput = "throughput_baseline.ecsv"  # Total throughput, but QE (wavelength, throughput) | could be a float

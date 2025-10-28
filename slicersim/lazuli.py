@@ -446,6 +446,70 @@ class VirtualLazuliTarget():
         coefs = self.simulation.convert_units(units_in="adu", units_out=unit)
         return lbda, flux*coefs, variance*coefs**2
 
+    def get_cubes(self, which="both", **kwargs):
+        """ returns both cubes, one for each slicer. 
+        
+        Parameters
+        ----------
+        which: string
+            which cube should be computed. 
+            - both: both fine and medium field.
+            - current: only current setup.
+            - fine: only the fine field
+            - medium: only the medium field
+    
+        **kwargs goes to simulation.get_cube(**kwargs)
+        
+        Returns
+        -------
+        (cube, varcube)[, (cube, varcube)]:
+            cube and variance cube. 
+            if which == "both":
+                (cube_fine, varcube_fine), (cube_med, varcube_med)
+            else:
+                (cube, varcube)
+        """
+        # just get the current cube.
+        if which == "current":
+            return self.simulation.get_cube(**kwargs)
+    
+        # let's see which configuration you have
+        current_sampling, current_config = self.get_spectrograph_sampling()
+        original_position = self.simulation.get_parameter("position")
+        if current_sampling not in ["fine", "medium"]:
+            raise ValueError(f"sampling is neither fine nor medium ({current_sampling}). Only which='current' available. {which=}")
+    
+        # => you want the other one, or both.
+        #    First, let's get the position in each sampling.
+        pos_fine, pos_med = self._get_field_positions()
+        
+        # let's loop over fields, update the position 
+        # to that of interest
+        if which in ["both", "fine"]:
+            self.change_spectrograph_mode("fine")
+            self.simulation.update(position = pos_fine)
+            cubes_fine = self.simulation.get_cube(**kwargs)
+        else:
+            cubes_fine = None
+    
+        if which in ["both", "medium"]:
+            self.change_spectrograph_mode("medium")
+            self.simulation.update(position = pos_med)
+            cubes_medium = self.simulation.get_cube(**kwargs)
+        else:
+            cubes_medium = None
+    
+        # revert back to original config (could be )
+        self.change_spectrograph_mode(**current_config)
+        self.simulation.update(position = original_position)
+    
+        if which == "both":
+            return cubes_fine, cubes_medium
+        elif which == "fine":
+            return cubes_fine
+        elif which == "medium":
+            return cubes_medium
+
     def get_variance_contribution(self):
         """Get a dataframe detailing the variance contribution for each wavelength
         of each variance source.
@@ -477,7 +541,127 @@ class VirtualLazuliTarget():
 
         """
         return self.simulation.get_parameter(which=which, default=default, as_dict=as_dict)
+
+    def _get_field_positions(self, position=None, field=None):
+        """ get the 'position' parameters for each of the two fields (fine and medium).
+        
+        These position are in the respective slicer units, and could directly be used 
+        using the position= arguments one the corresponding field has been set.
+        """
+        if position is None:
+            position = np.asarray(self.simulation.get_parameter("position"))
+        if field is None:
+            field, _ = self.get_spectrograph_sampling()
+        
+        anamorphe = np.asarray(self.simulation.spectrograph._ANAMORPHOSE)
+        # information for the fine field
+        nx_fine, ny_fine = self.simulation.spectrograph._SAMPLING["fine"]["spatial_shape"] / anamorphe
+        
+        # information for the fine field
+        nx_med, ny_med = self.simulation.spectrograph._SAMPLING["medium"]["spatial_shape"] / anamorphe
     
+        # multiplying factory between mid and large
+        fine_to_med = 0.5
+        
+        # these are in unit of respective slice width
+        # they share "x=0"
+        fine_bottom = -ny_fine/2
+        mid_top = +ny_fine/2
+        
+        if field == "fine":
+            position_fine = position
+            centroid_fine_for_med = np.asarray([0, mid_top - fine_bottom * fine_to_med])
+            offset_from_centroid_for_med = position * fine_to_med
+            # fine is on top
+            position_medium = centroid_fine_for_med + offset_from_centroid_for_med
+    
+        elif field  == "medium":
+            position_medium = position
+            centroid_medium_for_fine = np.asarray([0, fine_bottom - mid_top / fine_to_med])
+            offset_from_centroid_for_fine = position / fine_to_med
+            # fine is on top
+            position_fine = centroid_medium_for_fine + offset_from_centroid_for_fine
+            
+        else:
+            raise ValueError(f"in_which should be either fine or medium ; {current_sampling=} given")
+    
+        return position_fine, position_medium
+
+    @staticmethod
+    def _get_fieldlayout_(fig=None, left=0.1, bottom=0.1, right=0.9, top=0.9):
+        """ get matploblib's axes corresponding to the Lazuli layout.
+        
+        Parameters
+        ----------
+        fig: matplotlib.Figure
+            the figure you want to axes to be generated into.
+            If None, a new figure will be generated.
+
+        Returns
+        -------
+        fig, (ax_fine, ax_medium)
+        """
+        if fig is None:
+            import matplotlib.pyplot as plt
+            fig = plt.figure(figsize=(8,8))
+
+        width = right-left
+        height = top-bottom
+
+        width_med = width # full width
+        height_med = height*0.66
+        
+        axfine = fig.add_axes([left+width/4, bottom+height_med, width_med/2, height_med/2])
+        axmed = fig.add_axes([left, bottom, width_med, height_med])
+        return fig, (axfine, axmed)
+
+    def show_cube(self, cubes=None, lbda_range=400, cube_prop={},
+                      axes=None, **kwargs):
+        """ """
+        from matplotlib import colors
+
+        if axes is None:
+            fig, (axfine, axmed) = self._get_fieldlayout_()
+        else:
+            axfine, axmed = axes
+            fig = axfine.figure
+            
+
+        if cubes is None:
+            (cube_fine, _), (cube_medium, _) = self.get_cubes(**cube_prop)
+        else:
+            cube_fine, cube_medium = cubes
+
+        # cube to metaslice
+        if lbda_range is None: # stack them all.
+            metaslice_fine = np.nansum(cube_fine, axis=0)
+            metaslice_medium = np.nansum(cube_medium, axis=0)
+        elif len(np.atleast_1d(lbda_range)) == 1: # unique value
+            lbda = self.simulation.spectrograph.lbda
+            lbda_index = np.argmin( (lbda_range-lbda)**2 )
+            metaslice_fine = cube_fine[lbda_index]
+            metaslice_medium = cube_medium[lbda_index]
+        else:
+            lbda_min = np.argmin( (lbda_range[0]-lbda)**2 )
+            lbda_max = np.argmin( (lbda_range[1]-lbda)**2 )            
+            metaslice_fine = np.nansum(cube_fine[lbda_min:lbda_max], axis=0)
+            metaslice_medium = np.nansum(cube_medium[lbda_min:lbda_max], axis=0)
+            
+        current_sampling, _ = self.get_spectrograph_sampling()
+
+        # vmin, vmax        
+        vmin, vmax = np.percentile(np.vstack([metaslice_fine, metaslice_medium]), [0.01, 99.99])
+        vmin = kwargs.pop("vmin", vmin)
+        vmax = kwargs.pop("vmax", vmax)
+        norm = colors.PowerNorm(0.1, vmin=vmin, vmax=vmax)
+
+        # showing them.        
+        axfine.imshow(metaslice_fine, norm=norm, origin="lower", **kwargs)
+        axmed.imshow(metaslice_medium, norm=norm, origin="lower", **kwargs)
+    
+        [ax.set_yticks([]) for ax in fig.axes]
+        [ax.set_xticks([]) for ax in fig.axes];
+            
     # ============== #
     #  Properties    #
     # ============== #
@@ -499,7 +683,7 @@ class LazuliSN( VirtualLazuliTarget ):
     """Lazuli class for Supernovae.
 
     Parameters
-    ----------
+    ----------s
     model : str, optional
         The supernova model to use. Default is "salt".
     slicer : bool, optional

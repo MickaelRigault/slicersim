@@ -342,11 +342,8 @@ class PointSource(SceneElement):
             Dictionary of parameters for the `model_func`.
             Default is {}.
         """
-        self._position = position
         meta = meta.copy()
-        if "position" not in meta:
-            meta["position"] = position
-
+        meta["position"] = position
         super().__init__(model_func=model_func, lbda=lbda, meta=meta)
 
     @classmethod
@@ -513,7 +510,7 @@ class PointSource(SceneElement):
     @property
     def position(self):
         """Position of the point source."""
-        return self._position
+        return self.meta.get("position", (0,0))
 
     @property
     def phase(self):

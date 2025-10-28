@@ -219,8 +219,8 @@ class Spectrograph:
     """
     _SPECTROGRAPH_TYPE = "Unknown"
 
-    _SAMPLING = {"fine": {'spatial_shape': [24, 58], 'spatial_scale': 0.04},
-                 "medium": {'spatial_shape': [24, 58], 'spatial_scale': 0.08}
+    _SAMPLING = {"fine": {'spatial_shape': [29, 58], 'spatial_scale': 0.04},
+                 "medium": {'spatial_shape': [29, 58], 'spatial_scale': 0.08}
                  }
 
     #: Mutable parameters (list)
@@ -808,7 +808,7 @@ class Spectrograph:
             oversampling = 3 # like ~10 (9) subpixels
 
         # to solve the numpy vs. plot confusion
-        position_xy = position[::-1]
+        position_xy = position
             
             
         # effective_sigma is 2d (x-scatter, y-scatter) | x == dispersion y=slice  
@@ -853,9 +853,11 @@ class Spectrograph:
         #
 
         # This part of the code works in arcsec.
-        position_xy = np.asarray(position_xy) * self.spx_spatial_scale # in spaxels => arcsec
-        if self.type == "slicer": # inject the anamorphone back in
-            position_xy *= self._ANAMORPHOSE
+        position_xy = np.asarray(position_xy) * self.spx_spatial_scale[::-1] # in spaxels => arcsec
+#        if self.type == "slicer": # inject the anamorphone back in
+#            print(position_xy)
+#            position_xy /= self._ANAMORPHOSE
+#            print(f"becomes {position_xy=}")
 
         # to accomodate with non-square spaxels (like slicer)
         # we work in arcsec, not in spaxels.
