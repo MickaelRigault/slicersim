@@ -510,6 +510,26 @@ class VirtualLazuliTarget():
         elif which == "medium":
             return cubes_medium
 
+    def get_detector_image(self, mapper, cubes=None, **kwargs):
+        """ """
+        # Generate cube
+        if cubes is None:
+            (cube_fine, _), (cube_medium, _) = self.get_cubes(**kwargs)
+        else:
+            cube_fine, cube_medium = cubes
+
+
+        nslices_fine = cube_fine.shape[-2]
+        nslices_medium = cube_medium.shape[-2]
+        
+        # Project to detector
+        lbda = self.simulation.spectrograph.lbda
+        # [::-1] as top <-> bottom definition inversion: 1 is top for Tim, 1 is first (lower) for me
+        img_fine = mapper.project_slice(np.arange(1, nslices_fine+1)[::-1], cube_fine, lbda)
+        img_med = mapper.project_slice(np.arange(nslices_fine+1, nslices_fine+1+nslices_medium)[::-1], cube_medium, lbda)
+        img_ = np.sum([img_med, img_fine], axis=0)
+        return img_
+
     def get_variance_contribution(self):
         """Get a dataframe detailing the variance contribution for each wavelength
         of each variance source.
@@ -616,7 +636,7 @@ class VirtualLazuliTarget():
         return fig, (axfine, axmed)
 
     def show_cube(self, cubes=None, lbda_range=400, cube_prop={},
-                      axes=None, **kwargs):
+                      axes=None, norm="PowerNorm", **kwargs):
         """ """
         from matplotlib import colors
 
@@ -636,6 +656,7 @@ class VirtualLazuliTarget():
         if lbda_range is None: # stack them all.
             metaslice_fine = np.nansum(cube_fine, axis=0)
             metaslice_medium = np.nansum(cube_medium, axis=0)
+            
         elif len(np.atleast_1d(lbda_range)) == 1: # unique value
             lbda = self.simulation.spectrograph.lbda
             lbda_index = np.argmin( (lbda_range-lbda)**2 )
@@ -653,7 +674,8 @@ class VirtualLazuliTarget():
         vmin, vmax = np.percentile(np.vstack([metaslice_fine, metaslice_medium]), [0.01, 99.99])
         vmin = kwargs.pop("vmin", vmin)
         vmax = kwargs.pop("vmax", vmax)
-        norm = colors.PowerNorm(0.1, vmin=vmin, vmax=vmax)
+        
+        norm = getattr(colors, norm)(0.1, vmin=vmin, vmax=vmax)
 
         # showing them.        
         axfine.imshow(metaslice_fine, norm=norm, origin="lower", **kwargs)
