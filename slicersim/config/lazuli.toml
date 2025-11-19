@@ -30,7 +30,7 @@ lbda_ref = 10_000               # reference wavelength [Å]
 dispersion_law = "dispersion_offner.ecsv"  # Dispersion law ECSV file
                                            # (wavelength, offset [px])
                                            # (should be consistent w/ px_size)
-dispersion_scale = 1.62                     # Dispersion law scaling 1.3: default, 1.6 = Bertin's (for a dispersion_resolution of 2)
+dispersion_scale = 1.3                     # Dispersion law scaling 1.3: default, 1.6 = Bertin's (for a dispersion_resolution of 2)
 dispersion_resolution = 2.0		   # number of pixel per resolution element.
 
 # spectral_resolution and dispersion_law are mutually exclusive
@@ -46,7 +46,7 @@ throughput = "throughput_baseline.ecsv"  # Total throughput, but QE (wavelength,
 
 ## Optics ---------------------
 [spectrograph.optics]
-temperature = [250, 210, 210, 250]          # Mirror temperature [K] (0 for none)
+temperature = [220, 220, 220, 220]          # Mirror temperature [K] (0 for none)
 emissivity = [0.05, 0.05, 0.03, 0.03]       # Mirror emissivity
 nelements = [5, 6, 1, 4]  		    # number of optics per elements
 fratio = [ [15, 30], [7.5, 5.2], [7.5, 5.2], [7.5, 5.2] ]

@@ -202,33 +202,6 @@ class Telescope():
         
         return get_2dpsf_nea("airy", radius=radius, xx=xx, yy=yy,
                                  position=position, **kwargs)
-    
-    def to_poppy(self, opticalsys=None):
-        """Add the telescope to a poppy optical system.
-
-        Parameters
-        ----------
-        opticalsys: poppy.OpticalSystem
-            optical system this optical element should be added to.
-
-        Returns
-        -------
-        opticalsys (careful: inplace the input)
-        """
-        import poppy
-        from astropy import units
-        if opticalsys is None:
-            opticalsys = poppy.OpticalSystem()
-
-        primary_radius = self.diameter_ext * units.m /2 
-
-        opticslist = []
-        ap = poppy.CircularAperture(name="primary mirror", radius=primary_radius) # primary mirror
-        # sec = poppy.SecondaryObscuration(secondary_radius=0.1, n_supports=3, support_width=0.05) # secondary with spiders
-        mirror = poppy.CompoundAnalyticOptic( opticslist=[ap], name='telescope mirror')           # combine into one optic
-
-        opticalsys.add_pupil( mirror )
-        return opticalsys
 
     def get_psfprofile(self, lbda, profile="airy", shape=None,
                            normal_scatter=None,

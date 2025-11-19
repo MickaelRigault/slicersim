@@ -284,7 +284,11 @@ class VirtualLazuliTarget():
         """
         # list of mutable properties
         mutable_allowed = self.pointsource_properties
-        
+
+        for k in kwargs.keys():
+            if k not in mutable_allowed:
+                warnings.warn(f"{k} is not a pointsource property. It will be ignored.")
+                
         # Adding 'pointsource__' as favored by the update method.
         updates = {f"pointsource__{k}":v for k,v in kwargs.items()}
         _ = self.simulation.update(**updates)
@@ -603,7 +607,7 @@ class VirtualLazuliTarget():
             position_fine = centroid_medium_for_fine + offset_from_centroid_for_fine
             
         else:
-            raise ValueError(f"in_which should be either fine or medium ; {current_sampling=} given")
+            raise ValueError(f"in_which should be either fine or medium ; {field=} given")
     
         return position_fine, position_medium
 

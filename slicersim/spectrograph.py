@@ -9,7 +9,6 @@ import pandas
 
 from . import iotools
 from .profiles import build_pixels
-from .telescope import Telescope
 from .thermal import ThermalOptics
 from .utils import recursive_get
 
@@ -1019,7 +1018,7 @@ class Spectrograph:
         else:
             raise ValueError(f"image ndim must be 2 or 3 {np.ndim(image)=} given.")
 
-        return nddata.block_reduce(image, block_size=(1, oversampling, oversampling), func=func)
+        return nddata.block_reduce(image, block_size=block_size, func=func)
 
     #  internal tricks
 
@@ -1554,7 +1553,7 @@ class Spectrograph:
                 color="#F8AD05", label="airy from telescope")
         ax.legend(fontsize="small", frameon=False)
 
-        ax.set_xlabel(f"wavelength [$\AA$]", fontsize="large")
+        ax.set_xlabel("wavelength [$\AA$]", fontsize="large")
         ax.set_ylabel("NEA [in pixels]", fontsize="large")
         if legend:
             ax.legend(fontsize="small", frameon=False)
@@ -1594,7 +1593,7 @@ class Spectrograph:
         ax.plot(self.lbda, nea_no_guiding, color="#194D80", ls="--", label="without guiding")
         ax.plot(self.lbda, nea_telescope, color="#F8AD05", label="airy from telescope")
 
-        ax.set_xlabel(f"wavelength [$\AA$]", fontsize="large")
+        ax.set_xlabel("wavelength [$\AA$]", fontsize="large")
         ax.set_ylabel("NEA [in spaxels]", fontsize="large")
         if legend:
             ax.legend(fontsize="small", frameon=False)
@@ -1635,7 +1634,7 @@ class Spectrograph:
         # sigma
         sigma_at_mla = self.get_psf_sigma_spectral(in_spaxels=in_spaxels, guiding_sigma=guiding_arcsec)
         sigma_at_mla_no_guiding = self.get_psf_sigma_spectral(in_spaxels=in_spaxels, guiding_sigma=0)
-        radius = self.telescope.get_airy_radius(self.lbda, norm_scale=1 if in_arcsec else self.spx_spatial_scale)
+        radius = self.telescope.get_airy_radius(self.lbda, norm_scale=norm_scale)
 
         ax.plot(self.lbda, 2.35 * sigma_at_mla, color="#194D80", label="total scatter")
         ax.plot(self.lbda, 2.35 * sigma_at_mla_no_guiding, color="#194D80", ls="--", label="without guiding")
@@ -1648,7 +1647,7 @@ class Spectrograph:
             ax.axhspan(0, 2 * norm_sampling, color="tab:red", alpha=0.05, lw=0)
             ax.set_ylim(_ylow)
 
-        ax.set_xlabel(f"wavelength [$\AA$]", fontsize="large")
+        ax.set_xlabel("wavelength [$\AA$]", fontsize="large")
         ax.set_ylabel("FWHM [in spaxels]" if in_spaxels else "FWHM [in arcsec]", fontsize="large")
         if legend:
             ax.legend(fontsize="small", frameon=False)

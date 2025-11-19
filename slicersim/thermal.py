@@ -6,6 +6,8 @@ from astropy import constants
 import numpy as np
 from copy import deepcopy
 
+import warnings
+
 
 def fratio_to_solidangle(fratio, geometry="circular"):
     """ Convert f-ratio to solid angle.

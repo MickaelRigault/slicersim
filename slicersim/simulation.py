@@ -2091,12 +2091,13 @@ class Simulation():
         
         fig, (axnea, axneaspatial, axfwhm) = plt.subplots(ncols=1, nrows=3, figsize=figsize,
                                                          gridspec_kw={"hspace":0.05})
-        self.spectrograph.show_nea(ax=axnea);
+        self.spectrograph.show_nea(ax=axnea)
         axnea.set_xticklabels([])
-        self.spectrograph.show_nea_spatial(ax=axneaspatial, legend=False);
-        axneaspatial.set_xticklabels([])
-        self.spectrograph.show_fwhm(ax=axfwhm, legend=False);
 
+        self.spectrograph.show_nea_spatial(ax=axneaspatial, legend=False)
+        axneaspatial.set_xticklabels([])
+        
+        self.spectrograph.show_fwhm(ax=axfwhm, legend=False)
         return fig
     
     def show_variance_sources(self, variance_contrib=None, flux_calibrated=True,
