@@ -554,7 +554,7 @@ class Simulation():
 
         """
         lbda = self.spectrograph.lbda
-        _, pixel_var = self.detector.estimate_pixel_signal(flux, lbda=self.spectrograph.lbda)
+        _, pixel_var = self.detector.estimate_pixel_signal(flux, lbda=lbda)
         pixel_var *= self.extraction["nramps"] # incl. multi ramp approach.
         return pixel_var
         
@@ -1703,7 +1703,7 @@ class Simulation():
             - Total exposure time
 
         """
-        from scipy import stats, optimize
+        from scipy import optimize
         
         minimal_values = {"ngroup": self.detector.min_group, "nramps": 1, 'nframe':2}
         if min_value is None:
@@ -1800,11 +1800,9 @@ class Simulation():
             if current_snr >= target_snr: # going down.
                 was_high = True
                 coefs = -1
-                condition = np.less
             else: # going up
                 was_high = False
                 coefs = +1
-                condition = np.greater
 
             new_value = value + coefs*iterstep
             if new_value <=0 :
@@ -1841,11 +1839,8 @@ class Simulation():
 
         # nframe supposed to change the macc mode to (1,1,0)
         if free_parameter == "nframe":
-            input_nmd = self.get_parameter("nmd")
             self.update(nmd=(min_value, 1, 0)) # start at min value
             free_parameter = "ngroup" # 1 frame per group, so ngroup=nframe
-        else:
-            input_nmd = None
 
         # initial state
         current_value = self.get_parameter(free_parameter)

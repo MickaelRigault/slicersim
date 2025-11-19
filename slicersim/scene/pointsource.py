@@ -1,6 +1,5 @@
 """ Scene: pointsource module """
 
-import inspect
 import warnings
 
 import numpy as np
@@ -262,7 +261,7 @@ def get_saltmodel_flux(lbda, phase,
     """
     if abmag is not None:
         if redshift is not None:
-            warnings.warn(f"abmag and redshift are set, redshift is ignored and derived from abmag.")
+            warnings.warn("abmag and redshift are set, redshift is ignored and derived from abmag.")
 
         redshift = obsmag_to_redshift(abmag, MBmax, cosmo=cosmo)
 

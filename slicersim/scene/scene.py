@@ -3,10 +3,6 @@ import pprint
 
 import numpy as np
 
-from ..iotools import read_calspec, read_xshooter, chromatic_interpolator
-from ..utils import recover_bin_edges
-
-
 # ================= #
 #                   #
 #     Class         #

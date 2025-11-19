@@ -54,7 +54,7 @@ class CalSpecSource():
         """
         if name in self.source.index:
             basename = self.source.loc[name]["basename"]
-            if type(basename) == pandas.Series: #multiple entries
+            if type(basename) is pandas.Series: #multiple entries
                 basename = basename.iloc[-1] # take the last
         else:
             fetched = self.source[self.source.index.str.startswith(name)]

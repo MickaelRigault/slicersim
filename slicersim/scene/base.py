@@ -1,5 +1,4 @@
 import warnings
-import pprint
 
 import numpy as np
 
@@ -124,8 +123,7 @@ class SceneElement:
         # get default
         list_parameters, default_param = inspect_func(self.model_func)
         list_parameters.remove("lbda") # this should not be there.
-        # names of parameters
-        kwargs_names = default_param.keys()
+
         # get meta input if any        
         model_parameters = {k: self.meta[k] for k in list_parameters
                                 if k in self.meta}

@@ -1,4 +1,6 @@
 import numpy as np
+import warnings
+
 from .simulation import Simulation
 
 __all__ = ["lazuli_etc", "lazuli_sn_etc",
@@ -686,7 +688,7 @@ class VirtualLazuliTarget():
         axmed.imshow(metaslice_medium, norm=norm, origin="lower", **kwargs)
     
         [ax.set_yticks([]) for ax in fig.axes]
-        [ax.set_xticks([]) for ax in fig.axes];
+        [ax.set_xticks([]) for ax in fig.axes]
             
     # ============== #
     #  Properties    #

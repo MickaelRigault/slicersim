@@ -541,11 +541,11 @@ class Spectrograph:
         """
         
         # 
-        if type(throughput) == pandas.DataFrame:
+        if type(throughput) is pandas.DataFrame:
             throughput = throughput.iloc[:,0] # convert as serie
 
         # Serie => func
-        if type(throughput) == pandas.Series:
+        if type(throughput) is pandas.Series:
             from . import iotools            
             throughput = iotools.chromatic_interpolator(
                 throughput.index, throughput.values, ext='zeros')
