@@ -10,6 +10,8 @@ Unit (slicer or micro-lens array).
 """
 __version__ = '0.25.0'
 
+import numpy as np
+
 # Top level simulations
 from .simulation import *
 
