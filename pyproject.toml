@@ -55,3 +55,11 @@ all_files = true
 
 [tool.setuptools.dynamic]
 version = {attr = "slicersim.__version__"}
+
+
+[tool.ruff]
+include = ["*.py"]
+
+[tool.ruff.lint]
+# Skip unused variable rules (`F841`).
+extend-ignore = ["F841", "E402"]

@@ -491,9 +491,9 @@ class ThermalRadiation():
         c = constants.c.value     # [m/s]
         hc_over_kB = ( (constants.h*constants.c) / (constants.k_B) ).value  # [K.m]
         
-        l = 2 * c / ((lbda * 1e-10)**4 *
-                (np.exp(hc_over_kB / (lbda*1e-10 * temperature)) - 1))  # [ph/s/sr/m²/m]
-        return l * 1e-10  # [photon/s/sr/m²/A]
+        bbflux_per_m = 2 * c / ((lbda * 1e-10)**4 *
+                         (np.exp(hc_over_kB / (lbda*1e-10 * temperature)) - 1))  # [ph/s/sr/m²/m]
+        return bbflux_per_m * 1e-10  # [photon/s/sr/m²/A] | 1e-10 for A
 
     # ============ #
     #  Properties  #

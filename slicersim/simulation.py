@@ -1914,9 +1914,9 @@ class Simulation():
 
         # Actual plot
         lbda_mu = self.spectrograph.lbda / 1e4
-        l, = ax.plot(lbda_mu, sig, ds='steps-mid', **kwargs)
+        line, = ax.plot(lbda_mu, sig, ds='steps-mid', **kwargs)
         ax.fill_between(lbda_mu, sig - dsig, sig + dsig,
-                        step='mid', color=l.get_color(), alpha=0.2)
+                        step='mid', color=line.get_color(), alpha=0.2)
         ax.set(xlabel="Obsframe wavelength [µm]", ylabel="Signal [ADU]")
         if snr:
             ax2 = ax.twinx()
