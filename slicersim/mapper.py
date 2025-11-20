@@ -105,7 +105,8 @@ class SlicerMapper():
         image = np.full(self.detector["shape"], fill_value=fill_value, dtype="float")
         
         # .T[::-1] as numpy vs. mpl conventions: pixels[:,1], pixels[:,0]
-        image[*pixels.T[::-1]] += value_pixels_t
+        x_, y_ = pixels.T[::-1]
+        image[x_, y_] += value_pixels_t
 
         # the detector image
         return image

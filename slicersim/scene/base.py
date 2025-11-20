@@ -1,7 +1,5 @@
 import warnings
 
-import numpy as np
-
 from ..utils import inspect_func
 
 class SceneElement:

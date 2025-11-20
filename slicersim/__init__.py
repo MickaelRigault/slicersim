@@ -8,15 +8,13 @@ Top-level functionalities of this package are currently built for the Lazuli Spa
 Telescope, but the code is generic and can be extended to any Integral Field
 Unit (slicer or micro-lens array).
 """
-__version__ = '0.25.0'
-
-import numpy as np
+__version__ = '0.25.1'
 
 # Top level simulations
-from .simulation import *
+from .simulation import * # noqa: F403
 
 # Top level target (uses simulation)
-from .lazuli import *
+from .lazuli import * # noqa: F403
 
 # quick access useful for simulation
-from .iotools import get_config
+from .iotools import get_config # noqa: F401

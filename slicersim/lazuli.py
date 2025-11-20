@@ -696,7 +696,8 @@ class VirtualLazuliTarget():
     @property
     def pointsource_properties(self):
         """Get mutable properties of the pointsource."""
-        return [l for l in self.simulation.scene.mutable_parameters if l.startswith("pointsource__")]
+        return [param_ for param_ in self.simulation.scene.mutable_parameters
+                    if param_.startswith("pointsource__")]
         
     @property
     def simulation(self):

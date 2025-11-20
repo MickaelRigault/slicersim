@@ -1,7 +1,7 @@
 """ module containing the scene elements. """
 
-from .scene import Scene
-from .pointsource import PointSource
+from .scene import Scene # noqa: F401
+from .pointsource import PointSource # noqa: F401
 
 
 def get_sn_scene(model="salt", background="zodi", host={}, **kwargs):

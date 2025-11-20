@@ -30,8 +30,8 @@ class CalSpecSource():
         """
         import requests
         calspeclit = requests.get(cls._ARCHIVE_URL)
-        list_of_files= [l.split("</a>")[0].split(">")[-1]
-                        for l in calspeclit.text.splitlines() if ".fits" in l]
+        list_of_files= [entry.split("</a>")[0].split(">")[-1]
+                        for entry in calspeclit.text.splitlines() if ".fits" in entry]
         df = pandas.DataFrame(list_of_files, columns=["basename"])
         df["name"] = df["basename"].str.split("_").apply(lambda x: "_".join(x[:-2]) )
         return df.set_index("name")
@@ -154,7 +154,7 @@ class CalSpecSource():
 # ================ #
 try:
     calspecsource = CalSpecSource() # loads it.
-except:
+except: # noqa: E722
     calspecsource = None
     import warnings
     warnings.warn("Cannot run calspecsource = CalSpecSource()")

@@ -324,7 +324,7 @@ class Simulation():
             A list of matching mutable parameters, or None if no match is found.
 
         """
-        mutable_ = [l for l in self.mutable_parameters if key in l]
+        mutable_ = [param_ for param_ in self.mutable_parameters if key in param_]
         if len(mutable_)==0:
             return None
         
@@ -673,7 +673,7 @@ class Simulation():
                 source, value = which.split("__")
                 instance = getattr(self, source)
                 return getattr(instance, value)
-            except:
+            except: # noqa: E722
                 pass # failed
 
         # Otherwise, look at individual elements
