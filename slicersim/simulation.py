@@ -377,7 +377,25 @@ class Simulation():
         updates_extraction = {}
         
         for k, v in kwargs.items():
-            k = k.replace("__", ".") # django like 
+            k = k.replace("__", ".") # django like
+
+            # explicit mentions, skip test for within these objects
+            # Spectrograph, special traitement of throughput__noptics to allow throughput__noptics__bla
+            if k.startswith("spectrograph.") or k.startswith("throughput.noptics"):
+                updates_spectrograph[k.replace("spectrograph.", "")] = v
+                continue
+
+            # Detector            
+            if k.startswith("detector."):
+                updates_detector[k.replace("detector.", "")] = v
+                continue
+            
+            # Scene            
+            if k.startswith("scene."):
+                updates_scene[k.replace("scene.", "")] = v
+                continue
+
+            # look for mutable parameters
             if k not in self.mutable_parameters:
                 k = self._fetch_mutable_parameters(k)
                 if k is None:
@@ -392,13 +410,10 @@ class Simulation():
             
             if v is None:       # Nothing to do
                 continue
-            
+
             if k in self.scene.mutable_parameters:
                 updates_scene[k] = v
-                
-            elif k.startswith("detector."):
-                updates_detector[k.replace("detector.","")] = v
-                
+                                
             elif k in self.spectrograph.mutable_parameters:
                 updates_spectrograph[k] = v
                 

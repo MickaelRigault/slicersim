@@ -37,12 +37,13 @@ dispersion_resolution = 2.0		   # number of pixel per resolution element.
 # spectral_resolution = 100   # Constant 2-px resolving power (log sampling)
 
 # ---- Spaxel structure
-spatial_scale = 0.040      	    # MLA sampling (spaxel scale) [arcsec/spx]
-spatial_shape = [29, 58]   	    # MLA shape (ny, nx) [spatial] Anamorphone will make that square
+spatial_scale = 0.040			# MLA sampling (spaxel scale) [arcsec/spx]
+spatial_shape = [29, 58]   	    	# MLA shape (ny, nx) [spatial] Anamorphone will make that square
 
 # ---- Throughput
-throughput = "throughput_baseline.ecsv"  # Total throughput, but QE (wavelength, throughput) | could be a float
-
+[spectrograph.throughput]
+throughput = "throughput_bertin.csv"	# Detailed throughput from Bertin
+noptics = [9, 4, 1, 1]			# bertin_optics, IFU, filter, prism
 
 ## Optics ---------------------
 [spectrograph.optics]
