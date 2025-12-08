@@ -192,22 +192,29 @@ def build_throughput_from_config(config):
     float or callable
         Throughput as a constant value or a function of wavelength.
     """
-    try:
-        # throughput is a constant
-        throughput = float(config["throughput"])
+    throughput =  config.get("throughput", None)
+    if throughput is None:
+        raise ValueError("No given 'throughput' in the input config.")
 
-    except ValueError:
-        # throughput is a filename
-        throughput_name = config["throughput"]  #: Throughput filename
-        wname, tname = 'wavelength', 'throughput'
-        tab = iotools.read_ecsv(throughput_name,
-                                colnames=[wname, tname])
-        #: Throughput interpolator (wavelengths in Å)
-        throughput = iotools.chromatic_interpolator(
-            tab[wname].to(u.AA), tab[tname], ext='zeros')
+    # is that simply a float or something ?
+    try: 
+        throughput = float(throughput)
+        
+    except (ValueError, TypeError):
+        pass
+    
+    else: # float worked, so let's return it.
+        return throughput
+        
 
-    return throughput
+    # if we are here, throughput is not simply a float.
+    if isinstance(throughput, dict):
+        # it is itself a config. Let's use the dedicated object
+        return OpticsThroughput.from_config(throughput)
 
+        
+    # if we are here, throughput is a file containing the overall throughput
+    return OpticsThroughput._read_ecsv(throughput)
 
 class Spectrograph:
     """Spectrograph simulation.
@@ -218,8 +225,10 @@ class Spectrograph:
     """
     _SPECTROGRAPH_TYPE = "Unknown"
 
-    _SAMPLING = {"fine": {'spatial_shape': [29, 58], 'spatial_scale': 0.04},
-                 "medium": {'spatial_shape': [29, 58], 'spatial_scale': 0.08}
+    _SAMPLING = {"fine": {'spatial_shape': [29, 58], 'spatial_scale': 0.04,
+                           "throughput__noptics__coating": 11},
+                 "medium": {'spatial_shape': [29, 58], 'spatial_scale': 0.08,
+                            "throughput__noptics__coating": 9}
                  }
 
     #: Mutable parameters (list)
@@ -284,9 +293,11 @@ class Spectrograph:
         self.spatial_psf = spatial_psf
 
         # affect the instance
+        telescope_mutable = [] 
         self.mutable_parameters = self.mutable_parameters + \
-                                  [f"telescope.{k}" for k in self.telescope.mutable_parameters] + \
-                                  [f"optics.{k}" for k in self.optics.mutable_parameters]
+                                  ([f"telescope.{k}" for k in self.telescope.mutable_parameters] if self.telescope is not None else []) +\
+                                  ([f"optics.{k}" for k in self.optics.mutable_parameters] if self.optics is not None else []) +\
+                                  ([f"throughput.{k}" for k in self.throughput.mutable_parameters] if hasattr(self.throughput, "mutable_parameters") else [])
 
         meta["dispersion_resolution"] = dispersion_resolution
         self._meta_in = meta.copy()  #: Meta-parameters as input
@@ -411,19 +422,17 @@ class Spectrograph:
         optics_updates = {}
         lbda_updates = {}
         psf_updates = {}
+        throughput_updates = {}
         spaxel_updates = {}
 
         # == Filling the update == #
         for k, v in kwargs.items():
             k = NAME_ALT.get(k, k).replace("__", ".") # accept django like format
-            
-            if k not in self.mutable_parameters:
-                warnings.warn(f"Parameter {k!r} is not mutable.")
-                continue
 
-            if v is None:  # Skip
+            # Nothing to do, skip
+            if v is None:
                 continue
-            
+                        
             # telescope
             if k.startswith("telescope."):
                 telescope_updates[k.replace("telescope.", "")] = v
@@ -433,6 +442,17 @@ class Spectrograph:
             if k.startswith("optics."):
                 optics_updates[k.replace("optics.", "")] = v
                 continue
+
+            # throughput
+            if k.startswith("throughput."):
+                throughput_updates[k.replace("throughput.", "")] = v
+                continue
+
+            # This test comes after the submodule to allow some flexibilities
+            if k not in self.mutable_parameters:
+                warnings.warn(f"Parameter {k!r} is not mutable.")
+                continue
+
 
             # lbda
             if k in ["dispersion_resolution", "spotsize"]:
@@ -469,6 +489,11 @@ class Spectrograph:
         if optics_updates:
             what_changed.append("optics")
             self.optics.update(**optics_updates)
+
+        # update internal optics
+        if throughput_updates:
+            what_changed.append("throughput")
+            self.throughput.update(**throughput_updates)            
 
         # psf
         if psf_updates:
@@ -527,13 +552,14 @@ class Spectrograph:
 
         Parameters
         ----------
-        throughput: pandas.Series, float, array, func
+        throughput: pandas.Series, float, array, func, OpticsThroughput
             The throughput of the system as a function of wavelength (0->1)
             - float: constant throughput
             - array: must broadcast with self.lbda
             - func: function that input self.lbda such that throughput_array = throughput(self.lbda)
             - pandas.Series: throughput with lbda [AA] as index. This is converted input a function 
               using a cubic interpolation.
+            - OpticsThroughput: internal object that handle detailed throughout structure.
         
         Returns
         -------
@@ -541,14 +567,18 @@ class Spectrograph:
         """
         
         # 
-        if type(throughput) is pandas.DataFrame:
+        if isinstance(throughput, pandas.DataFrame):
             throughput = throughput.iloc[:,0] # convert as serie
 
         # Serie => func
-        if type(throughput) is pandas.Series:
-            from . import iotools            
+        if isinstance(throughput, pandas.Series):
             throughput = iotools.chromatic_interpolator(
                 throughput.index, throughput.values, ext='zeros')
+
+            
+        #elif isinstance(throughput, OpticsThroughput):
+        #    pass #
+            
 
         self.throughput = throughput
         
@@ -582,7 +612,7 @@ class Spectrograph:
 
         return lbda
         
-    def get_throughput(self):
+    def get_throughput(self, lbda=None):
         """Get the spectrograph throughput.
 
         Returns
@@ -591,9 +621,14 @@ class Spectrograph:
             Throughput as a function of wavelength or as a constant.
         """
         if callable(self.throughput):
-            return self.throughput(self.lbda)
+            if lbda is None:
+                lbda = self.lbda
+            return self.throughput(lbda)
         
         # float
+        if lbda is not None:
+            warnings.warn("self.throughput is not callable, input lbda is ignored.")
+            
         return self.throughput
 
     def get_spectrograph_shape(self, oversampling=None):
@@ -2070,3 +2105,226 @@ class SlicerSpectrograph(Spectrograph):
             Noise equivalent area in pixels (1 for a slicer).
         """
         return 1
+
+
+# ================ #
+#                  #
+#   ThroughPut     #
+#                  #
+# ================ #
+
+class OpticsThroughput( object ):
+    mutable_parameters = ["noptics"]
+    def __init__(self, curves, noptics=None, meta={}):
+        """ 
+        Parameters
+        ----------
+           
+        noptics: int, list_of
+            number of optics for each per curves. 
+        """
+        self._curves = curves
+        if noptics is not None:
+            meta["noptics"] = noptics
+            
+        self._meta_in = deepcopy(meta)
+        self._meta = deepcopy(meta)
+
+    @classmethod
+    def from_curves(cls, curves, noptics=1, lbda=None, names=None):
+        """ builds the instance input curves. 
+
+        Parameters
+        ----------
+        curves: list, pandas.DataFrame
+            one curve per elements. Each curve is associated with noptics.
+            format:
+            - dataframe: 
+                index: wavelengths
+                columns: names
+                values: curves
+            - list of array 2d: [curve_1, curve_2, ...]
+            - list of lbda, array 3d: [[lbda_1, curve_1], [lbda_2, curve_2], ...]
+        """
+        # reformat as dataframe
+        curves = np.asarray(curves)
+        nelements, nlbda = curves.shape
+        
+        if names is None:
+            names = np.arange(len)
+        elif (nnames:=len(names)) != nelements:
+            raise ValueError(f"{nnames} names but {nelements} elements")
+        
+        if noptics is None:
+            noptics = 1
+            
+        if not isinstance(noptics, int):
+            if (n_noptics := len(noptics)) != nelements:
+                raise ValueError(f"{n_noptics} noptics details but {nelements} elements")
+
+        # as dataframe
+        curves = pandas.DataFrame(curves.T, index=lbda, columns=names)
+        return cls.from_curvesdf(curves, noptics=noptics)
+    
+    @classmethod
+    def from_curvesdf(cls, curves, noptics=1, ext="zeros", **kwargs):
+        """ """
+        elements = {name_: iotools.chromatic_interpolator(curve_.index, curve_.values,
+                                                              ext=ext)
+                    for name_, curve_ in curves.T.iterrows()}
+
+        if not isinstance(noptics, dict):
+            names = curves.columns
+            noptics = dict(zip(names,np.broadcast_to(noptics, np.shape( list(elements.values())))))
+            
+        this = cls(elements, noptics=noptics, **kwargs)
+        this._input_curves = curves
+        return this
+
+    @classmethod
+    def from_config(cls, config, **kwargs):
+        """ """
+        options = {"ext": "extrapolate"}
+        throughput_file = config.get("throughput", None) # e.g. "throughput.cvs"
+        if throughput_file is None:
+            raise ValueError("no 'throughput' in input config")
+
+        if "ecsv" in throughput_file:
+            curves_df = cls._read_ecsv(throughput_file, as_dataframe=True) # backward compatibility
+        else:
+            throughput_file = iotools.expand_path(throughput_file) # make sure it is fullpath
+            curves_df = pandas.read_csv(throughput_file, index_col="wavelength", **kwargs)
+            
+        noptics = config.get("noptics", 1)
+        
+        return cls.from_curvesdf(curves_df, noptics, meta=config, **options)
+
+
+    @staticmethod
+    def _read_ecsv(filename, as_dataframe=False):
+        """ """
+        wname, tname = 'wavelength', 'throughput'
+        # load the inout data
+        tab = iotools.read_ecsv(filename,
+                                colnames=[wname, tname])
+        if as_dataframe:
+            return pandas.DataFrame({"spectro": tab[tname]}, index=tab[wname].to(u.AA))
+                                  
+        # create the interpolator (wavelengths in Å)
+        throughput = iotools.chromatic_interpolator(
+            tab[wname].to(u.AA), tab[tname], ext='zeros')
+
+        return throughput
+
+    # -------- #
+    #  Generic  #
+    # -------- # 
+    def __call__(self, lbda, **kwargs):
+        """ shortcut to get_throughput() """
+        return self.get_throughput(lbda, **kwargs)
+        
+    # -------- #
+    #  Methods #
+    # -------- #
+    def update(self, **kwargs):
+        """ """
+        for key, value in kwargs.items():
+            # accept django-like format
+            key = key.replace("__", ".")
+
+            # change a specific noptics
+            if "." in key:
+                noptics_, which = key.split(".")
+                if noptics_ != "noptics":
+                    warnings.warn(f"cannot parse input format; noptics.`which` expected, {key} given")
+                    continue
+                if which not in self.names: 
+                    warnings.warn(f"{which} (from {key}) is not a known name ({self.names})")
+                    continue
+
+                # ok, let's change just the one you want.
+                self.meta["noptics"][which] = value
+                
+            # change it all
+            elif key not in self.mutable_parameters: 
+                warnings.warn(f"unmutable key {key} ; ignored")
+            else:
+                self.meta[key] = value
+        
+    def get_throughput(self, lbda, per_element=False, incl_noptics=True, ignore=None):
+        """ """
+        curves_per_element = [self.get_element_throughput(name_, lbda, incl_noptics) 
+                              for name_ in self.names if (ignore is None or name_ not in ignore)]
+        if per_element:
+            return curves_per_element
+            
+        return np.prod(curves_per_element, axis=0)
+        
+    def get_element_throughput(self, which, lbda, incl_noptics=True):
+        """ """
+        curve = self.curves[which]
+        noptics = self.noptics[which]
+        if callable(curve):
+            curve = curve(lbda)
+            
+        elif (ncurve:=len(curve)) != (nlbda:=len(lbda)):
+            raise ValueError(f"curve dimension {ncurve} doesn't match input lbda's {nlbda}")
+
+        # at this put curve is an array of lbda's dimension.
+        if incl_noptics:
+            return np.asarray(curve)**noptics
+            
+        return np.asarray(curve)
+
+    def show(self, lbda, ax=None):
+        """ """
+        import matplotlib.pyplot as plt
+        
+        # data to show
+        element_throughputs = self.get_throughput(lbda, per_element=True, incl_noptics=True)
+        total_throughputs = self.get_throughput(lbda) # could simply np.prod, but so it test self consistancy.
+
+        # plotting
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(7, 3))
+        else:
+            fig = ax.figure
+            
+        current_throughput = 1
+        for name, throughput  in zip(self.names, element_throughputs):
+            next_throughput = current_throughput*throughput
+            ax.fill_between(lbda, current_throughput, next_throughput, 
+                            alpha=0.2, label=name)
+            current_throughput = next_throughput
+        
+        ax.plot(lbda, total_throughputs, color="k")
+        
+        ax.legend(ncols=len(self.names), frameon=False, loc="best")
+        ax.set_ylim(0, 1)
+        ax.set_xlabel("Wavelength", fontsize="large")
+        ax.set_ylabel("Throughput", fontsize="large")
+
+        return fig
+        
+    # ============= #
+    #  Properties   #
+    # ============= #
+    @property
+    def curves(self):
+        """ dictionary with optical element throughput information """
+        return self._curves
+
+    @property
+    def names(self):
+        """ list/iterator of the element's names """
+        return self.curves.keys()
+
+    @property
+    def noptics(self):
+        """ number of optics per elements (i.e., per curve) """
+        return self.meta["noptics"]
+
+    @property
+    def meta(self):
+        """ """
+        return self._meta
