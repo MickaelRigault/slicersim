@@ -761,8 +761,9 @@ class Spectrograph:
             = this only apply to slicer spectrograph =
         Returns
         -------
-        scatter: 
-            (x, y) gaussian sigma
+        scatter: array_like
+            (x, y) gaussian sigma in spaxels if `in_spaxels` is True,
+            otherwise in arcsec.
         """
         if guiding_sigma is None:
             guiding_sigma = self.spatial_psf["guiding_sigma"]
@@ -2077,7 +2078,20 @@ class MLASpectrograph(Spectrograph):
 
 
 class SlicerSpectrograph(Spectrograph):
-    """A spectrograph with an anamorphosis and a slicer."""
+    """A spectrograph with an anamorphosis and a slicer.
+
+    This class inherits from `Spectrograph` and modifies the spaxel
+    definition to account for the anamorphosis introduced by the slicer.
+    The anamorphosis is defined by the `_ANAMORPHOSE` attribute.
+
+    Attributes
+    ----------
+    _ANAMORPHOSE : tuple
+        Anamorphosis factor (y, x).
+    _SPECTROGRAPH_TYPE : str
+        Type of the spectrograph, set to "slicer".
+
+    """
     _ANAMORPHOSE = (2, 1)
     _SPECTROGRAPH_TYPE = "slicer"
 
@@ -2114,14 +2128,48 @@ class SlicerSpectrograph(Spectrograph):
 # ================ #
 
 class OpticsThroughput( object ):
+    """Throughput of the optical elements.
+
+    This class handles the throughput of the different optical elements
+    of the spectrograph. The throughput of each element is defined by a curve
+    (throughput vs. wavelength) and a number of optics of that type.
+
+    Parameters
+    ----------
+    curves : dict
+        Dictionary of throughput curves for each optical element.
+        The keys are the element names and the values are callables
+        (e.g., interpolators) that return the throughput as a function
+        of wavelength.
+    noptics : int or list, optional
+        Number of optics for each curve. If an int, the same number is
+        applied to all elements. If a list, it must have the same length
+        as `curves`. Default is None.
+    meta : dict, optional
+        Metadata dictionary. Default is {}.
+
+    Attributes
+    ----------
+    mutable_parameters : list
+        List of mutable parameters.
+    """
     mutable_parameters = ["noptics"]
     def __init__(self, curves, noptics=None, meta={}):
-        """ 
+        """Initialize the OpticsThroughput object.
+
         Parameters
         ----------
-           
-        noptics: int, list_of
-            number of optics for each per curves. 
+        curves : dict
+            Dictionary of throughput curves for each optical element.
+            The keys are the element names and the values are callables
+            (e.g., interpolators) that return the throughput as a function
+            of wavelength.
+        noptics : int or dict, optional
+            Number of optics for each curve. If an int, the same number is
+            applied to all elements. If a dict, it must have the same keys
+            as `curves`. Default is None.
+        meta : dict, optional
+            Metadata dictionary. Default is {}.
         """
         self._curves = curves
         if noptics is not None:
@@ -2168,7 +2216,27 @@ class OpticsThroughput( object ):
     
     @classmethod
     def from_curvesdf(cls, curves, noptics=1, ext="zeros", **kwargs):
-        """ """
+        """Create an OpticsThroughput instance from a pandas DataFrame.
+
+        Parameters
+        ----------
+        curves : pandas.DataFrame
+            DataFrame with wavelength as index and one column per optical
+            element.
+        noptics : int or dict, optional
+            Number of optics for each curve. If an int, the same number is
+            applied to all elements. If a dict, it must have the same keys
+            as the columns of `curves`. Default is 1.
+        ext : str, optional
+            Extrapolation method for the interpolator. Default is "zeros".
+        **kwargs
+            Additional arguments passed to the constructor.
+
+        Returns
+        -------
+        OpticsThroughput
+            An OpticsThroughput instance.
+        """
         elements = {name_: iotools.chromatic_interpolator(curve_.index, curve_.values,
                                                               ext=ext)
                     for name_, curve_ in curves.T.iterrows()}
@@ -2183,7 +2251,25 @@ class OpticsThroughput( object ):
 
     @classmethod
     def from_config(cls, config, **kwargs):
-        """ """
+        """Create an OpticsThroughput instance from a configuration dictionary.
+
+        The configuration dictionary must contain a "throughput" key
+        pointing to a file (CSV or ecsv) with the throughput curves.
+        The file must have a "wavelength" column and one column for each
+        optical element.
+
+        Parameters
+        ----------
+        config : dict
+            Configuration dictionary.
+        **kwargs
+            Additional arguments passed to `pandas.read_csv`.
+
+        Returns
+        -------
+        OpticsThroughput
+            An OpticsThroughput instance.
+        """
         options = {"ext": "extrapolate"}
         throughput_file = config.get("throughput", None) # e.g. "throughput.cvs"
         if throughput_file is None:
@@ -2202,7 +2288,21 @@ class OpticsThroughput( object ):
 
     @staticmethod
     def _read_ecsv(filename, as_dataframe=False):
-        """ """
+        """Read an ecsv file containing throughput data.
+
+        Parameters
+        ----------
+        filename : str
+            Path to the ecsv file.
+        as_dataframe : bool, optional
+            If True, return a pandas DataFrame. If False, return a
+            callable interpolator. Default is False.
+
+        Returns
+        -------
+        pandas.DataFrame or callable
+            Throughput data as a DataFrame or an interpolator.
+        """
         wname, tname = 'wavelength', 'throughput'
         # load the inout data
         tab = iotools.read_ecsv(filename,
@@ -2227,7 +2327,15 @@ class OpticsThroughput( object ):
     #  Methods #
     # -------- #
     def update(self, **kwargs):
-        """ """
+        """Update the number of optics for one or more elements.
+
+        Parameters
+        ----------
+        **kwargs
+            Keyword arguments where the key is the element name and the
+            value is the new number of optics.
+            It also accepts django-like format, e.g., `noptics__mirror=2`.
+        """
         for key, value in kwargs.items():
             # accept django-like format
             key = key.replace("__", ".")
@@ -2252,7 +2360,27 @@ class OpticsThroughput( object ):
                 self.meta[key] = value
         
     def get_throughput(self, lbda, per_element=False, incl_noptics=True, ignore=None):
-        """ """
+        """Get the total throughput of the optical system.
+
+        Parameters
+        ----------
+        lbda : array_like
+            Wavelength array in Angstrom.
+        per_element : bool, optional
+            If True, return the throughput of each element separately.
+            Default is False.
+        incl_noptics : bool, optional
+            If True, include the number of optics in the calculation.
+            Default is True.
+        ignore : list, optional
+            List of element names to ignore in the calculation.
+            Default is None.
+
+        Returns
+        -------
+        array_like or list of array_like
+            Total throughput or list of throughputs per element.
+        """
         curves_per_element = [self.get_element_throughput(name_, lbda, incl_noptics) 
                               for name_ in self.names if (ignore is None or name_ not in ignore)]
         if per_element:
@@ -2261,7 +2389,23 @@ class OpticsThroughput( object ):
         return np.prod(curves_per_element, axis=0)
         
     def get_element_throughput(self, which, lbda, incl_noptics=True):
-        """ """
+        """Get the throughput of a single optical element.
+
+        Parameters
+        ----------
+        which : str
+            Name of the element.
+        lbda : array_like
+            Wavelength array in Angstrom.
+        incl_noptics : bool, optional
+            If True, include the number of optics in the calculation.
+            Default is True.
+
+        Returns
+        -------
+        array_like
+            Throughput of the element.
+        """
         curve = self.curves[which]
         noptics = self.noptics[which]
         if callable(curve):
@@ -2277,7 +2421,24 @@ class OpticsThroughput( object ):
         return np.asarray(curve)
 
     def show(self, lbda, ax=None):
-        """ """
+        """Show the throughput of the optical system.
+
+        This method plots the throughput of each element and the total
+        throughput as a function of wavelength.
+
+        Parameters
+        ----------
+        lbda : array_like
+            Wavelength array in Angstrom.
+        ax : matplotlib.axes.Axes, optional
+            Axes to plot on. If None, a new figure and axes are created.
+            Default is None.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+            The figure containing the plot.
+        """
         import matplotlib.pyplot as plt
         
         # data to show
@@ -2326,5 +2487,5 @@ class OpticsThroughput( object ):
 
     @property
     def meta(self):
-        """ """
+        """Metadata of the instance."""
         return self._meta
