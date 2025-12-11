@@ -402,14 +402,16 @@ class VirtualLazuliTarget():
 
         """
         from .spectrograph import Spectrograph
-        config = self.get_properties(["spatial_shape", "spatial_scale"])
+        keys_to_check = ["spatial_shape", "spatial_scale"]
+        current_config = self.get_properties(keys_to_check)
         sampling = "manual"
         for this_sampling, this_config in Spectrograph._SAMPLING.items():
-            if config == this_config:
+            sampling_config = {k: this_config.get(k, None) for k in keys_to_check}
+            if sampling_config == current_config:
                 sampling = this_sampling
                 break
             
-        return sampling, config        
+        return sampling, current_config      
 
     def get_spectrum(self, unit="adu", incl_error=True, **kwargs):
         """Get a realistic simulated spectrum given the current configurations.

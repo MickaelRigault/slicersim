@@ -112,7 +112,8 @@ class SlicerMapper():
         return image
     
     def get_slice_contours(self, sliceid, lbda_range=[3_500, 17_000], 
-                          out_format="numpy", in_units="pixels", 
+                          out_format="numpy", in_units="pixels",
+                          slice_edge=[-1, 1],
                           combined=False):
         """
         Parameters
@@ -140,7 +141,7 @@ class SlicerMapper():
                              for sliceid_ in sliceid]
         
         # slicer position are in units of slice (-1, 0, 1)
-        slicepos = np.linspace(-1, 1, 5)
+        slicepos = np.linspace(*slice_edge, 5)
         wavelength = np.linspace(*lbda_range, 10)
         
         # get the mesh of all this information: lbda & slicepos
@@ -278,6 +279,7 @@ class SlicerMapper():
                 ax, axsc = ax, None
             else:
                 ax, axsc = ax
+                
             fig = ax.figure
             
         else:        

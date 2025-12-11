@@ -411,11 +411,14 @@ class Simulation():
             if v is None:       # Nothing to do
                 continue
 
-            if k in self.scene.mutable_parameters:
-                updates_scene[k] = v
+            if k in self.scene.mutable_parameters or k.startswith("scene."):
+                updates_scene[k.replace("scene.", "")] = v
                                 
-            elif k in self.spectrograph.mutable_parameters:
-                updates_spectrograph[k] = v
+            elif k in self.spectrograph.mutable_parameters or k.startswith("spectrograph."):
+                updates_spectrograph[k.replace("spectrograph.", "")] = v
+
+            elif k in self.detector.mutable_parameters or k.startswith("detector."):
+                updates_detector[k.replace("detector.", "")] = v
                 
             else:
                 updates_extraction[k] = v
