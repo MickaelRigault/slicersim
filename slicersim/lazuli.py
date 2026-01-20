@@ -2,11 +2,20 @@ import numpy as np
 import warnings
 
 from .simulation import Simulation
+from .target import Supernova, CalSpec, Target
 
 __all__ = ["lazuli_etc", "lazuli_sn_etc",
-            "LazuliSN", "LazuliTarget", "LazuliCalSpec", "VirtualLazuliTarget"]
+            "LazuliSupernova", "LazuliTarget", "LazuliCalSpec"]
 
 
+SPECTROGRAPH_SAMPLING = {"fine": {'spatial_shape': [29, 58], 'spatial_scale': 0.04,
+                            "throughput__noptics__coating": 11},
+                         "medium": {'spatial_shape': [29, 58], 'spatial_scale': 0.08,
+                                "throughput__noptics__coating": 9}
+                             }
+
+
+    
 def lazuli_sn_etc(model, redshift, snr, phase=0, 
                    lbda_range=[4000, 6800], frame='rest',
                    statistic=np.nanmean,
@@ -63,10 +72,10 @@ def lazuli_sn_etc(model, redshift, snr, phase=0,
         The configured target object with the specified conditions.
     """
     # create a target of specified conditions
-    target = LazuliSN(model=model, redshift=redshift, phase=phase, **kwargs)
+    target = LazuliSupernova(model=model, redshift=redshift, phase=phase, **kwargs)
 
     # specify the detector read-out mode | None are ignored.
-    target.change_detector_mode(nmd=nmd, max_group=max_group)
+    target.change_detector(nmd=nmd, max_group=max_group)
     
     # setup the instrument to the requested signal to noise
     _ = target.setup_to_snr(snr, lbda_range=lbda_range, frame='rest',
@@ -138,7 +147,7 @@ def lazuli_etc(lbda, flux, snr,
     target = LazuliTarget(lbda, flux, mag=mag, band=band)
 
     # specify the detector read-out mode | None are ignored.
-    target.change_detector_mode(nmd=nmd, max_group=max_group)
+    target.change_detector(nmd=nmd, max_group=max_group)
     
     # setup the instrument to the requested signal to noise
     _ = target.setup_to_snr(snr, lbda_range=lbda_range, frame='rest',
@@ -164,7 +173,7 @@ class VirtualLazuliTarget():
         The simulation object. Default is None.
 
     """
-    _DEFAULT_CONFIG = {"instrument":'lazuli.toml'}
+    _INSTRUMENT = 'lazuli.toml'
     
     def __init__(self, simulation=None):
         """Initialize the VirtualLazuliTarget.
@@ -178,7 +187,7 @@ class VirtualLazuliTarget():
         self._simulation = simulation
 
     @classmethod
-    def from_scene(cls, scene=None, slicer=True, **kwargs):
+    def from_scene(cls, scene=None, **kwargs):
         """Load the instance from a scene configuration.
 
         Parameters
@@ -209,32 +218,7 @@ class VirtualLazuliTarget():
     # =============== #
     #   Methods       #
     # =============== #
-    def change_detector_mode(self, nmd=None, max_group=None, nramps=None):
-        """Change the detector configuration.
-
-        Parameters
-        ----------
-        nmd : list, optional
-            MACC mode (n, m, d).
-            n: number of groups
-            m: number of frames per group
-            d: number of drops between groups
-            Default is None.
-        max_group : int, optional
-            Maximum number of groups for a single ramp. Default is None.
-        nramps : int, optional
-            Number of ramps. Default is None.
-        """
-        if max_group is not None:
-            self.simulation.detector.max_group = max_group
-        
-        if nmd is not None:
-            self.simulation.update(nmd=nmd)
-
-        if nramps is not None:
-            self.simulation.update(nramps=nramps)
-
-    def change_spectrograph_mode(self, sampling=None, spatial_shape=None, spatial_scale=None):
+    def change_spectrograph(self, sampling=None, spatial_shape=None, spatial_scale=None):
         """Change the spectrograph configuration.
 
         Parameters
@@ -252,11 +236,11 @@ class VirtualLazuliTarget():
             If float, this is assumed to be squared. If list, (x, y).
             This is on top of `sampling` if any. Default is None.
         """
+        # overwrites the current one.
         if sampling is not None:
-            from .spectrograph import Spectrograph
-            config = Spectrograph._SAMPLING.get(sampling, None)
+            config = SPECTROGRAPH_SAMPLING.get(sampling, None)
             if config is None:
-                raise ValueError(f"cannot parse the given sampling {sampling=} | {Spectrograph._SAMPLING} expected")
+                raise ValueError(f"cannot parse the given sampling {sampling=} | {SPECTROGRAPH_SAMPLING} expected")
         else:
             config = {}
 
@@ -269,115 +253,8 @@ class VirtualLazuliTarget():
 
         return self.simulation.update(**config)
         
-    # SETTER
-    def set_properties(self, **kwargs):
-        """Shortcut to change the pointsource properties.
-
-        This method allows to change the properties of the point source of the
-        scene. The available properties are defined in the `pointsource_properties`
-        property.
-
-        Parameters
-        ----------
-        **kwargs
-            The properties to change. The keys should be the name of the
-            property to change, and the values the new value.
-
-        """
-        # list of mutable properties
-        mutable_allowed = self.pointsource_properties
-
-        for k in kwargs.keys():
-            if k not in mutable_allowed:
-                warnings.warn(f"{k} is not a pointsource property. It will be ignored.")
-                
-        # Adding 'pointsource__' as favored by the update method.
-        # updates = {f"pointsource__{k}":v for k,v in kwargs.items()}
-        _ = self.simulation.update(**kwargs)
         
-    def setup_to_snr(self, snr, per_resolution=True,
-                     lbda_range=[4000, 6800], frame='rest',
-                     statistic=np.nanmean, inplace=True, **kwarg):
-        """Set the simulation parameters to achieve a specified Signal-to-Noise Ratio (SNR).
-
-        Parameters
-        ----------
-        snr : float
-            The target Signal-to-Noise Ratio to achieve.
-        per_resolution: bool
-            Did you provide the snr per spectral resolution element (True) or 
-            per wavelength bins (False). 
-            If per resolution, this method will convert this into snr per 
-            wavelength bin (snr_lbdabin = snr / sqrt(dispersion_resolution))
-            and feed this to the fetch_snr() Simulation methods that expects it
-            per wavelength bin.
-        lbda_range : list of int, optional
-            The wavelength range in Angstroms over which to calculate the SNR.
-            Default is [4000, 6800].
-        frame : str, optional
-            The reference frame for the wavelength range. Options are 'rest'
-            (rest-frame) or 'obs' (observer-frame). Default is 'rest'.
-        statistic : function, optional
-            The statistical function to use for calculating the SNR.
-            Default is `numpy.nanmean`.
-        inplace : bool, optional
-            If True, updates the instance configuration to match the requested SNR.
-            Default is True.
-        **kwargs
-            Additional keyword arguments to pass to the `simulation.fetch_snr` method.
-
-        Returns
-        -------
-        config : dict
-            The configuration required to achieve the target SNR.
-        reached_snr : float
-            The actual SNR achieved with the returned configuration.
-        """
-        if per_resolution:
-            # get the snr per wavelength bin as expected by fetch_snr
-            snr = snr / np.sqrt(self.simulation.spectrograph.dispersion_resolution)
-
-        # get configuration to reach this SNR
-        config, reached_snr, exptime = self.simulation.fetch_snr(target_snr=snr, 
-                                                    lbda_range=lbda_range, frame=frame,
-                                                    statistic=statistic, **kwarg)
-        # update simulation at this config
-        if inplace:
-            self.simulation.update(**config)
-
-        return config, reached_snr
-        
-    def get_exposure_time(self, snr=None, full=False, **kwargs):
-        """Get the exposure time of the current configuration.
-
-        Parameters
-        ----------
-        snr : float, optional
-            Change the SNR of the target before calculating the exposure time.
-            This does not change the configuration of the current instance
-            (`inplace=False`). `kwargs` are used to update `setup_to_snr`
-            arguments. Default is None.
-        full : bool, optional
-            If True, returns all timing details (t-frame, t-group, etc.)
-            associated with the exposure. If False, only the total exposure
-            time is returned. Default is False.
-        **kwargs
-            Goes to `setup_to_snr()`. Ignored if `snr` is None.
-
-        Returns
-        -------
-        float or dict
-            Exposure time. See `full`.
-        """
-        if snr is not None:
-            self.setup_to_snr(snr=snr, inplace=False, **kwargs)
-
-        times = self.simulation.get_times()
-        if full:
-            return times
-        
-        return times["total_exptime"]
-
+    # GETTER
     def get_readout_config(self):
         """Get the current MACC (nmd) mode and the number of ramps.
 
@@ -388,10 +265,6 @@ class VirtualLazuliTarget():
             - nramps: number of ramps (1-ramp = 1-nmd)
         """
         return self.get_properties(["nmd", "nramps"])
-
-    def get_data_volume(self, units="GB", per_ramp=False):
-        """ get the data volume associated to each observations """
-        return self.simulation.get_data_volume(units=units, per_ramp=per_ramp)
     
     def get_spectrograph_sampling(self):
         """Get the current spectrograph sampling configuration.
@@ -405,11 +278,10 @@ class VirtualLazuliTarget():
             The configuration of the sampling.
 
         """
-        from .spectrograph import Spectrograph
         keys_to_check = ["spatial_shape", "spatial_scale"]
         current_config = self.get_properties(keys_to_check)
         sampling = "manual"
-        for this_sampling, this_config in Spectrograph._SAMPLING.items():
+        for this_sampling, this_config in SPECTROGRAPH_SAMPLING.items():
             sampling_config = {k: this_config.get(k, None) for k in keys_to_check}
             if sampling_config == current_config:
                 sampling = this_sampling
@@ -417,48 +289,7 @@ class VirtualLazuliTarget():
             
         return sampling, current_config      
 
-    def get_spectrum(self, unit="adu", incl_error=True, **kwargs):
-        """Get a realistic simulated spectrum given the current configurations.
-
-        This function fetches the spectrum data from the simulation and converts the
-        flux and variance to the specified unit.
-
-        Parameters
-        ----------
-        unit : str, optional
-            The unit to convert the spectrum flux and variance to.
-            Available units are:
-            - adu [total]
-            - flambda [erg/s/a/cm2]
-            - fphoton [ph/s]
-            - rate [adu/s]
-            - framerate [adu/frame]
-            Default is "adu".
-        incl_error : bool, optional
-            If True, the returned flux is scattered from the true_flux given the
-            variance. If False, the true_flux is returned. Default is True.
-        **kwargs
-            Additional keyword arguments to pass to the `simulation.get_spectrum` method.
-
-        Returns
-        -------
-        lbda : array_like
-            The wavelength values of the spectrum in Angstroms.
-        flux : array_like
-            The flux values of the spectrum, converted to the specified unit.
-            If `incl_error` is True, this flux is scattered given the variance
-            (hence realistic).
-        variance : array_like
-            The variance of the spectrum.
-        """
-        # get spectra [adu]
-        lbda, flux, variance = self.simulation.get_spectrum(incl_error=incl_error, **kwargs)
-
-        # change the unit
-        coefs = self.simulation.convert_units(units_in="adu", units_out=unit)
-        return lbda, flux*coefs, variance*coefs**2
-
-    def get_cubes(self, which="both", **kwargs):
+    def get_cube(self, which="both", **kwargs):
         """ returns both cubes, one for each slicer. 
         
         Parameters
@@ -498,21 +329,21 @@ class VirtualLazuliTarget():
         # let's loop over fields, update the position 
         # to that of interest
         if which in ["both", "fine"]:
-            self.change_spectrograph_mode("fine")
+            self.change_spectrograph("fine")
             self.simulation.update(position = pos_fine)
             cubes_fine = self.simulation.get_cube(**kwargs)
         else:
             cubes_fine = None
     
         if which in ["both", "medium"]:
-            self.change_spectrograph_mode("medium")
+            self.change_spectrograph("medium")
             self.simulation.update(position = pos_med)
             cubes_medium = self.simulation.get_cube(**kwargs)
         else:
             cubes_medium = None
     
         # revert back to original config (could be )
-        self.change_spectrograph_mode(**current_config)
+        self.change_spectrograph(**current_config)
         self.simulation.update(position = original_position)
     
         if which == "both":
@@ -526,10 +357,9 @@ class VirtualLazuliTarget():
         """ """
         # Generate cube
         if cubes is None:
-            (cube_fine, _), (cube_medium, _) = self.get_cubes(**kwargs)
+            (cube_fine, _), (cube_medium, _) = self.get_cube(which="both", **kwargs)
         else:
             cube_fine, cube_medium = cubes
-
 
         nslices_fine = cube_fine.shape[-2]
         nslices_medium = cube_medium.shape[-2]
@@ -542,37 +372,6 @@ class VirtualLazuliTarget():
         img_ = np.sum([img_med, img_fine], axis=0)
         return img_
 
-    def get_variance_contribution(self):
-        """Get a dataframe detailing the variance contribution for each wavelength
-        of each variance source.
-
-        Returns
-        -------
-        pandas.DataFrame
-            Variance contribution.
-        """
-        return self.simulation.get_variance_contribution()
-
-    def get_properties(self, which, default=None, as_dict=True):
-        """Get the properties of the target.
-
-        Parameters
-        ----------
-        which : str or list of str
-            The name of the property to get.
-        default : any, optional
-            The default value to return if the property is not found.
-            Default is None.
-        as_dict : bool, optional
-            If True, return a dictionary of properties. Default is True.
-
-        Returns
-        -------
-        any or dict
-            The value of the property or a dictionary of properties.
-
-        """
-        return self.simulation.get_parameter(which=which, default=default, as_dict=as_dict)
 
     def _get_field_positions(self, position=None, field=None):
         """ get the 'position' parameters for each of the two fields (fine and medium).
@@ -587,10 +386,10 @@ class VirtualLazuliTarget():
         
         anamorphe = np.asarray(self.simulation.spectrograph._ANAMORPHOSE)
         # information for the fine field
-        nx_fine, ny_fine = self.simulation.spectrograph._SAMPLING["fine"]["spatial_shape"] / anamorphe
+        nx_fine, ny_fine = SPECTROGRAPH_SAMPLING["fine"]["spatial_shape"] / anamorphe
         
         # information for the fine field
-        nx_med, ny_med = self.simulation.spectrograph._SAMPLING["medium"]["spatial_shape"] / anamorphe
+        nx_med, ny_med = SPECTROGRAPH_SAMPLING["medium"]["spatial_shape"] / anamorphe
     
         # multiplying factory between mid and large
         fine_to_med = 0.5
@@ -660,7 +459,7 @@ class VirtualLazuliTarget():
             
 
         if cubes is None:
-            (cube_fine, _), (cube_medium, _) = self.get_cubes(**cube_prop)
+            (cube_fine, _), (cube_medium, _) = self.get_cube( which="both", **cube_prop)
         else:
             cube_fine, cube_medium = cubes
 
@@ -696,25 +495,12 @@ class VirtualLazuliTarget():
         [ax.set_yticks([]) for ax in fig.axes]
         [ax.set_xticks([]) for ax in fig.axes]
             
-    # ============== #
-    #  Properties    #
-    # ============== #
-    @property
-    def pointsource_properties(self):
-        """Get mutable properties of the pointsource."""
-        return [param_ for param_ in self.simulation.scene.mutable_parameters
-                    if param_.startswith("pointsource__")]
-        
-    @property
-    def simulation(self):
-        """Core attribute containing simulation details."""
-        return self._simulation
 
 # ============ #
 #  Specifics   #
 # ============ #
 # Supernovae
-class LazuliSN( VirtualLazuliTarget ):
+class LazuliSupernova( VirtualLazuliTarget, Supernova ):
     """Lazuli class for Supernovae.
 
     Parameters
@@ -750,7 +536,7 @@ class LazuliSN( VirtualLazuliTarget ):
         super().__init__(simulation=simulation)
 
 # CalSpec Stars
-class LazuliCalSpec( VirtualLazuliTarget ):
+class LazuliCalSpec( VirtualLazuliTarget, CalSpec  ):
     """Lazuli class for CalSpec stars.
 
     Parameters
@@ -813,7 +599,7 @@ class LazuliCalSpec( VirtualLazuliTarget ):
         return self._SOURCES.source.index.values.astype(str)
 
 # Generic object
-class LazuliTarget( VirtualLazuliTarget ):
+class LazuliTarget( VirtualLazuliTarget, Target  ):
     """Lazuli class for generic targets.
 
     Parameters

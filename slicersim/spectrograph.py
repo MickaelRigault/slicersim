@@ -225,12 +225,6 @@ class Spectrograph:
     """
     _SPECTROGRAPH_TYPE = "Unknown"
 
-    _SAMPLING = {"fine": {'spatial_shape': [29, 58], 'spatial_scale': 0.04,
-                           "throughput__noptics__coating": 11},
-                 "medium": {'spatial_shape': [29, 58], 'spatial_scale': 0.08,
-                            "throughput__noptics__coating": 9}
-                 }
-
     #: Mutable parameters (list)
     mutable_parameters = [  # 'spectral_range', 'spectral_resolution', # lbda
         "dispersion_resolution", "spotsize", "dispersion_scale",

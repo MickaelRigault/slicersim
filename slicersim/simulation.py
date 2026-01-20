@@ -96,37 +96,6 @@ class Simulation():
         self.telescope = telescope        #: telescope
         self._in_meta = meta              #: Meta-parameters
 
-    def __str__(self):
-
-        w = 50
-
-        s = ""
-        if self.scene:
-            s += (" Scene ".center(w, '-') + '\n' +
-                  str(self.scene))
-        if self.spectrograph:
-            s += ('\n' + " Spectrograph ".center(w, '-') + '\n' +
-                  str(self.spectrograph))
-        if self.detector:
-            s += ('\n' + " Detector ".center(w, '-') + '\n' +
-                  str(self.detector))
-                
-        if self.telescope:
-            s += ('\n' + " Telescope ".center(w, '-') + '\n' +
-                  str(self.telescope))
-                
-        if self.extraction:
-            s += ('\n' + " Extraction ".center(w, '-') + '\n' +
-                  pprint.pformat(self.extraction, sort_dicts=False))
-        if self.meta:
-            s += ('\n' + " Meta ".center(w, '-') + '\n' +
-                  pprint.pformat(self.meta, sort_dicts=False))
-
-        return s
-
-    def __repr__(self):
-        return self.__str__()
-
     @classmethod
     def from_source(cls, lbda, flux, mag=None,
                         band="bessellb", position=(0, 0),
@@ -1710,6 +1679,7 @@ class Simulation():
             # fix the number of ramp, start -10 group as initial guess.
             self.update( nramps = nramps, nmd=nmd)
             free_parameter = "ngroup" # vary the number of groups.
+            prop_fetch |= {"max_value": max_group} # make sure max_group is respected.
             read_config, snr, integration_time = self._fetch_snr(target_snr,
                                                              free_parameter=free_parameter,
                                                              iterstep=iterstep, maxiter=maxiter,
@@ -1724,7 +1694,7 @@ class Simulation():
         
     def _fetch_snr(self, target_snr, free_parameter, 
                    lbda_range=[4000, 6800], frame="rest", statistic=np.nanmean,
-                   min_value=None,
+                   min_value=None, max_value=None,
                    maxiter=100, tol=0.5, iterstep=1):
         """Vary the free_parameter to reach the target SNR.
 
@@ -1745,6 +1715,8 @@ class Simulation():
             `np.nanmean`.
         min_value : int, optional
             Minimum value for the free parameter. Default is None.
+        max_value : int, optional
+            Maximum value for the free parameter. Default is None.
         maxiter : int, optional
             Maximum number of iterations. Default is 100.
         tol : float, optional
@@ -1782,6 +1754,8 @@ class Simulation():
             if new_value < min_value:
                 new_value = min_value
                 # warnings.warn(f"requested value lower than min_value: old value {value} + iterstep {iterstep}")
+            if max_value is not None and (new_value > max_value):
+                new_value = max_value
                 
             _ = self.update(**{free_parameter: new_value})
             new_snr = self.get_band_snr(**prop_snr)
