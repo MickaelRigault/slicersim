@@ -73,6 +73,7 @@ guiding_sigma = 0.010       	# Achromatic guiding/jitter/aberrations on MLA [arc
 
 [detector]
 name = "H4RG17"
+shape = [4096, 4096]
 # QE: either a constant or an ECSV file
 # QE = 0.8                   # Constant quantum efficiency [e-/ph]
 QE = "H4RG17.ecsv"         # Quantum efficiency ECSV file [e-/ph] (wavelength, qe)

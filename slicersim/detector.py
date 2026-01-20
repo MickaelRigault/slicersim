@@ -76,6 +76,7 @@ class Detector():
                      lbda=10_000.,
                      variance_model="rauscher07",
                      thermaloptics=None,
+                     shape=[4096, 4096],
                      meta={} ):
         # from other components
         self._lbda = lbda
@@ -83,6 +84,7 @@ class Detector():
 
         # internal structure is meta-based.
         # detector
+        meta["shape"] = shape
         meta["tframe"] = tframe
         meta["dark"] = dark
         meta["ron"] = ron
@@ -131,6 +133,9 @@ class Detector():
         from . import iotools
         
         dict_init = {}
+
+        dict_init["shape"] = config.get("shape", [4096, 4096])
+        
         #
         # READOUT
         #
@@ -252,6 +257,14 @@ class Detector():
     # ======= #
     #  GETTER  #
     # ======= #
+    def get_data_volume(self, units="GB", nbit_record=16):
+        """ """
+        from astropy import units as u
+        npixels = np.prod(self.shape)
+        (ngroups, nframe, ndrops) = self.nmd
+        volume_in_bit = (npixels * nbit_record * ngroups) * u.bit
+        return volume_in_bit.to(units).value
+        
     def get_qe(self, lbda=None):
         """Get the quantum efficiency.
 
@@ -446,10 +459,10 @@ class Detector():
                               gain=self.gain)
                               
         if model.lower() in ["rauscher07", "rauscher10" "rauscher+07"]: # allowing old format
-            return self._estimate_variance_rauscher07(flux,**variance_input)
+            return self._estimate_variance_rauscher07(flux, **variance_input)
             
         elif model.lower() in ["kubik16", "kubik16"]:
-            return self._estimate_variance_kubik16(flux,**variance_input)
+            return self._estimate_variance_kubik16(flux, **variance_input)
         else:
             raise NotImplementedError(f"unknown variance model {model=} ; rauscher07 or kubik16 available.")
 
@@ -594,7 +607,13 @@ class Detector():
     def name(self):
         """Name of the detector, if any."""
         return self.meta.get("name", "unknown")
+    
+    @property
+    def shape(self):
+        """ shape of the detector """
+        return self.meta.get("shape", None)
 
+    
     @property
     def variance_model(self):
         """Variance model name."""

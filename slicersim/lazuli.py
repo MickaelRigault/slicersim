@@ -292,8 +292,8 @@ class VirtualLazuliTarget():
                 warnings.warn(f"{k} is not a pointsource property. It will be ignored.")
                 
         # Adding 'pointsource__' as favored by the update method.
-        updates = {f"pointsource__{k}":v for k,v in kwargs.items()}
-        _ = self.simulation.update(**updates)
+        # updates = {f"pointsource__{k}":v for k,v in kwargs.items()}
+        _ = self.simulation.update(**kwargs)
         
     def setup_to_snr(self, snr, per_resolution=True,
                      lbda_range=[4000, 6800], frame='rest',
@@ -389,6 +389,10 @@ class VirtualLazuliTarget():
         """
         return self.get_properties(["nmd", "nramps"])
 
+    def get_data_volume(self, units="GB", per_ramp=False):
+        """ get the data volume associated to each observations """
+        return self.simulation.get_data_volume(units=units, per_ramp=per_ramp)
+    
     def get_spectrograph_sampling(self):
         """Get the current spectrograph sampling configuration.
 

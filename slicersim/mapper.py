@@ -136,7 +136,8 @@ class SlicerMapper():
             return [self.get_slice_contours(sliceid_, 
                                             lbda_range=lbda_range,
                                             out_format=out_format, 
-                                            in_units=in_units, 
+                                            in_units=in_units,
+                                            slice_edge=slice_edge,
                                             combined=False)
                              for sliceid_ in sliceid]
         

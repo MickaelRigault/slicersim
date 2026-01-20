@@ -344,6 +344,16 @@ class Simulation():
 
         """
         self.scene._pointsource = pointsource
+
+    def change_spectrograph_resolution(self, rmin, spotsize=2):
+        """ """
+        reference_rmin = 100
+        reference_resolution = 2
+        dispersion_scale = 1.3 * rmin/reference_rmin * spotsize/reference_resolution
+        config = dict(dispersion_scale=dispersion_scale,
+                          dispersion_resolution=reference_resolution,
+                          spotsize=spotsize)
+        return self.update(**config)
     
     def update(self, reset_others=False, **kwargs):
         """Update any mutable parameter of the simulation.
@@ -1081,7 +1091,7 @@ class Simulation():
                                         
         # slicers projected onto the detector: 1 lbda for 1 slice corresponds to 1 pixel
         lbda = self.spectrograph.lbda # make sure it is up to date
-        sig_cube, var_cube = self.detector.estimate_pixel_signal( cube, lbda=lbda) # expects input in [ph/...] 
+        sig_cube, var_cube = self.detector.estimate_pixel_signal(cube, lbda=lbda) # expects input in [ph/...] 
         
         return sig_cube, var_cube
         
@@ -1464,6 +1474,15 @@ class Simulation():
         
         return estimates # dict
 
+    def get_data_volume(self, units="GB", per_ramp=False, **kwargs):
+        """ """
+        data_volume_per_ramp = self.detector.get_data_volume(units=units, **kwargs)
+        if per_ramp:
+            return data_volume_per_ramp
+        
+        nramps = self.get_parameter("nramps")
+        return data_volume_per_ramp * nramps
+    
     # ----------- #
     #  Conversion #
     # ----------- #
@@ -1548,6 +1567,8 @@ class Simulation():
                       nframe_per_group=None,
                       nframe_per_group_small=4,
                       small_ngroup_range=[32, 8],
+                      allow_smaller_ramps=True,
+                      too_large=3.,
                       ndrop=None,
                       guess=None,
                       fitter="native",
@@ -1567,6 +1588,12 @@ class Simulation():
             group accepted. Default is None.
         nframe_per_group : int, optional
             Number of frames per group. Default is None.
+        allow_smaller_ramps: bool, optional
+            If N+1 ramps is too large (see too_large) but N ramp is not enough, 
+            can this reduce the number of groups for N+1 ramp to reach the optimal snr ?
+        too_large: float, optional
+            how much larger than the target_snr should allow to trigger the reduction of
+            group per frame ? (Ignored if allow_smaller_ramps is False).
         ndrop : int, optional
             Number of dropped frames. Default is None.
         guess : int, optional
@@ -1658,117 +1685,42 @@ class Simulation():
                     
             # In any case, you do 1 ramp, so loop over ngroup                
             free_parameter = "ngroup"
-            
+
+        # is one ramp not enought:
         else:
              # no ? fix nmd at fullramp and  loop over ngroup
             free_parameter = "nramps"
             if guess is None:
                 guess = 4 # we expect less than, say, 20 ramps and at least 2.
+                
             self.update( nramps=guess, nmd=(max_group, nframe_per_group, ndrop) )
             prop_fetch |= {"min_value": 2}
 
-        if fitter == "native":
+        read_config, snr, integration_time = self._fetch_snr(target_snr,
+                                                             free_parameter=free_parameter,
+                                                             iterstep=iterstep, maxiter=maxiter,
+                                                             **prop_fetch)
+        # should the ramp size reduction be trigger ?
+        if free_parameter == "nramps" and (snr+too_large > target_snr) and allow_smaller_ramps:
+            # number of ramp that leads to too high snr. nramps-1 is too low by design here.
+            nramps = read_config["nramps"]
+            nmd = list(read_config["nmd"]) # this is too much, copy and change.
+            nmd[0] -= 10  # let's start lower as it is currently at max_group.
+            
+            # fix the number of ramp, start -10 group as initial guess.
+            self.update( nramps = nramps, nmd=nmd)
+            free_parameter = "ngroup" # vary the number of groups.
             read_config, snr, integration_time = self._fetch_snr(target_snr,
                                                              free_parameter=free_parameter,
                                                              iterstep=iterstep, maxiter=maxiter,
                                                              **prop_fetch)
-        elif fitter == "scipy":
-            read_config, snr, integration_time = self._fetch_snr_minimize(target_snr, free_parameter=free_parameter,
-                                                                              x0=guess, **prop_fetch)
             
-        # reset back to initial nmd
         if reset_param:
             self.update(nmd = input_nmd, nramps=input_nramps)
 
         # return what you where looking for.
         return read_config, snr, integration_time
-
-    def _fetch_snr_minimize(self, target_snr, free_parameter, x0,
-                                lbda_range=[4000, 6800], frame="rest", statistic=np.nanmean,
-                                min_value=None, as_int=True,
-                                tol=0.3, **kwargs):
-        """Fetch SNR using scipy.optimize.minimize.
-
-        Parameters
-        ----------
-        target_snr : float
-            Target signal to noise ratio.
-        free_parameter : str
-            Parameter to vary ('ngroup', 'nramps', 'nframe').
-        x0 : float
-            Initial guess.
-        lbda_range : list, optional
-            (wmin, wmax) test wavelength range [Å]. Default is [4000, 6800].
-        frame : str, optional
-            Wavelength frame ('obs' or 'rest'). Default is "rest".
-        statistic : function, optional
-            Function to apply on test domain to compute the snr. Default is
-            `np.nanmean`.
-        min_value : int, optional
-            Minimum value for the free parameter. Default is None.
-        as_int : bool, optional
-            If True, round the result to the nearest integer. Default is True.
-        tol : float, optional
-            Tolerance for the optimization. Default is 0.3.
-        **kwargs
-            Goes to `scipy.optimize.minimize`.
-
-        Returns
-        -------
-        dict, float, float
-            - Used configuration
-            - Reached SNR
-            - Total exposure time
-
-        """
-        from scipy import optimize
-        
-        minimal_values = {"ngroup": self.detector.min_group, "nramps": 1, 'nframe':2}
-        if min_value is None:
-            min_value = minimal_values.get(free_parameter)
-        
-        # ---------------------- #
-        # Parsing input uptions  #
-        # ---------------------- #
-        if free_parameter not in ["ngroup", "nramps", 'nframe']:
-            raise ValueError(f"free_parameter should be 'ngroup', 'nramps' or 'nframe' {free_parameter} given.")
-        
-        prop_snr = dict(lbda_range=lbda_range, 
-                        frame=frame, 
-                        statistic=statistic)
-
-        # nframe supposed to change the macc mode to (1,1,0)
-        if free_parameter == "nframe":
-            input_nmd = self.get_parameter("nmd")
-            self.update(nmd=(min_value, 1, 0)) # start at min value
-            free_parameter = "ngroup" # 1 frame per group, so ngroup=nframe
-        else:
-            input_nmd = None
-
-        # ---------------------- #
-        # Fitting                #
-        # ---------------------- #
-        def to_minimize(value):
-            """ """
-            self.update(**{free_parameter: value})
-            current_snr = self.get_band_snr(**prop_snr)
-            return (current_snr - target_snr)**2
-
-        fit_result = optimize.minimize(to_minimize, x0=x0, tol=tol, **kwargs)
-        if as_int:
-            bestfit = round(fit_result.x[0])
-            self.update(**{free_parameter: bestfit})
-            current_snr = self.get_band_snr(**prop_snr)
-        else:
-            # as fit_result.fun = (current_snr - target_snr)**2
-            current_snr = np.sqrt(fit_result.fun) + target_snr
-
-        # So this is what is used.
-        used_config = {"nmd": self.get_parameter("nmd"),
-                       "nramps": self.get_parameter("nramps")}
-        
-        total_exptime = self.observing_time # includes nrampss
-        return used_config, current_snr, total_exptime
+    
         
     def _fetch_snr(self, target_snr, free_parameter, 
                    lbda_range=[4000, 6800], frame="rest", statistic=np.nanmean,
@@ -2114,6 +2066,7 @@ class Simulation():
         return fig
     
     def show_variance_sources(self, variance_contrib=None, flux_calibrated=True,
+                                  normalize_variances=True,
                                   figsize=(7, 7), gridspec={}):
         """Summary figure showing various variance contributions.
 
@@ -2152,6 +2105,10 @@ class Simulation():
         # Data of interest
         flux = variance_contrib["flux"]/norm
         variance = variance_contrib["variance"]
+        if normalize_variances:
+            variance_eff = variance_contrib[self.variance_sources].sum(axis=1)
+        else:
+            variance_eff = variance
         noise = np.sqrt(variance)/norm
         snr = flux/noise
         
@@ -2167,13 +2124,13 @@ class Simulation():
         for new_effect in self.variance_sources:
             in_effect = in_effect+[new_effect]
             
-            spectra_contrib = variance_contrib[in_effect].sum(axis=1)/variance
+            spectra_contrib = variance_contrib[in_effect].sum(axis=1)/variance_eff
             axsnr.fill_between(variance_contrib["lbda"], 
                                  base*snr,
                                  spectra_contrib*snr, 
                                  facecolor=COLORS[new_effect],
                                  edgecolor="0.5", lw=0., 
-                                 alpha=0.5)
+                                 alpha=1)
             
             axv.fill_between(variance_contrib["lbda"], 
                              base,
@@ -2191,11 +2148,17 @@ class Simulation():
         ax.set_xlim(variance_contrib["lbda"].values[0], variance_contrib["lbda"].values[-1])
         axsnr.set_xlim(*ax.get_xlim())
         axv.set_xlim(*ax.get_xlim())
-        axv.set_ylim(0)
+        if normalize_variances:
+            axv.set_ylim(0, 1)
+        else:
+            axv.set_ylim(0)
+        
         
         ax.set_xticklabels([])
         axsnr.set_xticklabels([])
-        axsnr.set_ylim(0)
+        axsnr.set_ylim(0)        
+
+        
         
         axv.set_xlabel("Wavelength [A]", fontsize="large")
         if flux_calibrated:

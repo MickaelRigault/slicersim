@@ -504,6 +504,7 @@ class Spectrograph:
         if spaxel_updates:
             what_changed.append("spaxels")
             spaxels = build_spaxels_from_config(self._meta | spaxel_updates)
+            updates |= {NAME_ALT.get(k, k):v for k,v in spaxels.items()}
             self.set_spaxels(**spaxels)
 
         if lbda_updates:
@@ -575,7 +576,6 @@ class Spectrograph:
             throughput = iotools.chromatic_interpolator(
                 throughput.index, throughput.values, ext='zeros')
 
-            
         #elif isinstance(throughput, OpticsThroughput):
         #    pass #
             
@@ -2326,6 +2326,14 @@ class OpticsThroughput( object ):
     # -------- #
     #  Methods #
     # -------- #
+    def update_curve(self, name, curve, ext='zeros'):
+        """ """
+        if name not in self._curves.keys():
+            raise ValueError(f"unknown curve: {name=}.")
+        
+        elements = iotools.chromatic_interpolator(curve.index, curve.values, ext=ext)
+        self._curves |= {name: elements}
+
     def update(self, **kwargs):
         """Update the number of optics for one or more elements.
 
