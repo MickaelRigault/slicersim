@@ -503,7 +503,7 @@ class LazuliSupernova( VirtualLazuliTarget, Supernova ):
     """Lazuli class for Supernovae.
 
     Parameters
-    ----------s
+    ----------
     model : str, optional
         The supernova model to use. Default is "salt".
     slicer : bool, optional

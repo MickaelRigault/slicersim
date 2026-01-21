@@ -35,6 +35,17 @@ dependencies = [
 docs = ["nbsphinx"]
 tests = ["pytest", "coverage"]
 
+
+[tool.pytest.ini_options]
+addopts = ["-ra", "--showlocals", "--strict-markers", "--strict-config"]
+testpaths = ["tests"]
+filterwarnings = [
+    # action:message:category:module:lineno
+    # "error",
+    # "ignore:.*Call to deprecated Parameter testval.*:DeprecationWarning:pymc3",
+    "ignore:.*Configuration file not found.*:Warning:dustmaps.config"
+]
+
 [project.urls]
 Homepage = "https://github.com/MickaelRigault/slicersim"
 
