@@ -1,6 +1,4 @@
 import numpy as np
-import warnings
-
 
 from .simulation import Simulation
 
@@ -52,8 +50,8 @@ class VirtualTarget():
             An instance of the class.
         """
         from .iotools import get_config
-        if instrument is None and hasattr(self,"_INSTRUMENT"):
-            instrument = self._INSTRUMENT
+        if instrument is None and hasattr(cls,"_INSTRUMENT"):
+            instrument = cls._INSTRUMENT
 
         # create the simulator
         config = get_config( **(cls._DEFAULT_CONFIG | {"instrument": instrument} | kwargs) )
@@ -101,14 +99,16 @@ class VirtualTarget():
             If float, this is assumed to be squared. If list, (x, y).
             This is on top of `sampling` if any. Default is None.
         """
+        new_config = {}
+        
         # manual setting if any
         if spatial_shape is not None:
-            config["spatial_shape"] = spatial_shape
+            new_config["spatial_shape"] = spatial_shape
 
         if spatial_scale is not None:
-            config["spatial_scale"] = spatial_scale
+            new_config["spatial_scale"] = spatial_scale
 
-        return self.simulation.update(**config)
+        return self.simulation.update(**new_config)
         
     # SETTER
     def change_properties(self, **kwargs):

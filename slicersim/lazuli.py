@@ -1,5 +1,4 @@
 import numpy as np
-import warnings
 
 from .simulation import Simulation
 from .target import Supernova, CalSpec, Target
@@ -212,7 +211,7 @@ class VirtualLazuliTarget():
         from .iotools import get_config        
         # create the simulator
         config = get_config( **(cls._DEFAULT_CONFIG | kwargs) )
-        simulation = Simulation.from_config(config, slicer=slicer)
+        simulation = Simulation.from_config(config)
         return cls(simulation=simulation)
 
     # =============== #
@@ -514,7 +513,7 @@ class LazuliSupernova( VirtualLazuliTarget, Supernova ):
         Goes to `scene.get_sn_scene()`.
 
     """
-    def __init__(self, model="salt", slicer=True, **kwargs):
+    def __init__(self, model="salt", **kwargs):
         """Initialize the LazuliSN.
 
         Parameters
@@ -531,7 +530,7 @@ class LazuliSupernova( VirtualLazuliTarget, Supernova ):
         from .iotools import get_config
         scene = get_sn_scene(model=model, **kwargs)
         config = get_config( **( self._DEFAULT_CONFIG | {"scene": scene}) )
-        simulation = Simulation.from_config(config, slicer=slicer)
+        simulation = Simulation.from_config(config)
         
         super().__init__(simulation=simulation)
 

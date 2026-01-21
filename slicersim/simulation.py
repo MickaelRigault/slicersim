@@ -1,8 +1,6 @@
 import warnings
 warnings.simplefilter('always', UserWarning)
 
-import pprint
-
 import numpy as np
 import pandas
 from .scene import Scene
