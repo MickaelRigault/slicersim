@@ -506,7 +506,7 @@ class Simulation():
         return lbda, self.spectrograph.flambda2photon * self.detector.photonflux_to_adu(lbda)
 
     def get_effective_waveresolution(self, npx=2, sigma=None):
-        """Effective wavelength resolution.
+        r"""Effective wavelength resolution.
 
         R &= \frac{2}{n \delta\lambda} \\
         with
