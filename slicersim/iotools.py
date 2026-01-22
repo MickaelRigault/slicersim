@@ -197,7 +197,9 @@ def override_config(cfg, copy=False, **kwargs):
     >>> cfg = dict(a=1, b=dict(c=2, d=3))
     >>> override_config(cfg, **{'b.c': 4})
     {'a': 1, 'b': {'c': 4, 'd': 3}}
-    >>> override_config(cfg, **{'b.e': 5})
+    >>> override_config(cfg, **{'b.e': 5}) # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+    ...
     KeyError: "Unknown key 'b.e'."
 
     .. note::
@@ -217,9 +219,9 @@ def override_config(cfg, copy=False, **kwargs):
         for token in tokens[:-1]:     # Dig down the configuration dict
             subcfg = subcfg[token]
             if not isinstance(subcfg, dict):
-                raise KeyError(f"Unknwown key {key!r}.")
+                raise KeyError(f"Unknown key {key!r}.")
         if tokens[-1] not in subcfg:  # Overriden key has to exists
-            raise KeyError(f"Unknwown key {key!r}.")
+            raise KeyError(f"Unknown key {key!r}.")
         else:
             subcfg[tokens[-1]] = val  # Override
 

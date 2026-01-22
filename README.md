@@ -15,34 +15,34 @@ pip install git+https://github.com/MickaelRigault/slicersim.git
 ***
 # Top level ETC
 
-## Any spectra
 ```python
-import slicersim
-import numpy as np
+>>> import slicersim
+>>> import numpy as np
 
-# provide your spectrum
-lbda_ref = np.linspace(3000, 20_000, 500) # larger than lazuli bandpass
-flux_ref = np.ones(lbda_ref.shape) # flat spectrum
-
-# compute the exposure time needed any input spectrum
-exptime, lazulitarget = slicersim.lazuli_etc(lbda_ref, flux_ref, snr=20, mag=21, band="bessellb")
-print(exptime)
 ```
-```bash
-407.52
+
+## Any spectra
+
+Compute the exposure time needed any input spectrum:
+
+```python
+>>> lbda_ref = np.linspace(3000, 20_000, 500) # larger than lazuli bandpass
+>>> flux_ref = np.ones(lbda_ref.shape) # flat spectrum
+>>> exptime, lazulitarget = slicersim.lazuli_etc(lbda_ref, flux_ref, snr=20, mag=21, band="bessellb")
+>>> print(exptime)
+237.72
+
 ```
 
 ## Supernova
-```python
-import slicersim
-import numpy as np
 
-# compute the exposure time needed to observe a Supernovae
-exptime, snia_target = slicersim.lazuli_sn_etc(snr=20, model="salt", redshift=1.2, x1=1.5, c=0.2, phase=-2.2)
-print(exptime)
-```
-```bash
-10142.72
+Compute the exposure time needed to observe a Supernovae:
+
+```python
+>>> exptime, snia_target = slicersim.lazuli_sn_etc(snr=20, model="salt", redshift=1.2, x1=1.5, c=0.2, phase=-2.2)
+>>> print(exptime)
+5795.84
+
 ```
 
 ***
