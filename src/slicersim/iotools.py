@@ -205,8 +205,8 @@ def override_config(cfg, copy=False, **kwargs):
     .. note::
         Multi-key override is supported:
 
-        >>> override_config(cfg, **{'b': dict(c=3, d=4)})
-        {'a': 1, 'b': {'c': 3, 'd': 4}}
+    >>> override_config(cfg, **{'b': dict(c=3, d=4)})
+    {'a': 1, 'b': {'c': 3, 'd': 4}}
     """
 
     if copy:
