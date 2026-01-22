@@ -385,15 +385,17 @@ def integ_gaussian2D_erf(xy_edges, sigma, mu=(0, 0), normed=True):
     :param normed: use a total flux-normalized 2D Gaussian
     :return: sigma.shape + (ny, nx) array
 
-    >>> y, x = np.ogrid[-5:5.1, -6:6.1]; sigma = 1
+    >>> y, x = np.ogrid[-5:5.1, -6:6.1]
+    >>> sigma = np.array([1])
     >>> np.isclose(
     ...     integ_gaussian2D_erf((x, y), sigma=sigma, normed=True).sum(),
     ...     1)
-    True
+    np.True_
     >>> np.isclose(
     ...     integ_gaussian2D_erf((x, y), sigma=sigma, normed=False).sum(),
     ...     sigma**2 * 2*np.pi)
-    True
+    array([ True])
+
     """
 
     from scipy.special import erf

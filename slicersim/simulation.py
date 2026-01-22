@@ -329,12 +329,12 @@ class Simulation():
         such that, e.g. 'pointsource__phase' is understood as
         'pointsource.phase'. This way, one can do:
 
-        >>> self.update(pointsource__phase = -1)
+        >>> self.update(pointsource__phase = -1)  # doctest: +SKIP
 
         For convinience, you can specify a shorten name, like "phase". If the
         correspondance to a mutable_parameters is uniquen this will accept it.
 
-        >>> self.update(phase = -1)
+        >>> self.update(phase = -1)  # doctest: +SKIP
 
         For convenience and backward compatiblity, you can use "target__" in
         place of "pointsource__".

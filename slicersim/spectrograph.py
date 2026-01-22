@@ -1895,14 +1895,13 @@ class Spectrograph:
     @property
     def psf_sigma_spectral(self):
         """Chromatic PSF sigma in arcsec."""
-        if self.spatial_psf["sigma_spectral"] is None or \
-                self.spatial_psf["sigma_spectral"] in ["default"]:
+        if self.spatial_psf["sigma_spectral"] in (None, "default"):
             # 2.9 is the airy equivalent.
             from .profiles import airyradius_to_gaussiansigma
             radius_airy = self.telescope.get_airy_radius(self.lbda_ref)
             self.spatial_psf["sigma_spectral"] = airyradius_to_gaussiansigma(radius_airy, on="fwhm")
 
-        return float(self.spatial_psf["sigma_spectral"])
+        return self.spatial_psf["sigma_spectral"].item()
 
     @property
     def type(self):
