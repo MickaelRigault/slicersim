@@ -1,10 +1,15 @@
 import numpy as np
+import pytest
+
 from slicersim.spectrograph import Spectrograph
+
 
 @pytest.fixture
 def spectro():
     """ """
     from slicersim import iotools
+    from slicersim.telescope import Telescope
+    
     config = iotools.get_config()
     telescope = Telescope.from_config( config["telescope"] )
     return Spectrograph.from_config( config["spectrograph"], telescope=telescope)

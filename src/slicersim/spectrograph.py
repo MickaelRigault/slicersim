@@ -1546,7 +1546,7 @@ class Spectrograph:
     # -------- #
     #  SHOW    #
     # -------- #
-    def show_nea(self, ax=None, position=(0, 0), legend=True):
+    def show_nea(self, ax=None, position=(0, 0), legend=True): # pragma: no cover
         """Show the Noise Equivalent Area.
 
         Parameters
@@ -1590,7 +1590,7 @@ class Spectrograph:
 
         return fig
 
-    def show_nea_spatial(self, ax=None, position=(0, 0), legend=True):
+    def show_nea_spatial(self, ax=None, position=(0, 0), legend=True): # pragma: no cover
         """Show the spatial Noise Equivalent Area.
 
         Parameters
@@ -1630,7 +1630,7 @@ class Spectrograph:
 
         return fig
 
-    def show_fwhm(self, ax=None, legend=True, guiding_arcsec=None, in_arcsec=False, show_band=True):
+    def show_fwhm(self, ax=None, legend=True, guiding_arcsec=None, in_arcsec=False, show_band=True): # pragma: no cover
         """Show the Full Width at Half Maximum (FWHM) of the PSF.
 
         Parameters
@@ -1684,11 +1684,11 @@ class Spectrograph:
 
         return fig
 
-    def show_psf(self, lbda_range, profile="default",
+    def show_psf(self, lbda_range, profile="default", 
                  guiding_arcsec=None, axes=None,
                  position=(0, 0), oversampling=5,
                  in_arcsec=False,
-                 norm="log", **kwargs):
+                 norm="log", **kwargs): # pragma: no cover
         """Show the spatial PSF.
 
         Parameters
@@ -2421,7 +2421,7 @@ class OpticsThroughput( object ):
             
         return np.asarray(curve)
 
-    def show(self, lbda, ax=None):
+    def show(self, lbda, ax=None): # pragma: no cover
         """Show the throughput of the optical system.
 
         This method plots the throughput of each element and the total

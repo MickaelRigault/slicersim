@@ -446,7 +446,7 @@ class VirtualLazuliTarget():
         return fig, (axfine, axmed)
 
     def show_cube(self, cubes=None, lbda_range=400, cube_prop={},
-                      axes=None, norm="PowerNorm", **kwargs):
+                      axes=None, norm="PowerNorm", **kwargs): # pragma: no cover
         """ """
         from matplotlib import colors
 
