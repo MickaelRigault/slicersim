@@ -204,7 +204,7 @@ class SlicerMapper():
     # ======== #
     #   plot   #
     # ======== #
-    def show_slices(self, sliceid, which="lbda", ax=None, **kwargs):
+    def show_slices(self, sliceid, which="lbda", ax=None, **kwargs): # pragma: no cover
         """ """
         if which == "lbda":
             fig = self._show_slice_lbda_(sliceid, ax=ax, **kwargs)
@@ -216,7 +216,7 @@ class SlicerMapper():
         return fig
         
     def _show_sliceid_(self, sliceid, ax=None, 
-                       cmap="viridis", lbda_min=3500, lbda_max=17_000, **kwargs):
+                       cmap="viridis", lbda_min=3500, lbda_max=17_000, **kwargs): # pragma: no cover
         """ """
         import matplotlib.pyplot as plt
         from matplotlib.patches import Polygon
