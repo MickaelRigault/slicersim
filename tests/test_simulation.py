@@ -1,38 +1,40 @@
 import numpy as np
+import pytest
 
 from slicersim.simulation import Simulation
 from slicersim import iotools
 
-def get_simulation():
+
+
+@pytest.fixture
+def simu():
     config = iotools.get_config()
     return Simulation.from_config(config)
 
-
-def test_instanciation():
+# ======= #
+#  TESTS  #
+# ======= # 
+def test_instanciation(simu):
     """ """
-    simu = get_simulation()
     assert isinstance(simu, Simulation), "failed to instanciate the Simulation"
 
 # top functionalities
-def test_cube():
+def test_cube(simu):
     """ """
-    simu = get_simulation()
     cube, cubevar = simu.get_cube()
     assert cube.shape  == (len(simu.spectrograph.lbda), *simu.spectrograph.spx_shape), "cube doesn't have the good shape"
     assert np.all(cubevar>=0), "variance in cubevar are not all positive"
     
-def test_get_spectrum():
+def test_get_spectrum(simu):
     """ """
-    simu = get_simulation()
     lbda, spec, variance = simu.get_spectrum()
 
     assert lbda.shape == spec.shape == variance.shape, "mismatch of shapes returned by get_spectrum"
     assert np.all(lbda == simu.spectrograph.lbda), "mismatch of lbda"
     assert np.all(variance>=0), "there are negative variances"
 
-def test_variance_sources():
+def test_variance_sources(simu):
     """ """
-    simu = get_simulation()
     # default variance 
     lbda, spec, variance = simu.get_spectrum()
 
@@ -48,9 +50,8 @@ def test_variance_sources():
     assert np.isclose(variance_ratio, 1, rtol=0.1).all(), "sum of variances is not close to total variance"
 
     
-def test_update():
+def test_update(simu):
     """ """
-    simu = get_simulation()
     
     # update detector property
     simu.update(nramps=3)
@@ -75,9 +76,8 @@ def test_update():
     assert np.isclose(rpower.min(), requested_rmin, 1), "failed to reach the requested rmin"
     assert simu.spectrograph.dispersion_resolution == requested_spotsize, "dispersion resolution is not seft consistant."    
 
-def test_etc():
+def test_etc(simu):
     """ """
-    simu = get_simulation()
     requested_snr = 25
     
     # redshift 0.5

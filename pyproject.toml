@@ -79,8 +79,8 @@ filterwarnings = [
 source = ["slicersim"]
 omit = ["tests/*"]
 
-# [tool.coverage.paths]
-# source = ["skysurvey", "*/site-packages"]
+[tool.coverage.paths]
+source = ["slicersim", "*/site-packages"]
 
 [tool.coverage.report]
 exclude_lines = [
