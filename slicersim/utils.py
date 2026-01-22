@@ -241,15 +241,16 @@ def romberg(z, steps=1):
     >>> nz, ny, nx = 2**2 + 1, 2**4 + 1, 2**3 + 1
     >>> zlims, ylims, xlims = (0, 1/2), (0, 2), (0, 1)
     >>> z, y, x = np.ogrid[zlims[0]:zlims[1]:nz*1j,
-                           ylims[0]:ylims[1]:ny*1j,
-                           xlims[0]:xlims[1]:nx*1j]
+    ...                    ylims[0]:ylims[1]:ny*1j,
+    ...                    xlims[0]:xlims[1]:nx*1j]
     >>> dz, dy, dx = (z[1, 0, 0] - z[0, 0, 0],
-                      y[0, 1, 0] - y[0, 0, 0],
-                      x[0, 0, 1] - x[0, 0, 0])
+    ...               y[0, 1, 0] - y[0, 0, 0],
+    ...               x[0, 0, 1] - x[0, 0, 0])
     >>> integrand = (2 * x + y + z / 2)**2
-    # int_{x=0}^{1} int_{y=0}^{2} int_{z=0}^{1/2} = 83/16
+    >>> # int_{x=0}^{1} int_{y=0}^{2} int_{z=0}^{1/2} = 83/16
     >>> np.isclose(romberg(integrand, (dz, dy, dx)), 83/16)
-    True
+    np.True_
+
     """
 
     from scipy.integrate import romb
@@ -283,11 +284,12 @@ def integ_gaussian1D_midpoint(x_edges, sigma, mu=0, normed=True):
     >>> np.isclose(
     ...     integ_gaussian1D_midpoint(x_edges, sigma=sigma, normed=True).sum(),
     ...     1)
-    True
+    np.True_
     >>> np.isclose(
     ...     integ_gaussian1D_midpoint(x_edges, sigma=sigma, normed=False).sum(),
     ...     sigma * (2*np.pi)**0.5)
-    True
+    np.True_
+
     """
 
     x = (x_edges[1:] + x_edges[:-1]) / 2  # Px center coordinate (nx,)
@@ -315,11 +317,12 @@ def integ_gaussian1D_erf(x_edges, sigma, mu=0, normed=True):
     >>> np.isclose(
     ...     integ_gaussian1D_erf(x_edges, sigma=sigma, normed=True).sum(),
     ...     1)
-    True
+    np.True_
     >>> np.isclose(
     ...     integ_gaussian1D_erf(x_edges, sigma=sigma, normed=False).sum(),
     ...     sigma * (2*np.pi)**0.5)
-    True
+    np.True_
+
     """
 
     from scipy.special import erf
@@ -348,11 +351,12 @@ def integ_gaussian2D_midpoint(xy_edges, sigma, mu=(0, 0), normed=True):
     >>> np.isclose(
     ...     integ_gaussian2D_midpoint((x, y), sigma=sigma, normed=True).sum(),
     ...     1)
-    True
+    np.True_
     >>> np.isclose(
     ...     integ_gaussian2D_midpoint((x, y), sigma=sigma, normed=False).sum(),
     ...     sigma**2 * 2*np.pi)
-    True
+    np.True_
+
     """
 
     x_edges, y_edges = xy_edges
@@ -381,15 +385,17 @@ def integ_gaussian2D_erf(xy_edges, sigma, mu=(0, 0), normed=True):
     :param normed: use a total flux-normalized 2D Gaussian
     :return: sigma.shape + (ny, nx) array
 
-    >>> y, x = np.ogrid[-5:5.1, -6:6.1]; sigma = 1
+    >>> y, x = np.ogrid[-5:5.1, -6:6.1]
+    >>> sigma = np.array([1])
     >>> np.isclose(
     ...     integ_gaussian2D_erf((x, y), sigma=sigma, normed=True).sum(),
     ...     1)
-    True
+    np.True_
     >>> np.isclose(
     ...     integ_gaussian2D_erf((x, y), sigma=sigma, normed=False).sum(),
     ...     sigma**2 * 2*np.pi)
-    True
+    array([ True])
+
     """
 
     from scipy.special import erf
@@ -575,6 +581,8 @@ def ogrid_domain(domains, npts):
     >>> z, y, x = ogrid_domain(((0, 1), (1, 2), (2, 3)), (2, 3, 5))
     >>> zn, yn, xn = np.ogrid[0:1:2j, 1:2:3j, 2:3:5j]
     >>> np.allclose(x, xn) and np.allclose(y, yn) and np.allclose(z, zn)
+    True
+
     """
 
     npts = np.resize(npts, len(domains))  # Make it a 1D vector if needed
@@ -588,7 +596,8 @@ def ogrid_steps(ogrid):
     Compute ..., y, x steps from open coordinate grid.
 
     >>> ogrid_steps(np.ogrid[0:1:2j, 1:2:3j, 3:4:5j])
-    [1.0, 0.5, 0.25]
+    [np.float64(1.0), np.float64(0.5), np.float64(0.25)]
+
     """
 
     steps = []
@@ -643,13 +652,14 @@ def ogrid_extent(ogrid, reverse=True, full=False):
     Get extent [xmin, xmax, ymin, ymax, ...] (reversed).
 
     >>> ogrid_extent(np.ogrid[0:1:2j, 1:2:3j], reverse=False)
-    [0.0, 1.0, 1.0, 2.0]
+    [np.float64(0.0), np.float64(1.0), np.float64(1.0), np.float64(2.0)]
     >>> ogrid_extent(np.ogrid[0:1:2j, 1:2:3j], reverse=True)
-    [1.0, 2.0, 0.0, 1.0]
+    [np.float64(1.0), np.float64(2.0), np.float64(0.0), np.float64(1.0)]
     >>> ogrid_extent(np.ogrid[0:1:2j, 1:2:3j], reverse=False, full=True)
-    [-0.5, 1.5, 0.75, 2.25]
+    [np.float64(-0.5), np.float64(1.5), np.float64(0.75), np.float64(2.25)]
     >>> ogrid_extent(np.ogrid[0:1:2j, 1:2:3j], reverse=True, full=True)
-    [0.75, 2.25, -0.5, 1.5]
+    [np.float64(0.75), np.float64(2.25), np.float64(-0.5), np.float64(1.5)]
+
     """
 
     ids = [-1, 0] if reverse else [0, -1]

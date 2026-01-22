@@ -19,7 +19,7 @@ from .utils import recursive_get
 #                  #
 # ================ #
 def lbda_from_resolution_power(spectral_range, res_power, npx_resolution=2):
-    """Compute wavelength ramp for constant n-px resolving power.
+    r"""Compute wavelength ramp for constant n-px resolving power.
 
     Parameters
     ----------
@@ -644,7 +644,7 @@ class Spectrograph:
         return (np.asarray(self.spx_shape) * oversampling).astype(int)
 
     def get_resolving_power(self):
-        """ this is 'R' such as $\mathcal{R} = \lambda/\Delta\lambda$ 
+        r""" this is 'R' such as $\mathcal{R} = \lambda/\Delta\lambda$ 
         
         it is computed as lbda / np.difflbda_edges) / dispersion_resolution
         
@@ -1196,7 +1196,7 @@ class Spectrograph:
         return variance  # (nlbda,) [ADU²]
 
     def effective_resolution(self, average=False):
-        """ Effective spectral resolution.
+        r""" Effective spectral resolution.
 
         Parameters
         ----------
@@ -1583,7 +1583,7 @@ class Spectrograph:
                 color="#F8AD05", label="airy from telescope")
         ax.legend(fontsize="small", frameon=False)
 
-        ax.set_xlabel("wavelength [$\AA$]", fontsize="large")
+        ax.set_xlabel(r"wavelength [$\AA$]", fontsize="large")
         ax.set_ylabel("NEA [in pixels]", fontsize="large")
         if legend:
             ax.legend(fontsize="small", frameon=False)
@@ -1623,7 +1623,7 @@ class Spectrograph:
         ax.plot(self.lbda, nea_no_guiding, color="#194D80", ls="--", label="without guiding")
         ax.plot(self.lbda, nea_telescope, color="#F8AD05", label="airy from telescope")
 
-        ax.set_xlabel("wavelength [$\AA$]", fontsize="large")
+        ax.set_xlabel(r"wavelength [$\AA$]", fontsize="large")
         ax.set_ylabel("NEA [in spaxels]", fontsize="large")
         if legend:
             ax.legend(fontsize="small", frameon=False)
@@ -1677,7 +1677,7 @@ class Spectrograph:
             ax.axhspan(0, 2 * norm_sampling, color="tab:red", alpha=0.05, lw=0)
             ax.set_ylim(_ylow)
 
-        ax.set_xlabel("wavelength [$\AA$]", fontsize="large")
+        ax.set_xlabel(r"wavelength [$\AA$]", fontsize="large")
         ax.set_ylabel("FWHM [in spaxels]" if in_spaxels else "FWHM [in arcsec]", fontsize="large")
         if legend:
             ax.legend(fontsize="small", frameon=False)
@@ -1895,14 +1895,13 @@ class Spectrograph:
     @property
     def psf_sigma_spectral(self):
         """Chromatic PSF sigma in arcsec."""
-        if self.spatial_psf["sigma_spectral"] is None or \
-                self.spatial_psf["sigma_spectral"] in ["default"]:
+        if self.spatial_psf["sigma_spectral"] in (None, "default"):
             # 2.9 is the airy equivalent.
             from .profiles import airyradius_to_gaussiansigma
             radius_airy = self.telescope.get_airy_radius(self.lbda_ref)
             self.spatial_psf["sigma_spectral"] = airyradius_to_gaussiansigma(radius_airy, on="fwhm")
 
-        return self.spatial_psf["sigma_spectral"]
+        return self.spatial_psf["sigma_spectral"].item()
 
     @property
     def type(self):

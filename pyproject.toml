@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = ["setuptools>=42"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -10,11 +10,10 @@ readme = "README.md"
 authors = [
     {name = "Mickael Rigault", email = "m.rigault@ipnl.in2p3.fr"}
 ]
-license = {text = "Apache Software License"}
+license = "Apache-2.0"
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Topic :: Scientific/Engineering :: Astronomy",
     "Topic :: Scientific/Engineering :: Physics",
@@ -33,18 +32,8 @@ dependencies = [
 
 [project.optional-dependencies]
 docs = ["nbsphinx"]
-tests = ["pytest", "coverage"]
+tests = ["pytest", "pytest-doctestplus", "coverage"]
 
-
-[tool.pytest.ini_options]
-addopts = ["-ra", "--showlocals", "--strict-markers", "--strict-config"]
-testpaths = ["tests"]
-filterwarnings = [
-    # action:message:category:module:lineno
-    # "error",
-    # "ignore:.*Call to deprecated Parameter testval.*:DeprecationWarning:pymc3",
-    "ignore:.*Configuration file not found.*:Warning:dustmaps.config"
-]
 
 [project.urls]
 Homepage = "https://github.com/MickaelRigault/slicersim"
@@ -74,3 +63,32 @@ include = ["*.py"]
 [tool.ruff.lint]
 # Skip unused variable rules (`F841`).
 extend-ignore = ["F841", "E402"]
+
+[tool.pytest.ini_options]
+addopts = ["-ra", "--showlocals", "--strict-markers", "--strict-config"]
+# testpaths = ["tests"]
+norecursedirs = ["extra"]
+filterwarnings = [
+    # action:message:category:module:lineno
+    # "error",
+    # "ignore:.*Call to deprecated Parameter testval.*:DeprecationWarning:pymc3",
+    "ignore:.*Configuration file not found.*:Warning:dustmaps.config"
+]
+
+[tool.coverage.run]
+source = ["slicersim"]
+omit = ["tests/*"]
+
+# [tool.coverage.paths]
+# source = ["skysurvey", "*/site-packages"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover", # Have to re-enable the standard pragma
+  "except ImportError", # Don't complain about packages we have installed
+  "raise AssertionError", # Don't complain if tests don't hit assertion code
+  "raise NotImplementedError",
+  "'def main(.*):'", # Don't complain about script hooks
+  "if __name__ == .__main__.:",
+  "def _ipython_key_completions_", # Don't complain about IPython completion
+]
