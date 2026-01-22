@@ -344,7 +344,7 @@ class Telescope():
                         oversampling=10,
                         show_radius=False, shape=None,
                         normal_scatter=None,
-                        **kwargs):
+                        **kwargs): # pragma: no cover
         """Show the PSF profile.
 
         Parameters

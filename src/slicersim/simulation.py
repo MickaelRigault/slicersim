@@ -434,20 +434,25 @@ class Simulation():
         if which in ['all', '*']:
             which = self._elements  # Reset all elements
 
+        if "telescope" in which:
+            telescope = Telescope.from_config( self._in_meta.get("telescope") )
+            
         if "spectrograph" in which:
-            self.spectrograph = Spectrograph.from_config(
-                self.meta.get("spectrograph"))
+            telescope = self.telescope
+            self.spectrograph = self.spectrograph.__class__.from_config(self._in_meta.get("spectrograph"),
+                                                             telescope=telescope)
 
         if "scene" in which:
-            self.scene = Scene.from_config(
-                self.meta.get("scene"), self.spectrograph.lbda)
+            self.scene = Scene.from_config(self._in_meta.get("scene"), lbda=self.spectrograph.lbda)
 
         if "detector" in which:
             self.detector = Detector.from_config(
-                self.meta.get("detector"), self.spectrograph.lbda)
+                self._in_meta.get("detector"),
+                lbda = self.spectrograph.lbda,
+                thermaloptics = self.spectrograph.optics)
 
         if "extraction" in which:
-            self.extraction = self.meta.get("extraction")
+            self.extraction = self._in_meta.get("extraction")
 
     # -------- #
     #  GETTER  #
@@ -1065,8 +1070,8 @@ class Simulation():
     def _get_mla_cube_(self, psf_profile="default", switch_off=[],
                            as_oversampled=False, oversampling=None,
                            per_ramp=False, apply_lsf=True,
-                           **kwargs):
-        """Get MLA cube.
+                           **kwargs): # pragma: no cover 
+        """Get MLA cube. 
 
         Parameters
         ----------

@@ -18,6 +18,26 @@ def test_instanciation(simu):
     """ """
     assert isinstance(simu, Simulation), "failed to instanciate the Simulation"
 
+    
+def test_from_classmethods():
+    """ """
+    # from_source
+    lbda = np.linspace(3000, 20_000, 150)
+    flux = np.ones(lbda.shape) * 1e-17
+    
+    simu = Simulation.from_source(lbda, flux)
+    lbda, spec, var = simu.get_spectrum()
+    assert isinstance(simu, Simulation), "failed to instanciate the Simulation (from_source)"
+    assert len(spec) > 1
+
+    # from_scene
+    simu = Simulation.from_scene(redshift=1, snr=20)
+    lbda, spec, var = simu.get_spectrum()
+    exptime = simu.get_times()["total_exptime"]
+    assert isinstance(simu, Simulation), "failed to instanciate the Simulation (from_scene)"
+    assert exptime > 1
+    assert len(spec) > 1
+    
 # top functionalities
 def test_cube(simu):
     """ """
@@ -76,6 +96,24 @@ def test_update(simu):
     assert np.isclose(rpower.min(), requested_rmin, 1), "failed to reach the requested rmin"
     assert simu.spectrograph.dispersion_resolution == requested_spotsize, "dispersion resolution is not seft consistant."    
 
+def test_update_and_reset(simu):
+
+    lbda_ref, spec_ref, var_ref = simu.get_spectrum()
+    
+    # Changing int
+    simu.update(spx_shape=[10, 20], redshift=0.3, dark=0.01)
+    simu.change_spectrograph_resolution(220, spotsize=2.2)
+    lbda_changed, spec_changed, var_changed = simu.get_spectrum()
+    
+    # reset it
+    simu.reset()
+    lbda_test, spec_test, var_test = simu.get_spectrum()
+    
+    assert np.all(spec_test == spec_ref) & np.all(lbda_test == lbda_ref) & np.all(var_test == var_ref)
+    if lbda_changed.shape == lbda_ref.shape:
+            assert np.all(spec_changed != spec_ref) & np.all(lbda_changed != lbda_ref) & np.all(var_changed == var_ref)
+    # else: # no need to test as shape differs so...
+        
 def test_etc(simu):
     """ """
     requested_snr = 25
@@ -99,3 +137,14 @@ def test_etc(simu):
 
     # exptime
     assert exptime_05 < exptime_1 < exptime_15
+
+
+def test_data_volume(simu):
+    """ """
+    simu.update(nramp=1, nmd=(64, 8, 0)) # 1 ramp by default
+    datavolume_1ramp = simu.get_data_volume("GB")
+    simu.update(nramp=2) # 2 ramps as test
+    datavolume_2ramp = simu.get_data_volume("GB")
+    
+    assert (datavolume_1ramp>0.01) # 1 ramp should be at least 10 MB (500 likely)
+    assert (datavolume_2ramp == 2*datavolume_1ramp)
