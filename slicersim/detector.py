@@ -350,9 +350,9 @@ class Detector():
         pixel_area = self.get_pixel_size("m")**2 # pixel_size is in micro
 
         # the contribution from thermal emission of optcs, in ph/s
-        signals = self.thermaloptics.get_signal(lbda_bin = lbda_range, # expectedin in [A]
-                                                area = pixel_area, # Collecting area [m²]
-                                                qe=qe) # qe could be float or func
+        signals = thermaloptics.get_signal(lbda_bin = lbda_range, # expectedin in [A]
+                                            area = pixel_area, # Collecting area [m²]
+                                            qe=qe) # qe could be float or func
                                           
         # sum over 1 element if only 1 temperature
         if as_sum:
