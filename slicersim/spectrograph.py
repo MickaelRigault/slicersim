@@ -1902,7 +1902,7 @@ class Spectrograph:
             radius_airy = self.telescope.get_airy_radius(self.lbda_ref)
             self.spatial_psf["sigma_spectral"] = airyradius_to_gaussiansigma(radius_airy, on="fwhm")
 
-        return float(self.spatial_psf["sigma_spectral"])
+        return self.spatial_psf["sigma_spectral"]
 
     @property
     def type(self):

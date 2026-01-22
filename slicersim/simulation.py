@@ -1410,10 +1410,6 @@ class Simulation():
                 "variance": variance,                       # [ADU²]
                 } | variance_contribution
 
-    def estimate_variance_contribution_spectra(self, as_dataframe=True):
-        """DEPRECATED, use get_variance_contribution()"""
-        warnings.warn("DEPRECATED, use get_variance_contribution instead of estimate_variance_contribution_spectra")
-        return self.get_variance_contribution(as_dataframe=True)
 
     def get_variance_contribution(self, as_dataframe=True):    
         """Estimate different noise contributions to the total variance.
