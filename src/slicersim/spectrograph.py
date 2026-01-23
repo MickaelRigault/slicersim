@@ -178,7 +178,6 @@ def build_spaxels_from_config(config):
     return {"shape": spatial_shape,
             "spx_scale": spx_spatial_scale}
 
-
 def build_throughput_from_config(config):
     """Build throughput from a configuration dictionary.
 
@@ -212,10 +211,12 @@ def build_throughput_from_config(config):
         # it is itself a config. Let's use the dedicated object
         return OpticsThroughput.from_config(throughput)
 
-        
     # if we are here, throughput is a file containing the overall throughput
     return OpticsThroughput._read_ecsv(throughput)
 
+# ============== #
+#  Spectrograph  #
+# ============== #
 class Spectrograph:
     """Spectrograph simulation.
 
