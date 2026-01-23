@@ -148,3 +148,88 @@ def test_data_volume(simu):
     
     assert (datavolume_1ramp>0.01) # 1 ramp should be at least 10 MB (500 likely)
     assert (datavolume_2ramp == 2*datavolume_1ramp)
+
+
+def test_fetch_snr(simu):
+    """ """
+    requested_snr = 30
+    
+    # fetch snr.
+    simu.update(redshift=0.2)
+    config, snr, integration_time = simu.fetch_snr(requested_snr)
+    assert np.isclose(snr, requested_snr, 2), "snr is far from that requested."
+
+    simu.update(redshift=0.5)
+    config_mid, snr_mid, integration_time_mid = simu.fetch_snr(requested_snr)
+    assert np.isclose(snr_mid, requested_snr, 2), "snr is far from that requested."
+
+    simu.update(redshift=0.8)
+    config_high, snr_high, integration_time_high = simu.fetch_snr(requested_snr)
+    assert np.isclose(snr_high, requested_snr, 2), "snr is far from that requested."
+
+    # fetch snr.
+    simu.update(redshift=1.5)
+    config_long, snr_long, integration_time_long = simu.fetch_snr(requested_snr)
+    assert np.isclose(snr_long, requested_snr, 2), "snr is far from that requested."
+
+    assert integration_time <= integration_time_mid <= integration_time_high <= integration_time_long
+    assert config["nramps"] <= config_mid["nramps"] <= config_high["nramps"] <= config_long["nramps"]
+
+    
+def test_get_scene_cubes(simu):
+    """ """
+    cubes = simu.get_scene_cubes(unit="flambda")
+    
+    # you have one scene per diffracted source of light.
+    assert list(cubes.keys()) == ['pointsource', 'background', 'host_cube', 'thermal_cube']
+
+    # Test pointsource is correct. comparable as unit=flambda
+    pointsources = cubes["pointsource"]
+    
+    lbda_ref = simu.spectrograph.lbda
+    spectrum_pointsource = pointsources.sum( (-2,-1) )
+    _, spec_in = simu.scene.pointsource.get_spectrum(lbda_ref)
+    assert np.isclose(spectrum_pointsource, spec_in, rtol=1e-4).all()
+
+    # test flat background is indeed flat
+    slicefull = cubes["background"].sum(0)
+
+    assert len( np.unique(slicefull)) == 1
+
+def test_conversion(simu):
+
+    # test self-consistancy
+    assert simu.convert_units("flambda", "flambda") == 1
+    assert simu.convert_units("fphoton", "fphoton") == 1
+    assert simu.convert_units("rate", "rate") == 1
+
+    assert np.asarray(simu.convert_units("flambda", "adu") == 1/simu.convert_units("adu", "flambda")).all()
+    assert np.isclose(simu.convert_units("fphoton", "adu"), 1/simu.convert_units("adu", "fphoton")).all()
+    assert np.asarray(simu.convert_units("framerate", "adu") == 1/simu.convert_units("adu", "framerate")).all()
+
+    # test basics
+    assert (simu.convert_units("fphoton", "adu") > 1).all()
+
+    # combination
+    assert simu.convert_units("rate", "adu") == simu.detector.exposure_time
+    
+
+def test_pixel_variance(simu):
+    """ """
+    simu.update(nramps=1) # make sure this is at 1 ramp.
+    pixel_variance = simu.get_pixel_variance()
+    assert np.asarray(pixel_variance <= simu.detector.ron).all()
+    assert np.asarray(pixel_variance >= 0).all()
+
+
+def test_background_spectrum(simu):
+    """ """
+    bkgd_spec_adu = simu.get_background_spectrum(unit="adu")
+    assert bkgd_spec_adu.shape == simu.spectrograph.lbda.shape
+    assert np.all(bkgd_spec_adu >= 0)
+
+    bkgd_spec_flambda = simu.get_background_spectrum(unit="flambda")
+    spec_adu = simu.convert_units("flambda", "adu", bkgd_spec_flambda)
+    
+    assert np.isclose(bkgd_spec_adu, spec_adu, rtol=0.1).all()
+

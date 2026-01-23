@@ -859,8 +859,8 @@ class Spectrograph:
                 sigmas = np.hypot(sigmas, effective_sigma) # in spaxels
 
             prop = dict(in_arcsec=False, squeeze=False, oversampling=1)
-            if as_oversampled:  # no need to oversample as this uses exact erf functions.
-                warnings.warn(f"changin oversampling to {oversampling=}")
+            if as_oversampled:  # this is for test as one doesn't need to oversample since it uses erf functions.
+                # warnings.warn(f"changin oversampling to {oversampling=}")
                 prop["oversampling"] = oversampling
 
             (xx, yy), oversampling = self.get_spaxel_centroids(**prop)
@@ -879,14 +879,9 @@ class Spectrograph:
         #    gaussian scatter (like jitter)
         #
         # ----------------------------------------------------- #
-        #
 
         # This part of the code works in arcsec.
         position_xy = np.asarray(position_xy) * self.spx_spatial_scale[::-1] # in spaxels => arcsec
-#        if self.type == "slicer": # inject the anamorphone back in
-#            print(position_xy)
-#            position_xy /= self._ANAMORPHOSE
-#            print(f"becomes {position_xy=}")
 
         # to accomodate with non-square spaxels (like slicer)
         # we work in arcsec, not in spaxels.
@@ -1083,7 +1078,7 @@ class Spectrograph:
 
         return slices
 
-    def get_nea(self, position=(0, 0), nea_spatial=None, nea_pixels=None):
+    def get_nea(self, position=(0, 0), nea_spatial=None, nea_pixels=None): # pragma: no cover 
         """Noise Equivalent Area (PSF -> Spaxel -> detector).
 
         Parameters
@@ -1114,7 +1109,7 @@ class Spectrograph:
 
         return nea_spatial * nea_pixels
 
-    def get_nea_telescope_airy(self, position=(0, 0), in_spaxels=True):
+    def get_nea_telescope_airy(self, position=(0, 0), in_spaxels=True): # pragma: no cover 
         """Get the NEA of the telescope's Airy disk.
 
         Parameters
@@ -1195,38 +1190,6 @@ class Spectrograph:
 
         return variance  # (nlbda,) [ADU²]
 
-    def effective_resolution(self, average=False):
-        r""" Effective spectral resolution.
-
-        Parameters
-        ----------
-        average : bool, optional
-            If True, return the chromatic average. Default is False.
-
-        Returns
-        -------
-        float or array_like
-            Effective n-px wavelength resolution.
-
-        Notes
-        -----
-        .. math::
-
-           R &= \frac{2}{n \delta\lambda} \\
-           \delta\lambda &= \max(1, \sigma) \times \Delta\lambda
-
-        where :math:`\Delta\lambda` is the spectral step [Å] and
-        :math:`\sigma` is the spectral resolution [px].
-        """
-        dispersion_resolution = self.get_lsf_dispersion(as_ = "resolution") #
-
-        dlbda = np.diff(self.lbda_edges)
-        wres = self.lbda / (dispersion_resolution * dlbda)  # (nlbda,)
-
-        if average:  # Chromatic average
-            wres = np.average(wres, weights=dlbda)
-
-        return wres
 
     def get_lsf_dispersion(self, as_="scale"):
         """Get the gaussian LSF dispersion sigma in units of wavelength bin.
@@ -1452,7 +1415,7 @@ class Spectrograph:
     # ------------ #
     #   GETTER     #
     # ------------ #
-    def get_nea_spatial(self, position=(0, 0), in_spaxels=True, guiding_sigma=None):
+    def get_nea_spatial(self, position=(0, 0), in_spaxels=True, guiding_sigma=None): # pragma: no cover 
         """Noise equivalent area in unit of slice/spaxels.
 
         i.e., how many "spaxel noise".

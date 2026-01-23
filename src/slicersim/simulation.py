@@ -4,7 +4,7 @@ warnings.simplefilter('always', UserWarning)
 import numpy as np
 import pandas
 from .scene import Scene
-from .spectrograph import Spectrograph, MLASpectrograph, SlicerSpectrograph
+from .spectrograph import SlicerSpectrograph
 from .detector import Detector
 from .telescope import Telescope
 
@@ -253,6 +253,7 @@ class Simulation():
         if slicer:
             spectrograph = SlicerSpectrograph.from_config(config["spectrograph"], telescope=telescope)
         else:
+            from .spectrograph import MLASpectrograph
             spectrograph = MLASpectrograph.from_config(config["spectrograph"], telescope=telescope)
 
         # Initialize the scene from config (wavelength from spectrograph)
@@ -510,8 +511,8 @@ class Simulation():
         lbda = self.spectrograph.lbda # make sure it is up to date.
         return lbda, self.spectrograph.flambda2photon * self.detector.photonflux_to_adu(lbda)
 
-    def get_effective_waveresolution(self, npx=2, sigma=None):
-        r"""Effective wavelength resolution.
+    def get_resolving_power(self):
+        r""" resolving power (R)
 
         R &= \frac{2}{n \delta\lambda} \\
         with
@@ -521,13 +522,6 @@ class Simulation():
         and
         `\sigma` is the spectral resolution [px].
 
-        Parameters
-        ----------
-        npx : float, optional
-            n-px resolution (i.e. n px per spectral elements). Default is 2.
-        sigma : float, optional
-            Spectral PSF stddev override. Default is None.
-
         Returns
         -------
         lbda : array
@@ -536,8 +530,7 @@ class Simulation():
             Effective wavelength resolution.
 
         """
-        return self.spectrograph.lbda, \
-          self.spectrograph.effective_resolution(npx=npx, sigma=sigma)
+        return self.spectrograph.lbda, self.spectrograph.get_resolving_power()
 
     def get_pixel_variance(self, flux=0):
         """Get the variance associated with a single pixel on the detector.
@@ -558,7 +551,7 @@ class Simulation():
         pixel_var *= self.extraction["nramps"] # incl. multi ramp approach.
         return pixel_var
         
-    def get_nea(self, nea_spatial=None, nea_pixels=None):
+    def get_nea(self, nea_spatial=None, nea_pixels=None): # pragma: no cover 
         """Get the Noise Equivalent Area (NEA).
 
         The NEA is the product of the spatial NEA and the pixel NEA.
@@ -581,7 +574,7 @@ class Simulation():
         return self.spectrograph.get_nea(position = self.scene.pointsource.position,
                                           nea_spatial=nea_spatial, nea_pixels=nea_pixels)
             
-    def get_nea_variance(self, spectrum=None, nea_spatial=None, nea_pixels=None):
+    def get_nea_variance(self, spectrum=None, nea_spatial=None, nea_pixels=None): # pragma: no cover 
         """Get the variance estimated from the Noise Equivalent Area.
 
         Parameters
@@ -723,7 +716,8 @@ class Simulation():
 
         """
         if skyarea is None:
-            skyarea = self.spectrograph.spx_spatial_scale**2
+            spx_spatial = np.broadcast_to(self.spectrograph.spx_spatial_scale, (2,))
+            skyarea = np.prod(spx_spatial)
             
         # erg/s/cm²/Å / erg/ph * cm² * Å = ph/s
         background_flux = self.scene.background.get_spectrum(self.spectrograph.lbda)[1]
