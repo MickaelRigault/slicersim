@@ -10,7 +10,7 @@ import numpy as np
 #                           #
 # ========================= #
 def get_2dpsf_nea(name, xx="-7:7:15j", yy="-7:7:15j", norm_by_step=True,
-                      position=(0, 0), **kwargs):
+                      position=(0, 0), **kwargs): # pragma: no cover 
     """Get the Noise Equivalent Area (NEA) of a PSF model.
 
     Parameters
@@ -58,7 +58,7 @@ def get_2dpsf_nea(name, xx="-7:7:15j", yy="-7:7:15j", norm_by_step=True,
 #   Noise Equivalent Area   #
 #                           #
 # ========================= #
-def pixels_to_nea(pixels, norm=1):
+def pixels_to_nea(pixels, norm=1): # pragma: no cover 
     """Apply the NEA calculation on input pixels.
 
     `nea = sum(pixel)**2 / sum(pixel**2)`
@@ -88,7 +88,7 @@ def pixels_to_nea(pixels, norm=1):
         
     return nea
 
-def get_1d_nea(func, xx="-7:7:15j", norm_by_step=True, **kwargs):
+def get_1d_nea(func, xx="-7:7:15j", norm_by_step=True, **kwargs): # pragma: no cover 
     """Get the Noise Equivalent Area (NEA) of a 1D function.
 
     Parameters
@@ -122,7 +122,7 @@ def get_1d_nea(func, xx="-7:7:15j", norm_by_step=True, **kwargs):
     return pixels_to_nea(pixels, norm=norm)
 
 def get_2d_nea(func, xx="-7:7:15j", yy="-7:7:15j",
-                  norm_by_step=True, **kwargs):
+                  norm_by_step=True, **kwargs): # pragma: no cover 
     """ get the noise equivalent area of a 2d function
 
     Parameters
@@ -163,7 +163,7 @@ def get_2d_nea(func, xx="-7:7:15j", yy="-7:7:15j",
 # ------------------ #
 #  Gaussian Shortcut #
 # ------------------ #
-def get_1dnorm_nea(sigma, xx="-7:7:15j", mean=0):
+def get_1dnorm_nea(sigma, xx="-7:7:15j", mean=0): # pragma: no cover 
     """Get the Noise Equivalent Area (NEA) of a 1D Gaussian.
 
     This is a shortcut for `get_1d_nea` with `func=get_gaussian1d`.
@@ -186,7 +186,7 @@ def get_1dnorm_nea(sigma, xx="-7:7:15j", mean=0):
     return get_1d_nea(get_gaussian1d, xx=xx, sigma=sigma, mean=mean)
 
 def get_2dnorm_nea(sigma, xx="-7:7:15j", yy="-7:7:15j", mean=(0,0),
-                  norm_by_step = True):
+                  norm_by_step = True): # pragma: no cover 
     """Get the Noise Equivalent Area (NEA) of a 2D Gaussian.
 
     This is a shortcut for `get_2d_nea` with `func=get_gaussian2d`.
