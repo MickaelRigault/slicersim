@@ -203,7 +203,7 @@ class Telescope():
         return get_2dpsf_nea("airy", radius=radius, xx=xx, yy=yy,
                                  position=position, **kwargs)
 
-    def get_psfprofile(self, lbda, profile="airy", shape=None,
+    def get_psfprofile(self, lbda, profile="airy", shape=(10, 10),
                            normal_scatter=None,
                            oversampling=10, **kwargs):
         """Get the PSF profile.
@@ -234,7 +234,7 @@ class Telescope():
         radius = self.get_airy_radius(lbda)
         norm_pixels = 1/np.min(radius) # for corrected sampling
         if shape is None:
-            shape = ( int(radius*15), int(radius*15) )
+            shape = ( int(np.nanmax(radius)*10), int(np.nanmax(radius)*10) )
         
         shape = np.asarray(shape) * norm_pixels
         radius_eff = radius * norm_pixels
