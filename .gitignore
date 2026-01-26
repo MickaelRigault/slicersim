@@ -1,6 +1,7 @@
 .coverage*
 .idea/
 .ipynb_checkpoints/
+.tox/
 __pycache__/
 build/
 slicersim.egg-info/
