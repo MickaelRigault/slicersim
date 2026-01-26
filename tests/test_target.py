@@ -112,7 +112,6 @@ def test_field_position(lazulitarget):
     assert position_fine[1]<position_medium[1], "verticale position seems wrong in field locations"
 
 
-
 def test_lazuli_etc():
     lbda = np.linspace(3_000, 20_000, 500)
     flux = np.ones( lbda.shape )*1e-18
@@ -138,3 +137,14 @@ def test_calspec():
     _ = bd17.setup_to_snr(20)
     exptime = bd17.get_exposure_time()
     assert exptime > 10, "observing a mag=22 star should take more than 10s"
+
+def test_supernova_vs_lazulisupernova():
+    """ """
+    from slicersim.target import Supernova
+    from slicersim.lazuli import LazuliSupernova
+    
+    snia = Supernova("lazuli.toml", redshift=1)
+    lazulisnia = LazuliSupernova(redshift=1)
+    cube_lazuli, _ = lazulisnia.get_cube(which="current")
+    cube, _ = snia.get_cube()
+    assert np.all(cube == cube_lazuli), "cube from lazulisupernova differ from supernova('lazuli.toml')"

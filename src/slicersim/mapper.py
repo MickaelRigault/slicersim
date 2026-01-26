@@ -1,4 +1,6 @@
 import numpy as np
+import warnings
+
 from .utils import mesh_kwargs, unbin_array
 
 
@@ -7,23 +9,29 @@ class SlicerMapper():
     def __init__(self, spotdata,
                  detector_shape=(4096, 4096), 
                  pixel_size=10, # in micrometer
+                 spot_units="mm"
                 ):
         """ """
         self._spotdata = spotdata
         self._interp_map = self._build_interp_map_(spotdata)
         self._detector_shape = np.asarray(detector_shape, dtype="int")
         self._pixel_size = float(pixel_size) # in micro
-
+        self._units_in = spot_units
+        
     @classmethod
-    def from_spotdata(cls, spotdata):
+    def from_spotdata(cls, spotdata, spot_units="mm"):
         """ """
-        return cls(spotdata)
+        return cls(spotdata, spot_units=spot_units)
 
     @staticmethod
-    def _build_interp_map_(spotdata):
+    def _build_interp_map_(spotdata, lbda_in="micrometer", lbda_out="angstrom"):
         """ """
         from scipy.interpolate import LinearNDInterpolator
-        spotdata["lbda"] = spotdata["wavel_nm"].astype(float)*10_000 # in Angstrom
+        from astropy import units as u
+        units_convert = getattr(u, lbda_in).to(lbda_out)
+        print(units_convert)
+        spotdata["lbda"] = spotdata["wavel_nm"].astype(float)*units_convert
+        print(spotdata["lbda"])
         sliceposwave = spotdata[["slice", "fieldpos", "lbda"]].astype(float).values
         xy = spotdata[["x_mm", "y_mm"]].astype(float).values # in milimiter
         return LinearNDInterpolator(sliceposwave, xy)
@@ -88,8 +96,10 @@ class SlicerMapper():
                             wavelength=lbda)
         
         # xy are the "position" in the detector
-        xy = self.interp_map(df_in)
-        pixels = self.physical_to_pixels(xy).astype(int)
+        pixels = self.get_pixel_positions(df_in)
+
+        # flag entries out of interpolation boundaries.
+        flag_nan = np.isnan(pixels).any(axis=1)
         
         # these are the corresponding slice value (.T as lbda axis first.)
         # but do not affect the slice dimension
@@ -105,14 +115,15 @@ class SlicerMapper():
         image = np.full(self.detector["shape"], fill_value=fill_value, dtype="float")
         
         # .T[::-1] as numpy vs. mpl conventions: pixels[:,1], pixels[:,0]
-        x_, y_ = pixels.T[::-1]
-        image[x_, y_] += value_pixels_t
+        # flag_nan remove entries outsize of interpolation boundaries.
+        x_, y_ = pixels[~flag_nan].astype(int).T[::-1]
+        image[x_, y_] += value_pixels_t[~flag_nan]
 
         # the detector image
         return image
     
     def get_slice_contours(self, sliceid, lbda_range=[3_500, 17_000], 
-                          out_format="numpy", in_units="pixels",
+                          out_format="numpy", units="pixels",
                           slice_edge=[-1, 1],
                           combined=False):
         """
@@ -123,8 +134,8 @@ class SlicerMapper():
             - shapely (or geometry): a shapely polygon
             - numpy (or array): vertices of the edge.
 
-        in_units: string
-            unit of the output 
+        units: string
+            units of the output 
 
         combined: bool
             for several sliceid are given, should this return the edge of all
@@ -136,7 +147,7 @@ class SlicerMapper():
             return [self.get_slice_contours(sliceid_, 
                                             lbda_range=lbda_range,
                                             out_format=out_format, 
-                                            in_units=in_units,
+                                            units=units,
                                             slice_edge=slice_edge,
                                             combined=False)
                              for sliceid_ in sliceid]
@@ -151,12 +162,13 @@ class SlicerMapper():
         
         # xy are the "position" in the detector
         xy = self.interp_map(df_in)
-
-        # which "unit" you want this position to be in ?
-        if in_units in ["pixels", "pxl", "pixel"]:
+            
+        # which "units" you want this position to be in ?
+        if units in ["pixels", "pxl", "pixel"]:
             xy = self.physical_to_pixels(xy)
-        elif in_units not in ["physical", "mm"]:
-            raise ValueError(f"only physical or pixels unit implemented: {in_units:} given")
+            
+        elif units not in ["physical", "mm"]:
+            raise ValueError(f"only physical or pixels units implemented: {units:} given")
         # else: means physical so in mm
         
         # shapely geometry of the points edge 
@@ -170,7 +182,7 @@ class SlicerMapper():
         else:
             raise ValueError(f"Only array or geometry output format implemented: {out_format:} given")
 
-    def get_slice_inbox(self, sliceid, lbda_range=[3500, 17000], in_units='pixels'):
+    def get_slice_inbox(self, sliceid, lbda_range=[3500, 17000], units='pixels'):
         """ get the xmin, xmax, ymin, ymax of the rectangle in boxing the slice(s)
 
         Parameters
@@ -183,19 +195,32 @@ class SlicerMapper():
         """ 
         sliceid = np.atleast_1d(sliceid)
         slice_contours = self.get_slice_contours(sliceid, out_format='numpy', 
-                                                 lbda_range=lbda_range, in_units=in_units)
+                                                 lbda_range=lbda_range, units=units)
         if len(sliceid)==1:
             # generic format.
             slice_contours = slice_contours[None,:]
     
         return np.percentile(slice_contours, [0, 100], axis=1).T.squeeze()
 
-    
-    def physical_to_pixels(self, a, from_center=True, units_in="mm"):
+    def get_pixel_positions(self, coordinates):
+        """ get the position positions corresponding to the input paramaters. 
+
+        coordinates: dataframe
+            slice coordinates: [sliceid, slicepos, wavelength]
+            
+        Returns
+        -------
+        pixels
+        """
+        xy = self.interp_map(coordinates)
+        return self.physical_to_pixels(xy)
+        
+    def physical_to_pixels(self, a, from_center=True):
         """ converts physical coordinates into pixel coordinates """
         from astropy import units
+
         
-        a_pixels = a * getattr(units, units_in).to("micrometer") / self._pixel_size
+        a_pixels = a * getattr(units, self._units_in).to("micrometer") / self._pixel_size
         if from_center:
             a_pixels += self._detector_shape / 2 # set back the centroid to (0,0)
             
@@ -239,7 +264,7 @@ class SlicerMapper():
 
         # get slice vertices
         xys = self.get_slice_contours(sliceid, lbda_range=[lbda_min, lbda_max],
-                                     in_units="pixels",
+                                     units="pixels",
                                      out_format="numpy")
         # generalize 1 slice or n-slices
         if len(sliceid) == 1:
@@ -267,7 +292,7 @@ class SlicerMapper():
     def _show_slice_lbda_(self, sliceid, ax=None,
                           nlbda=10, cmap="coolwarm",
                          lbda_min=3500, lbda_max=17_000, 
-                         **kwargs):
+                         **kwargs): # pragma: no cover
         """ """
         import matplotlib.pyplot as plt
         from matplotlib.patches import Polygon
@@ -294,7 +319,7 @@ class SlicerMapper():
         for lbda_min_, lbda_max_ in zip(lbda_bins[:-1], lbda_bins[1:]):
             lbda_mean = np.mean([lbda_min_, lbda_max_])
             xys = self.get_slice_contours(sliceid, lbda_range=[lbda_min_, lbda_max_],
-                                                in_units="pixels",
+                                                units="pixels",
                                                 out_format="numpy")
             for xy_ in xys:
                 prop = dict(facecolor=cmap(norm(lbda_mean)), edgecolor="None")
@@ -324,6 +349,7 @@ class SlicerMapper():
     def spotdata(self):
         """ """
         return self._spotdata
+    
     @property
     def interp_map(self):
         """ """

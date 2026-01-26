@@ -1530,7 +1530,7 @@ class Simulation():
                       nframe_per_group_small=4,
                       small_ngroup_range=[32, 8],
                       allow_smaller_ramps=True,
-                      too_large=3.,
+                      too_large=1.,
                       ndrop=None,
                       guess=None,
                       fitter="native",
@@ -1596,7 +1596,7 @@ class Simulation():
         
         # default values are these from the current config.
         if nframe_per_group is None:
-            nframe_per_group = input_nmd[1]
+            nframe_per_group = int(input_nmd[1] + 0.) # copy
             
         if ndrop is None:
             ndrop = input_nmd[2]
@@ -1662,12 +1662,18 @@ class Simulation():
                                                              free_parameter=free_parameter,
                                                              iterstep=iterstep, maxiter=maxiter,
                                                              **prop_fetch)
-        # should the ramp size reduction be trigger ?
-        if free_parameter == "nramps" and (snr+too_large > target_snr) and allow_smaller_ramps:
+        # fine tune ramps
+        if free_parameter == "nramps" and allow_smaller_ramps and \
+            ((snr - too_large > target_snr) or (snr + too_large < target_snr)):
             # number of ramp that leads to too high snr. nramps-1 is too low by design here.
-            nramps = read_config["nramps"]
+            if snr - too_large > target_snr:
+                nramps = read_config["nramps"]
+            else:        
+                nramps = read_config["nramps"] + 1
+                
             nmd = list(read_config["nmd"]) # this is too much, copy and change.
             nmd[0] -= 10  # let's start lower as it is currently at max_group.
+            nmd[1] = nframe_per_group
             
             # fix the number of ramp, start -10 group as initial guess.
             self.update( nramps = nramps, nmd=nmd)
@@ -1676,8 +1682,7 @@ class Simulation():
             read_config, snr, integration_time = self._fetch_snr(target_snr,
                                                              free_parameter=free_parameter,
                                                              iterstep=iterstep, maxiter=maxiter,
-                                                             **prop_fetch)
-            
+                                                             **prop_fetch)            
         if reset_param:
             self.update(nmd = input_nmd, nramps=input_nramps)
 
