@@ -28,11 +28,12 @@ dependencies = [
     "astropy",
     "sncosmo",
     "extinction",
+    "requests",
 ]
 
 [project.optional-dependencies]
 docs = ["nbsphinx"]
-tests = ["pytest", "pytest-doctestplus", "coverage"]
+tests = ["pytest", "pytest-doctestplus", "pytest-cov"]
 
 
 [project.urls]
@@ -65,9 +66,16 @@ include = ["*.py"]
 extend-ignore = ["F841", "E402"]
 
 [tool.pytest.ini_options]
-addopts = ["-ra", "--showlocals", "--strict-markers", "--strict-config"]
+addopts = [
+    "-ra",
+    "--showlocals",
+    "--strict-markers",
+    "--strict-config",
+    "--doctest-glob=*.md",
+    "--doctest-continue-on-failure"
+]
 # testpaths = ["tests"]
-norecursedirs = ["extra"]
+norecursedirs = ["extra", "build"]
 filterwarnings = [
     # action:message:category:module:lineno
     # "error",
