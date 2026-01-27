@@ -21,13 +21,15 @@ classifiers = [
 keywords = ["astronomy", "astrophysics"]
 requires-python = ">=3.10"
 dependencies = [
+    "astropy",
+    "extinction",
     "numpy",
     "pandas",
-    "scipy",
-    "astropy",
-    "sncosmo",
-    "extinction",
     "requests",
+    "scipy",
+    "sep",
+    "shapely",
+    "sncosmo",
 ]
 
 [project.optional-dependencies]
@@ -66,10 +68,12 @@ extend-ignore = ["F841", "E402"]
 
 [tool.pytest.ini_options]
 addopts = [
+    "--import-mode=importlib",
     "-ra",
     "--showlocals",
     "--strict-markers",
     "--strict-config",
+    "--doctest-plus",
     "--doctest-glob=*.md",
     "--doctest-continue-on-failure"
 ]
