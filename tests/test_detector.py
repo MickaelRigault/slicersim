@@ -4,8 +4,6 @@ import pytest
 from slicersim.detector import Detector
 from slicersim.thermal import ThermalOptics
 
-import pytest
-
 @pytest.fixture
 def detector(default_config):
     return Detector.from_config(default_config["detector"])
