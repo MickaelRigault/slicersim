@@ -21,7 +21,7 @@ def target():
     """ """
     lbda = np.linspace(3_000, 20_000, 500)
     flux = np.ones( lbda.shape )*1e-18
-    return Target(lbda, flux, instrument="lazuli.toml")
+    return Target(lbda, flux, instrument="test_lazuli.toml")
 
 
 def test_supernovae(lazulisnia):

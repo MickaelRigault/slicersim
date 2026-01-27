@@ -7,7 +7,7 @@ from slicersim.sample import Sample
 def sample():
     import numpy as np
     redshift = np.linspace(0.2, 1.5, 10)
-    return Sample.from_sneia(redshift)
+    return Sample.from_sneia(redshift, )
 
 
 def test_instanciation(sample):

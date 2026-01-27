@@ -2,14 +2,12 @@ import numpy as np
 import pytest
 
 from slicersim.simulation import Simulation
-from slicersim import iotools
 
-
+from slicersim.iotools import TEST_CONFIG as test_config
 
 @pytest.fixture
 def simu():
-    config = iotools.get_config()
-    return Simulation.from_config(config)
+    return Simulation.from_config(test_config)
 
 # ======= #
 #  TESTS  #
@@ -208,10 +206,10 @@ def test_conversion(simu):
     assert np.asarray(simu.convert_units("framerate", "adu") == 1/simu.convert_units("adu", "framerate")).all()
 
     # test basics
-    assert (simu.convert_units("fphoton", "adu") > 1).all()
+    assert (simu.convert_units("fphoton", "adu") > 1).all(), "rate to adu test failed."
 
     # combination
-    assert simu.convert_units("rate", "adu") == simu.detector.exposure_time
+    assert simu.convert_units("rate", "adu") == simu.detector.exposure_time * simu.get_parameter("nramps"), "rate to adu test failed."
     
 
 def test_pixel_variance(simu):

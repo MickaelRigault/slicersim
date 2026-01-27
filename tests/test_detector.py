@@ -3,39 +3,35 @@ import numpy as np
 from slicersim.detector import Detector
 from slicersim.thermal import ThermalOptics
 
+import pytest
+from slicersim.iotools import TEST_CONFIG as test_config
 
 lbda_test = np.linspace(4_000, 18_000, 400)
 thermaloptics_test = ThermalOptics([200, 300], emissivity=[0.1, 0.01], fratio=[[15, 30], [7.5, 5.2]])
 
-def get_default_detector():
-    """ """
-    
-    from slicersim import iotools
 
-    config = iotools.get_config()["detector"]
-    return Detector.from_config(config)
+@pytest.fixture
+def detector():
+    """ """
+    return Detector.from_config( test_config["detector"] )
 
 # ============= #
 #   Tests        #
 # ============= #
-def test_detector_from_config():
+def test_instanciation(detector):
     """ """
-    detector = get_default_detector()
     assert isinstance(detector, Detector), "Detector.from_config() failed to return a detector"
 
-def test_qe():
+def test_qe(detector):
     """ """
-    detector = get_default_detector()
     qe = detector.get_qe(lbda_test)
-
+    
     assert qe.shape == lbda_test.shape, "test lbda shape and returned qe shape do not match"
     assert np.all((qe>=0) & (qe<=1)), "not all qe values are between 0 and 1"
 
-def test_thermal_dark():
+def test_thermal_dark(detector):
     """ """
     # This does not test the actual expected values for the thermal dark.
-    
-    detector = get_default_detector()
     null_termal = detector.get_thermal_dark()
     if detector.thermaloptics is None: # expect nothing, do I get nothing ?
         assert null_termal == 0, "empty detector.get_thermal_dark() returns non-zero dark value"

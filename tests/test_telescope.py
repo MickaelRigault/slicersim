@@ -1,14 +1,20 @@
 import numpy as np
-lbda_test = np.linspace(5000, 10000, 50)
 import pytest
+
+from slicersim.telescope import Telescope
+    
+from slicersim.iotools import TEST_CONFIG as test_config
+
+lbda_test = np.linspace(5000, 10000, 50)
 
 @pytest.fixture
 def telescope():
     """ """
-    from slicersim.telescope import Telescope
-    from slicersim.iotools import get_config
-    config = get_config()
-    return Telescope.from_config(config["telescope"])
+    return Telescope.from_config(test_config["telescope"])
+
+def test_instanciation(telescope):
+    """ """
+    assert isinstance(telescope, Telescope)
 
 def test_update_and_airy(telescope):
     """ """

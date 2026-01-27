@@ -1,14 +1,9 @@
 
 import numpy as np
 import pytest
-
-from slicersim import iotools
 from slicersim.spectrograph import OpticsThroughput
 
-@pytest.fixture
-def throughput():
-    config = iotools.get_config()["spectrograph"]["throughput"]
-    return OpticsThroughput.from_config(config)
+from slicersim.iotools import TEST_CONFIG as test_config
 
 def get_test_case(throughput):
     """ """
@@ -17,9 +12,14 @@ def get_test_case(throughput):
     lbda_test = np.linspace(knots[0], knots[1], 100)
     return test_name, lbda_test
 
+@pytest.fixture
+def throughput():
+    """ """
+    return OpticsThroughput.from_config( test_config["spectrograph"]["throughput"] )
 
 def test_instanciation(throughput):
-    assert isinstance(throughput, OpticsThroughput)
+    """ """
+    assert isinstance(throughput, OpticsThroughput), "throughput is not an OpticsThroughput"
     
 def test_get_throughput(throughput):
     """ """

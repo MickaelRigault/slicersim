@@ -2,27 +2,23 @@ import numpy as np
 import pytest
 
 from slicersim.spectrograph import Spectrograph, SlicerSpectrograph
+from slicersim.telescope import Telescope
+from slicersim.iotools import TEST_CONFIG as test_config
 
 
 @pytest.fixture
 def spectro():
     """ """
-    from slicersim import iotools
-    from slicersim.telescope import Telescope
-    
-    config = iotools.get_config()
-    telescope = Telescope.from_config( config["telescope"] )
-    return Spectrograph.from_config( config["spectrograph"], telescope=telescope)
+
+    telescope = Telescope.from_config( test_config["telescope"] )
+    return Spectrograph.from_config( test_config["spectrograph"], telescope=telescope)
 
 
 @pytest.fixture
 def slicer():
     """ """
-    from slicersim import iotools
-    from slicersim.telescope import Telescope
-    config = iotools.get_config()
-    telescope = Telescope.from_config( config["telescope"] )
-    return SlicerSpectrograph.from_config( config["spectrograph"], telescope=telescope)
+    telescope = Telescope.from_config( test_config["telescope"] )
+    return SlicerSpectrograph.from_config( test_config["spectrograph"], telescope=telescope)
 
 # ======= #
 #  TESTS  #

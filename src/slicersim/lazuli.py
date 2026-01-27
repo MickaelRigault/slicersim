@@ -496,7 +496,6 @@ class VirtualLazuliTarget():
     
         [ax.set_yticks([]) for ax in fig.axes]
         [ax.set_xticks([]) for ax in fig.axes]
-            
 
 # ============ #
 #  Specifics   #

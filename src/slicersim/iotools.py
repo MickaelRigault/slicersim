@@ -1,7 +1,6 @@
 """Access package data files."""
 
 import os
-import sys
 import numpy as np
 
 from scipy.interpolate import UnivariateSpline
@@ -16,7 +15,6 @@ except ModuleNotFoundError:
 
 
 PACKAGE_PATH = files("slicersim.config")     #: Path to data & config files.
-
 
 def expand_path(filename):
     """Get the full file path, including the config path if necessary.
@@ -97,7 +95,7 @@ def get_config(scene="supernova.toml", instrument="lazuli.toml"):
     instrument : str or dict, optional
         Filename defining the instrument, or a dictionary giving details.
         Default is "lazuli.toml".
-
+        
     Returns
     -------
     dict
@@ -358,3 +356,11 @@ def chromatic_interpolator(wavelength, quantity,
         interp = UnivariateSpline(wavelength, quantity, **options)
 
     return interp
+
+
+
+# ============ #
+#   FOR TEST   #
+# ============ #
+TEST_CONFIG = get_config(scene="test_supernova.toml",
+                         instrument="test_lazuli.toml")
