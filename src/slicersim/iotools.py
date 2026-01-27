@@ -356,11 +356,3 @@ def chromatic_interpolator(wavelength, quantity,
         interp = UnivariateSpline(wavelength, quantity, **options)
 
     return interp
-
-
-
-# ============ #
-#   FOR TEST   #
-# ============ #
-TEST_CONFIG = get_config(scene="test_supernova.toml",
-                         instrument="test_lazuli.toml")
