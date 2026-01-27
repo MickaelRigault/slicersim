@@ -19,7 +19,7 @@ from .utils import recursive_get
 #                  #
 # ================ #
 def lbda_from_resolution_power(spectral_range, res_power, npx_resolution=2):
-    """Compute wavelength ramp for constant n-px resolving power.
+    r"""Compute wavelength ramp for constant n-px resolving power.
 
     Parameters
     ----------
@@ -178,7 +178,6 @@ def build_spaxels_from_config(config):
     return {"shape": spatial_shape,
             "spx_scale": spx_spatial_scale}
 
-
 def build_throughput_from_config(config):
     """Build throughput from a configuration dictionary.
 
@@ -212,10 +211,12 @@ def build_throughput_from_config(config):
         # it is itself a config. Let's use the dedicated object
         return OpticsThroughput.from_config(throughput)
 
-        
     # if we are here, throughput is a file containing the overall throughput
     return OpticsThroughput._read_ecsv(throughput)
 
+# ============== #
+#  Spectrograph  #
+# ============== #
 class Spectrograph:
     """Spectrograph simulation.
 
@@ -644,7 +645,7 @@ class Spectrograph:
         return (np.asarray(self.spx_shape) * oversampling).astype(int)
 
     def get_resolving_power(self):
-        """ this is 'R' such as $\mathcal{R} = \lambda/\Delta\lambda$ 
+        r""" this is 'R' such as $\mathcal{R} = \lambda/\Delta\lambda$ 
         
         it is computed as lbda / np.difflbda_edges) / dispersion_resolution
         
@@ -859,8 +860,8 @@ class Spectrograph:
                 sigmas = np.hypot(sigmas, effective_sigma) # in spaxels
 
             prop = dict(in_arcsec=False, squeeze=False, oversampling=1)
-            if as_oversampled:  # no need to oversample as this uses exact erf functions.
-                warnings.warn(f"changin oversampling to {oversampling=}")
+            if as_oversampled:  # this is for test as one doesn't need to oversample since it uses erf functions.
+                # warnings.warn(f"changin oversampling to {oversampling=}")
                 prop["oversampling"] = oversampling
 
             (xx, yy), oversampling = self.get_spaxel_centroids(**prop)
@@ -879,14 +880,9 @@ class Spectrograph:
         #    gaussian scatter (like jitter)
         #
         # ----------------------------------------------------- #
-        #
 
         # This part of the code works in arcsec.
         position_xy = np.asarray(position_xy) * self.spx_spatial_scale[::-1] # in spaxels => arcsec
-#        if self.type == "slicer": # inject the anamorphone back in
-#            print(position_xy)
-#            position_xy /= self._ANAMORPHOSE
-#            print(f"becomes {position_xy=}")
 
         # to accomodate with non-square spaxels (like slicer)
         # we work in arcsec, not in spaxels.
@@ -1083,7 +1079,7 @@ class Spectrograph:
 
         return slices
 
-    def get_nea(self, position=(0, 0), nea_spatial=None, nea_pixels=None):
+    def get_nea(self, position=(0, 0), nea_spatial=None, nea_pixels=None): # pragma: no cover 
         """Noise Equivalent Area (PSF -> Spaxel -> detector).
 
         Parameters
@@ -1114,7 +1110,7 @@ class Spectrograph:
 
         return nea_spatial * nea_pixels
 
-    def get_nea_telescope_airy(self, position=(0, 0), in_spaxels=True):
+    def get_nea_telescope_airy(self, position=(0, 0), in_spaxels=True): # pragma: no cover 
         """Get the NEA of the telescope's Airy disk.
 
         Parameters
@@ -1195,38 +1191,6 @@ class Spectrograph:
 
         return variance  # (nlbda,) [ADU²]
 
-    def effective_resolution(self, average=False):
-        """ Effective spectral resolution.
-
-        Parameters
-        ----------
-        average : bool, optional
-            If True, return the chromatic average. Default is False.
-
-        Returns
-        -------
-        float or array_like
-            Effective n-px wavelength resolution.
-
-        Notes
-        -----
-        .. math::
-
-           R &= \frac{2}{n \delta\lambda} \\
-           \delta\lambda &= \max(1, \sigma) \times \Delta\lambda
-
-        where :math:`\Delta\lambda` is the spectral step [Å] and
-        :math:`\sigma` is the spectral resolution [px].
-        """
-        dispersion_resolution = self.get_lsf_dispersion(as_ = "resolution") #
-
-        dlbda = np.diff(self.lbda_edges)
-        wres = self.lbda / (dispersion_resolution * dlbda)  # (nlbda,)
-
-        if average:  # Chromatic average
-            wres = np.average(wres, weights=dlbda)
-
-        return wres
 
     def get_lsf_dispersion(self, as_="scale"):
         """Get the gaussian LSF dispersion sigma in units of wavelength bin.
@@ -1452,7 +1416,7 @@ class Spectrograph:
     # ------------ #
     #   GETTER     #
     # ------------ #
-    def get_nea_spatial(self, position=(0, 0), in_spaxels=True, guiding_sigma=None):
+    def get_nea_spatial(self, position=(0, 0), in_spaxels=True, guiding_sigma=None): # pragma: no cover 
         """Noise equivalent area in unit of slice/spaxels.
 
         i.e., how many "spaxel noise".
@@ -1546,7 +1510,7 @@ class Spectrograph:
     # -------- #
     #  SHOW    #
     # -------- #
-    def show_nea(self, ax=None, position=(0, 0), legend=True):
+    def show_nea(self, ax=None, position=(0, 0), legend=True): # pragma: no cover
         """Show the Noise Equivalent Area.
 
         Parameters
@@ -1583,14 +1547,14 @@ class Spectrograph:
                 color="#F8AD05", label="airy from telescope")
         ax.legend(fontsize="small", frameon=False)
 
-        ax.set_xlabel("wavelength [$\AA$]", fontsize="large")
+        ax.set_xlabel(r"wavelength [$\AA$]", fontsize="large")
         ax.set_ylabel("NEA [in pixels]", fontsize="large")
         if legend:
             ax.legend(fontsize="small", frameon=False)
 
         return fig
 
-    def show_nea_spatial(self, ax=None, position=(0, 0), legend=True):
+    def show_nea_spatial(self, ax=None, position=(0, 0), legend=True): # pragma: no cover
         """Show the spatial Noise Equivalent Area.
 
         Parameters
@@ -1623,14 +1587,14 @@ class Spectrograph:
         ax.plot(self.lbda, nea_no_guiding, color="#194D80", ls="--", label="without guiding")
         ax.plot(self.lbda, nea_telescope, color="#F8AD05", label="airy from telescope")
 
-        ax.set_xlabel("wavelength [$\AA$]", fontsize="large")
+        ax.set_xlabel(r"wavelength [$\AA$]", fontsize="large")
         ax.set_ylabel("NEA [in spaxels]", fontsize="large")
         if legend:
             ax.legend(fontsize="small", frameon=False)
 
         return fig
 
-    def show_fwhm(self, ax=None, legend=True, guiding_arcsec=None, in_arcsec=False, show_band=True):
+    def show_fwhm(self, ax=None, legend=True, guiding_arcsec=None, in_arcsec=False, show_band=True): # pragma: no cover
         """Show the Full Width at Half Maximum (FWHM) of the PSF.
 
         Parameters
@@ -1677,18 +1641,18 @@ class Spectrograph:
             ax.axhspan(0, 2 * norm_sampling, color="tab:red", alpha=0.05, lw=0)
             ax.set_ylim(_ylow)
 
-        ax.set_xlabel("wavelength [$\AA$]", fontsize="large")
+        ax.set_xlabel(r"wavelength [$\AA$]", fontsize="large")
         ax.set_ylabel("FWHM [in spaxels]" if in_spaxels else "FWHM [in arcsec]", fontsize="large")
         if legend:
             ax.legend(fontsize="small", frameon=False)
 
         return fig
 
-    def show_psf(self, lbda_range, profile="default",
+    def show_psf(self, lbda_range, profile="default", 
                  guiding_arcsec=None, axes=None,
                  position=(0, 0), oversampling=5,
                  in_arcsec=False,
-                 norm="log", **kwargs):
+                 norm="log", **kwargs): # pragma: no cover
         """Show the spatial PSF.
 
         Parameters
@@ -1895,180 +1859,19 @@ class Spectrograph:
     @property
     def psf_sigma_spectral(self):
         """Chromatic PSF sigma in arcsec."""
-        if self.spatial_psf["sigma_spectral"] is None or \
-                self.spatial_psf["sigma_spectral"] in ["default"]:
+        if self.spatial_psf["sigma_spectral"] in (None, "default"):
             # 2.9 is the airy equivalent.
             from .profiles import airyradius_to_gaussiansigma
             radius_airy = self.telescope.get_airy_radius(self.lbda_ref)
             self.spatial_psf["sigma_spectral"] = airyradius_to_gaussiansigma(radius_airy, on="fwhm")
 
-        return float(self.spatial_psf["sigma_spectral"])
+        return self.spatial_psf["sigma_spectral"].item()
 
     @property
     def type(self):
         """Type of the spectrograph."""
         return self._SPECTROGRAPH_TYPE
 
-
-class MLASpectrograph(Spectrograph):
-    """A spectrograph with no anamorphose and x-dispersion for traces."""
-    _ANAMORPHOSE = None
-    _SPECTROGRAPH_TYPE = "mla"
-
-    def __init__(self, xdispersion={}, *args, **kwargs):
-        """Initialize the MLASpectrograph.
-
-        Parameters
-        ----------
-        xdispersion : dict, optional
-            Cross-dispersion information. Default is {}.
-        *args
-            Variable length argument list.
-        **kwargs
-            Arbitrary keyword arguments.
-        """
-        _ = super().__init__(*args, **kwargs)
-
-        # an MLA has a cross-dispersion
-        self.xdispersion = xdispersion
-
-    # this is what from_config needs
-    @classmethod
-    def _parse_config(cls, config):
-        """Parse the configuration dictionary.
-
-        Parameters
-        ----------
-        config : dict
-            Configuration dictionary.
-
-        Returns
-        -------
-        dict
-            Initialization properties.
-        dict
-            Input configuration.
-        """
-
-        init_prop, config = super()._parse_config(config)
-
-        # PSF at the detector level
-        xdispersion = {"sigma_spectral": float(config["psf"]["detector"]["xdisp_sigma_spectral"]),
-                       "sigma": float(config["psf"]["detector"]["xdisp_sigma"]),
-                       "profile": config["psf"]["detector"]["xdisp_profile"]}
-        init_prop["xdispersion"] = xdispersion
-        return init_prop, config
-
-    def update(self, reset_others=False, **kwargs):
-        """Update any mutable attribute of the spectrograph.
-
-        Parameters
-        ----------
-        reset_others : bool, optional
-            If True, reset other parameters to their initial values.
-            Default is False.
-        **kwargs
-            Parameters to update.
-        """
-        # do xdispersion stuffs
-        xdisp_updates = {}
-        for k, v in kwargs.items():
-            if k in self.meta["psf"]["detector"].keys():
-                xdisp_updates[k.replace("xdisp_", "")] = v
-                _ = kwargs.pop(k)  # remove them
-
-        self.xdispersion = self.xdispersion | xdisp_updates
-        # and the rest (normal spectrograph)
-        return super().update(reset_others=False, **kwargs)
-
-    def get_xdisp_sigma_spectral(self, xdims=0, xdisp_sigma=None):
-        """Get spectral PSF stddev in pixels.
-
-        The total (Gaussian) spectral PSF is made of two components:
-        - the optical (chromatic) component, with stddev proportional
-          to wavelength, normalized at wref=1 µm,
-        - the achromatic component, with constant stddev.
-
-        If needed, the 1D vector can be embedded in a N-dim array of
-        shape `(nlbda,) + (1,)*xdims`.
-
-        Parameters
-        ----------
-        xdims : int, optional
-            Extra dimensions to be appended. Default is 0.
-        xdisp_sigma : float, optional
-            Constant sigma override in pixels. Default is None.
-
-        Returns
-        -------
-        array_like
-            Total sigma in pixels.
-        """
-        if xdisp_sigma is None:
-            xdisp_sigma = self.xdispersion["sigma"]
-
-        # adding the internal PSF 
-        inst_psf = self.get_instrumental_psf(in_spaxels=True)
-        if inst_psf is not None and inst_psf>0:
-            xdisp_sigma = np.hypot(xdisp_sigma, inst_psf)
-            
-        return self._get_chromatic_sigma(self.lbda,
-                                         chromatic_sigma=self.xdispersion["sigma_spectral"],
-                                         constant_sigma=xdisp_sigma,
-                                         wref=self.lbda_ref,
-                                         xdims=xdims)
-    
-    def get_nea_spatial(self, position=(0, 0), in_spaxels=True, guiding_sigma=None):
-        """Noise equivalent area in unit of slice/spaxels.
-
-        i.e., how many "spaxel noise".
-
-        Parameters
-        ----------
-        position : tuple, optional
-            Position of the PSF in unit of spaxel/slicer. Default is (0, 0).
-        in_spaxels : bool, optional
-            If True, return the area in spaxels^2. If False, in arcsec^2.
-            Default is True.
-        guiding_sigma : float, optional
-            Guiding sigma override in arcsec. Default is None.
-
-        Returns
-        -------
-        array_like
-            Noise equivalent area.
-        """
-        from .nea import get_2dnorm_nea
-
-        if self.spatial_psf["profile"] not in ("normal", "norm", "gaussian"):
-            raise NotImplementedError(f"only gaussian spatial PSF profile implemented, but: {self.spatial_psf['profile']=}")
-
-        sigma_at_mla = self.get_psf_sigma_spectral(in_spaxels=in_spaxels,
-                                                   guiding_sigma=guiding_sigma)
-        return get_2dnorm_nea(sigma_at_mla, mean=position)
-
-    def get_nea_pixels(self):
-        """Noise equivalent area of a spaxel/slice in unit of pixels.
-
-        Returns
-        -------
-        array_like
-            Noise equivalent area in pixels.
-        """
-        from .nea import get_1dnorm_nea
-        if self.xdispersion["profile"] not in ("normal", "norm", "gaussian"):
-            raise NotImplementedError(f"only gaussian xdispersion PSF profile implemented, but: {self.xdispersion['profile']=}")
-
-        sigma_xdisp_at_detector = self.get_xdisp_sigma_spectral()  # in pixels
-        return get_1dnorm_nea(sigma_xdisp_at_detector)
-
-    # ============== #
-    #   Properties   #
-    # ============== #
-    @property
-    def xdisp_sigma_spectral(self):
-        """Chromatic cross-dispersion sigma in pixels."""
-        return self.xdispersion["sigma_spectral"]
 
 
 class SlicerSpectrograph(Spectrograph):
@@ -2113,6 +1916,167 @@ class SlicerSpectrograph(Spectrograph):
             Noise equivalent area in pixels (1 for a slicer).
         """
         return 1
+
+
+class MLASpectrograph(Spectrograph): 
+    """A spectrograph with no anamorphose and x-dispersion for traces."""
+    _ANAMORPHOSE = None
+    _SPECTROGRAPH_TYPE = "mla"
+
+    def __init__(self, xdispersion={}, *args, **kwargs): # pragma: no cover
+        """Initialize the MLASpectrograph.
+
+        Parameters
+        ----------
+        xdispersion : dict, optional
+            Cross-dispersion information. Default is {}.
+        *args
+            Variable length argument list.
+        **kwargs
+            Arbitrary keyword arguments.
+        """
+        _ = super().__init__(*args, **kwargs)
+
+        # an MLA has a cross-dispersion
+        self.xdispersion = xdispersion
+
+    # this is what from_config needs
+    @classmethod
+    def _parse_config(cls, config):# pragma: no cover
+        """Parse the configuration dictionary.
+
+        Parameters
+        ----------
+        config : dict
+            Configuration dictionary.
+
+        Returns
+        -------
+        dict
+            Initialization properties.
+        dict
+            Input configuration.
+        """
+
+        init_prop, config = super()._parse_config(config)
+
+        # PSF at the detector level
+        xdispersion = {"sigma_spectral": float(config["psf"]["detector"]["xdisp_sigma_spectral"]),
+                       "sigma": float(config["psf"]["detector"]["xdisp_sigma"]),
+                       "profile": config["psf"]["detector"]["xdisp_profile"]}
+        init_prop["xdispersion"] = xdispersion
+        return init_prop, config
+
+    def update(self, reset_others=False, **kwargs): # pragma: no cover
+        """Update any mutable attribute of the spectrograph.
+
+        Parameters
+        ----------
+        reset_others : bool, optional
+            If True, reset other parameters to their initial values.
+            Default is False.
+        **kwargs
+            Parameters to update.
+        """
+        # do xdispersion stuffs
+        xdisp_updates = {}
+        for k, v in kwargs.items():
+            if k in self.meta["psf"]["detector"].keys():
+                xdisp_updates[k.replace("xdisp_", "")] = v
+                _ = kwargs.pop(k)  # remove them
+
+        self.xdispersion = self.xdispersion | xdisp_updates
+        # and the rest (normal spectrograph)
+        return super().update(reset_others=False, **kwargs)
+
+    def get_xdisp_sigma_spectral(self, xdims=0, xdisp_sigma=None): # pragma: no cover
+        """Get spectral PSF stddev in pixels.
+
+        The total (Gaussian) spectral PSF is made of two components:
+        - the optical (chromatic) component, with stddev proportional
+          to wavelength, normalized at wref=1 µm,
+        - the achromatic component, with constant stddev.
+
+        If needed, the 1D vector can be embedded in a N-dim array of
+        shape `(nlbda,) + (1,)*xdims`.
+
+        Parameters
+        ----------
+        xdims : int, optional
+            Extra dimensions to be appended. Default is 0.
+        xdisp_sigma : float, optional
+            Constant sigma override in pixels. Default is None.
+
+        Returns
+        -------
+        array_like
+            Total sigma in pixels.
+        """
+        if xdisp_sigma is None:
+            xdisp_sigma = self.xdispersion["sigma"]
+
+        # adding the internal PSF 
+        inst_psf = self.get_instrumental_psf(in_spaxels=True)
+        if inst_psf is not None and inst_psf>0:
+            xdisp_sigma = np.hypot(xdisp_sigma, inst_psf)
+            
+        return self._get_chromatic_sigma(self.lbda,
+                                         chromatic_sigma=self.xdispersion["sigma_spectral"],
+                                         constant_sigma=xdisp_sigma,
+                                         wref=self.lbda_ref,
+                                         xdims=xdims)
+    
+    def get_nea_spatial(self, position=(0, 0), in_spaxels=True, guiding_sigma=None): # pragma: no cover
+        """Noise equivalent area in unit of slice/spaxels.
+
+        i.e., how many "spaxel noise".
+
+        Parameters
+        ----------
+        position : tuple, optional
+            Position of the PSF in unit of spaxel/slicer. Default is (0, 0).
+        in_spaxels : bool, optional
+            If True, return the area in spaxels^2. If False, in arcsec^2.
+            Default is True.
+        guiding_sigma : float, optional
+            Guiding sigma override in arcsec. Default is None.
+
+        Returns
+        -------
+        array_like
+            Noise equivalent area.
+        """
+        from .nea import get_2dnorm_nea
+
+        if self.spatial_psf["profile"] not in ("normal", "norm", "gaussian"):
+            raise NotImplementedError(f"only gaussian spatial PSF profile implemented, but: {self.spatial_psf['profile']=}")
+
+        sigma_at_mla = self.get_psf_sigma_spectral(in_spaxels=in_spaxels,
+                                                   guiding_sigma=guiding_sigma)
+        return get_2dnorm_nea(sigma_at_mla, mean=position)
+
+    def get_nea_pixels(self): # pragma: no cover
+        """Noise equivalent area of a spaxel/slice in unit of pixels.
+
+        Returns
+        -------
+        array_like
+            Noise equivalent area in pixels.
+        """
+        from .nea import get_1dnorm_nea
+        if self.xdispersion["profile"] not in ("normal", "norm", "gaussian"):
+            raise NotImplementedError(f"only gaussian xdispersion PSF profile implemented, but: {self.xdispersion['profile']=}")
+
+        sigma_xdisp_at_detector = self.get_xdisp_sigma_spectral()  # in pixels
+        return get_1dnorm_nea(sigma_xdisp_at_detector)
+
+    # ============== #
+    #   Properties   #
+    # ============== #
+    @property
+    def xdisp_sigma_spectral(self): # pragma: no cover
+        """Chromatic cross-dispersion sigma in pixels."""
+        return self.xdispersion["sigma_spectral"]
 
 
 # ================ #
@@ -2422,7 +2386,7 @@ class OpticsThroughput( object ):
             
         return np.asarray(curve)
 
-    def show(self, lbda, ax=None):
+    def show(self, lbda, ax=None): # pragma: no cover 
         """Show the throughput of the optical system.
 
         This method plots the throughput of each element and the total

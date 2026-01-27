@@ -4,7 +4,7 @@ warnings.simplefilter('always', UserWarning)
 import numpy as np
 import pandas
 from .scene import Scene
-from .spectrograph import Spectrograph, MLASpectrograph, SlicerSpectrograph
+from .spectrograph import SlicerSpectrograph
 from .detector import Detector
 from .telescope import Telescope
 
@@ -253,6 +253,7 @@ class Simulation():
         if slicer:
             spectrograph = SlicerSpectrograph.from_config(config["spectrograph"], telescope=telescope)
         else:
+            from .spectrograph import MLASpectrograph
             spectrograph = MLASpectrograph.from_config(config["spectrograph"], telescope=telescope)
 
         # Initialize the scene from config (wavelength from spectrograph)
@@ -329,12 +330,12 @@ class Simulation():
         such that, e.g. 'pointsource__phase' is understood as
         'pointsource.phase'. This way, one can do:
 
-        >>> self.update(pointsource__phase = -1)
+        >>> self.update(pointsource__phase = -1)  # doctest: +SKIP
 
         For convinience, you can specify a shorten name, like "phase". If the
         correspondance to a mutable_parameters is uniquen this will accept it.
 
-        >>> self.update(phase = -1)
+        >>> self.update(phase = -1)  # doctest: +SKIP
 
         For convenience and backward compatiblity, you can use "target__" in
         place of "pointsource__".
@@ -434,20 +435,25 @@ class Simulation():
         if which in ['all', '*']:
             which = self._elements  # Reset all elements
 
+        if "telescope" in which:
+            telescope = Telescope.from_config( self._in_meta.get("telescope") )
+            
         if "spectrograph" in which:
-            self.spectrograph = Spectrograph.from_config(
-                self.meta.get("spectrograph"))
+            telescope = self.telescope
+            self.spectrograph = self.spectrograph.__class__.from_config(self._in_meta.get("spectrograph"),
+                                                             telescope=telescope)
 
         if "scene" in which:
-            self.scene = Scene.from_config(
-                self.meta.get("scene"), self.spectrograph.lbda)
+            self.scene = Scene.from_config(self._in_meta.get("scene"), lbda=self.spectrograph.lbda)
 
         if "detector" in which:
             self.detector = Detector.from_config(
-                self.meta.get("detector"), self.spectrograph.lbda)
+                self._in_meta.get("detector"),
+                lbda = self.spectrograph.lbda,
+                thermaloptics = self.spectrograph.optics)
 
         if "extraction" in which:
-            self.extraction = self.meta.get("extraction")
+            self.extraction = self._in_meta.get("extraction")
 
     # -------- #
     #  GETTER  #
@@ -505,8 +511,8 @@ class Simulation():
         lbda = self.spectrograph.lbda # make sure it is up to date.
         return lbda, self.spectrograph.flambda2photon * self.detector.photonflux_to_adu(lbda)
 
-    def get_effective_waveresolution(self, npx=2, sigma=None):
-        """Effective wavelength resolution.
+    def get_resolving_power(self):
+        r""" resolving power (R)
 
         R &= \frac{2}{n \delta\lambda} \\
         with
@@ -516,13 +522,6 @@ class Simulation():
         and
         `\sigma` is the spectral resolution [px].
 
-        Parameters
-        ----------
-        npx : float, optional
-            n-px resolution (i.e. n px per spectral elements). Default is 2.
-        sigma : float, optional
-            Spectral PSF stddev override. Default is None.
-
         Returns
         -------
         lbda : array
@@ -531,8 +530,7 @@ class Simulation():
             Effective wavelength resolution.
 
         """
-        return self.spectrograph.lbda, \
-          self.spectrograph.effective_resolution(npx=npx, sigma=sigma)
+        return self.spectrograph.lbda, self.spectrograph.get_resolving_power()
 
     def get_pixel_variance(self, flux=0):
         """Get the variance associated with a single pixel on the detector.
@@ -553,7 +551,7 @@ class Simulation():
         pixel_var *= self.extraction["nramps"] # incl. multi ramp approach.
         return pixel_var
         
-    def get_nea(self, nea_spatial=None, nea_pixels=None):
+    def get_nea(self, nea_spatial=None, nea_pixels=None): # pragma: no cover 
         """Get the Noise Equivalent Area (NEA).
 
         The NEA is the product of the spatial NEA and the pixel NEA.
@@ -576,7 +574,7 @@ class Simulation():
         return self.spectrograph.get_nea(position = self.scene.pointsource.position,
                                           nea_spatial=nea_spatial, nea_pixels=nea_pixels)
             
-    def get_nea_variance(self, spectrum=None, nea_spatial=None, nea_pixels=None):
+    def get_nea_variance(self, spectrum=None, nea_spatial=None, nea_pixels=None): # pragma: no cover 
         """Get the variance estimated from the Noise Equivalent Area.
 
         Parameters
@@ -718,7 +716,8 @@ class Simulation():
 
         """
         if skyarea is None:
-            skyarea = self.spectrograph.spx_spatial_scale**2
+            spx_spatial = np.broadcast_to(self.spectrograph.spx_spatial_scale, (2,))
+            skyarea = np.prod(spx_spatial)
             
         # erg/s/cm²/Å / erg/ph * cm² * Å = ph/s
         background_flux = self.scene.background.get_spectrum(self.spectrograph.lbda)[1]
@@ -1065,8 +1064,8 @@ class Simulation():
     def _get_mla_cube_(self, psf_profile="default", switch_off=[],
                            as_oversampled=False, oversampling=None,
                            per_ramp=False, apply_lsf=True,
-                           **kwargs):
-        """Get MLA cube.
+                           **kwargs): # pragma: no cover 
+        """Get MLA cube. 
 
         Parameters
         ----------
@@ -1410,10 +1409,6 @@ class Simulation():
                 "variance": variance,                       # [ADU²]
                 } | variance_contribution
 
-    def estimate_variance_contribution_spectra(self, as_dataframe=True):
-        """DEPRECATED, use get_variance_contribution()"""
-        warnings.warn("DEPRECATED, use get_variance_contribution instead of estimate_variance_contribution_spectra")
-        return self.get_variance_contribution(as_dataframe=True)
 
     def get_variance_contribution(self, as_dataframe=True):    
         """Estimate different noise contributions to the total variance.
@@ -1535,7 +1530,7 @@ class Simulation():
                       nframe_per_group_small=4,
                       small_ngroup_range=[32, 8],
                       allow_smaller_ramps=True,
-                      too_large=3.,
+                      too_large=1.,
                       ndrop=None,
                       guess=None,
                       fitter="native",
@@ -1601,7 +1596,7 @@ class Simulation():
         
         # default values are these from the current config.
         if nframe_per_group is None:
-            nframe_per_group = input_nmd[1]
+            nframe_per_group = int(input_nmd[1] + 0.) # copy
             
         if ndrop is None:
             ndrop = input_nmd[2]
@@ -1667,12 +1662,18 @@ class Simulation():
                                                              free_parameter=free_parameter,
                                                              iterstep=iterstep, maxiter=maxiter,
                                                              **prop_fetch)
-        # should the ramp size reduction be trigger ?
-        if free_parameter == "nramps" and (snr+too_large > target_snr) and allow_smaller_ramps:
+        # fine tune ramps
+        if free_parameter == "nramps" and allow_smaller_ramps and \
+            ((snr - too_large > target_snr) or (snr + too_large < target_snr)):
             # number of ramp that leads to too high snr. nramps-1 is too low by design here.
-            nramps = read_config["nramps"]
+            if snr - too_large > target_snr:
+                nramps = read_config["nramps"]
+            else:        
+                nramps = read_config["nramps"] + 1
+                
             nmd = list(read_config["nmd"]) # this is too much, copy and change.
             nmd[0] -= 10  # let's start lower as it is currently at max_group.
+            nmd[1] = nframe_per_group
             
             # fix the number of ramp, start -10 group as initial guess.
             self.update( nramps = nramps, nmd=nmd)
@@ -1681,8 +1682,7 @@ class Simulation():
             read_config, snr, integration_time = self._fetch_snr(target_snr,
                                                              free_parameter=free_parameter,
                                                              iterstep=iterstep, maxiter=maxiter,
-                                                             **prop_fetch)
-            
+                                                             **prop_fetch)            
         if reset_param:
             self.update(nmd = input_nmd, nramps=input_nramps)
 
@@ -1823,7 +1823,7 @@ class Simulation():
     # ---------- #
     #  Plotting  #
     # ---------- # 
-    def show_spectrum(self, ax=None, switch_off=[], snr=False, **kwargs):
+    def show_spectrum(self, ax=None, switch_off=[], snr=False, **kwargs): # pragma: no cover
         """Plot the detected spectrum.
 
         Parameters
@@ -1874,7 +1874,7 @@ class Simulation():
         return ax
 
     def show_cube(self, in_photons=True, switch_off=[], spec_prop={},
-                      psf_profile="default", **kwargs):
+                      psf_profile="default", **kwargs): # pragma: no cover
         """Display the cube generated by :meth:`get_projected_scene`.
 
         The figure has two panels:
@@ -1933,7 +1933,7 @@ class Simulation():
                    rest_lbda_range = [4000, 7000],
                    obs_lbda_ranges = [[4000, 6000], [9000, 11_000], [14_000, 16_000]],
                    psf_profile="default", oversampling=None, prop_slice={},
-                  **kwargs):
+                  **kwargs): # pragma: no cover
         """Show the scene.
 
         Parameters
@@ -2010,7 +2010,7 @@ class Simulation():
         return fig
             
 
-    def show_nea_fwhm(self, figsize=(4,7)):
+    def show_nea_fwhm(self, figsize=(4,7)): # pragma: no cover
         """Show NEA and FWHM.
 
         Parameters
@@ -2039,7 +2039,7 @@ class Simulation():
     
     def show_variance_sources(self, variance_contrib=None, flux_calibrated=True,
                                   normalize_variances=True,
-                                  figsize=(7, 7), gridspec={}):
+                                  figsize=(7, 7), gridspec={}): # pragma: no cover
         """Summary figure showing various variance contributions.
 
         Parameters

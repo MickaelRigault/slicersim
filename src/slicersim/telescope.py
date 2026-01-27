@@ -173,7 +173,7 @@ class Telescope():
         """
         return 1.22 * np.atleast_1d(lbda) * units.angstrom.to("m") / self.diameter_ext * units.radian.to("arcsec") / norm_scale
     
-    def get_nea_airy(self, lbda, norm_scale=1, padding=5, position=(0, 0), **kwargs):
+    def get_nea_airy(self, lbda, norm_scale=1, padding=5, position=(0, 0), **kwargs): # pragma: no cover
         """Get the Noise Equivalent Area of the Airy disk.
 
         Parameters
@@ -203,7 +203,7 @@ class Telescope():
         return get_2dpsf_nea("airy", radius=radius, xx=xx, yy=yy,
                                  position=position, **kwargs)
 
-    def get_psfprofile(self, lbda, profile="airy", shape=None,
+    def get_psfprofile(self, lbda, profile="airy", shape=(10, 10),
                            normal_scatter=None,
                            oversampling=10, **kwargs):
         """Get the PSF profile.
@@ -234,7 +234,7 @@ class Telescope():
         radius = self.get_airy_radius(lbda)
         norm_pixels = 1/np.min(radius) # for corrected sampling
         if shape is None:
-            shape = ( int(radius*15), int(radius*15) )
+            shape = ( int(np.nanmax(radius)*10), int(np.nanmax(radius)*10) )
         
         shape = np.asarray(shape) * norm_pixels
         radius_eff = radius * norm_pixels
@@ -344,7 +344,7 @@ class Telescope():
                         oversampling=10,
                         show_radius=False, shape=None,
                         normal_scatter=None,
-                        **kwargs):
+                        **kwargs): # pragma: no cover
         """Show the PSF profile.
 
         Parameters

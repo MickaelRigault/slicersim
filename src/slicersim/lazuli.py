@@ -342,13 +342,15 @@ class VirtualLazuliTarget():
             cubes_medium = None
     
         # revert back to original config (could be )
-        self.change_spectrograph(**current_config)
+        self.change_spectrograph(sampling=current_sampling, **current_config)
         self.simulation.update(position = original_position)
     
         if which == "both":
             return cubes_fine, cubes_medium
+        
         elif which == "fine":
             return cubes_fine
+        
         elif which == "medium":
             return cubes_medium
 
@@ -380,6 +382,7 @@ class VirtualLazuliTarget():
         """
         if position is None:
             position = np.asarray(self.simulation.get_parameter("position"))
+            
         if field is None:
             field, _ = self.get_spectrograph_sampling()
         
@@ -418,7 +421,7 @@ class VirtualLazuliTarget():
         return position_fine, position_medium
 
     @staticmethod
-    def _get_fieldlayout_(fig=None, left=0.1, bottom=0.1, right=0.9, top=0.9):
+    def _get_fieldlayout_(fig=None, left=0.1, bottom=0.1, right=0.9, top=0.9): # pragma: no cover
         """ get matploblib's axes corresponding to the Lazuli layout.
         
         Parameters
@@ -446,7 +449,7 @@ class VirtualLazuliTarget():
         return fig, (axfine, axmed)
 
     def show_cube(self, cubes=None, lbda_range=400, cube_prop={},
-                      axes=None, norm="PowerNorm", **kwargs):
+                      axes=None, norm="PowerNorm", **kwargs): # pragma: no cover
         """ """
         from matplotlib import colors
 
@@ -493,7 +496,6 @@ class VirtualLazuliTarget():
     
         [ax.set_yticks([]) for ax in fig.axes]
         [ax.set_xticks([]) for ax in fig.axes]
-            
 
 # ============ #
 #  Specifics   #
@@ -503,7 +505,7 @@ class LazuliSupernova( VirtualLazuliTarget, Supernova ):
     """Lazuli class for Supernovae.
 
     Parameters
-    ----------s
+    ----------
     model : str, optional
         The supernova model to use. Default is "salt".
     slicer : bool, optional
@@ -562,8 +564,7 @@ class LazuliCalSpec( VirtualLazuliTarget, CalSpec  ):
             Background to use. Default is "zodi".
         **kwargs
             Goes to `simulation.Simulation.from_source()`.
-        """
-        
+        """        
         lbda, flux, _ = self._SOURCES.get_spectrum(name)
         simulation = Simulation.from_source(lbda, flux, background=background,
                                                 **kwargs)
