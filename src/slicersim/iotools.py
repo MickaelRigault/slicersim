@@ -298,14 +298,14 @@ def read_calspec(filename, url=CALSPEC_URL, wrange=[3_990, 17_010],
 
     Examples
     --------
-    >>> tab = read_calspec('gd71_mod_011.fits',
+    >>> tab = read_calspec('gd71_mod_012.fits',
     ...                    description='GD71') # doctest: +ELLIPSIS
     Reading GD71 CalSpec file 'https://archive.stsci.edu/...
     >>> tab.info()
-    <Table length=43736>
-     name       dtype                   unit                 format
-    ---------- ------- ------------------------------------ --------
-    wavelength float64                             Angstrom {:10.4g}
+    <Table length=43735>
+       name     dtype           unit           format
+    ---------- ------- ---------------------- --------
+    wavelength float64               Angstrom {:10.4g}
           flux float32 erg / (Angstrom s cm2) {:12.4e}
     """
 
@@ -315,7 +315,7 @@ def read_calspec(filename, url=CALSPEC_URL, wrange=[3_990, 17_010],
     if description:
         print(f"Reading {description} CalSpec file {fname!r}...")
 
-    tab = Table.read(fname, cache=True)  # cache the table
+    tab = Table.read(fname, unit_parse_strict="silent")
     assert (tab['WAVELENGTH'].unit == "ANGSTROMS" and
             tab['FLUX'].unit == "FLAM"), \
         f"Incompatible CalSpec table {fname!r}"
