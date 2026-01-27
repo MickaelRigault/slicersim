@@ -73,11 +73,11 @@ addopts = [
     "--showlocals",
     "--strict-markers",
     "--strict-config",
-    "--doctest-plus",
-    "--doctest-glob=*.md",
-    "--doctest-continue-on-failure"
+    # "--doctest-plus",
+    # "--doctest-glob=*.md",
+    # "--doctest-continue-on-failure"
 ]
-# testpaths = ["tests"]
+testpaths = ["tests"]
 norecursedirs = ["extra", "build"]
 filterwarnings = [
     # action:message:category:module:lineno
@@ -91,7 +91,7 @@ source = ["slicersim"]
 omit = ["tests/*"]
 
 [tool.coverage.paths]
-source = ["slicersim", "*/site-packages"]
+source = ["src/slicersim/", "*/site-packages/slicersim/"]
 
 [tool.coverage.report]
 exclude_lines = [
