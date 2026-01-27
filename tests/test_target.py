@@ -5,6 +5,21 @@ from slicersim.lazuli import lazuli_etc, LazuliCalSpec
 import pytest
 
 @pytest.fixture
+def instrument_config(default_config):
+    """ """
+    from copy import deepcopy
+    instrument_config = deepcopy(default_config)
+    _ = instrument_config.pop("scene")
+    return instrument_config
+
+@pytest.fixture
+def target(instrument_config):
+    """ """
+    lbda = np.linspace(3_000, 20_000, 500)
+    flux = np.ones( lbda.shape )*1e-18
+    return Target(lbda, flux, instrument=instrument_config)
+
+@pytest.fixture
 def lazulitarget():
     """ """
     lbda = np.linspace(3_000, 20_000, 500)
@@ -15,14 +30,6 @@ def lazulitarget():
 def lazulisnia():
     """ """
     return slicersim.LazuliSupernova(redshift=1)
-
-@pytest.fixture
-def target():
-    """ """
-    lbda = np.linspace(3_000, 20_000, 500)
-    flux = np.ones( lbda.shape )*1e-18
-    return Target(lbda, flux, instrument="test_lazuli.toml")
-
 
 def test_supernovae(lazulisnia):
     """ """
@@ -67,7 +74,7 @@ def test_variance_contribution(target):
     variance_df = target.get_variance_contribution()
     assert variance_df.shape[0] == len(target.simulation.spectrograph.lbda), "variance shape not correct."
     assert np.all([k in variance_df.columns for k in target.simulation.variance_sources]), "missing variance source"
-
+    
 def test_data_volume(target):
     """ """
     # data volume
@@ -138,12 +145,12 @@ def test_calspec():
     exptime = bd17.get_exposure_time()
     assert exptime > 10, "observing a mag=22 star should take more than 10s"
 
-def test_supernova_vs_lazulisupernova():
+def test_supernova_vs_lazulisupernova(instrument_config):
     """ """
     from slicersim.target import Supernova
     from slicersim.lazuli import LazuliSupernova
     
-    snia = Supernova("lazuli.toml", redshift=1)
+    snia = Supernova(instrument_config, redshift=1)
     lazulisnia = LazuliSupernova(redshift=1)
     cube_lazuli, _ = lazulisnia.get_cube(which="current")
     cube, _ = snia.get_cube()

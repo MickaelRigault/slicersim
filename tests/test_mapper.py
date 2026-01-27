@@ -3,12 +3,12 @@ import pandas
 
 from slicersim.utils import mesh_kwargs
 from slicersim.mapper import SlicerMapper
+from slicersim.iotools import expand_path
 
 import pytest
 
 DETECTOR_MAX_SIZE = 5_000
-data = pandas.read_csv("/Users/rigault/data/lazuli/from_science/spotposition_20251020.csv",
-                sep=" ")
+data = pandas.read_csv(expand_path("mapping_spotdata.csv"), sep=" ")
 
 @pytest.fixture
 def mapper():

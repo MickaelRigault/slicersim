@@ -3,22 +3,18 @@ import pytest
 
 from slicersim.spectrograph import Spectrograph, SlicerSpectrograph
 from slicersim.telescope import Telescope
-from slicersim.iotools import TEST_CONFIG as test_config
+
+# default_config is defined as a fixture in conftest
+@pytest.fixture
+def spectro(default_config):
+    telescope = Telescope.from_config( default_config["telescope"] )
+    return Spectrograph.from_config( default_config["spectrograph"], telescope=telescope)
 
 
 @pytest.fixture
-def spectro():
-    """ """
-
-    telescope = Telescope.from_config( test_config["telescope"] )
-    return Spectrograph.from_config( test_config["spectrograph"], telescope=telescope)
-
-
-@pytest.fixture
-def slicer():
-    """ """
-    telescope = Telescope.from_config( test_config["telescope"] )
-    return SlicerSpectrograph.from_config( test_config["spectrograph"], telescope=telescope)
+def slicer(default_config):
+    telescope = Telescope.from_config( default_config["telescope"] )
+    return SlicerSpectrograph.from_config( default_config["spectrograph"], telescope=telescope)
 
 # ======= #
 #  TESTS  #
@@ -33,12 +29,12 @@ def test_lbda(spectro):
 
 def test_generate(spectro):
     """ """
-    
+
     # pointsource
     lbda = spectro.lbda
     spec = np.ones( lbda.shape ) * 1e-18
     flux_ph = spectro.generate_pointsource(spec, psf_profile="gaussian")
-    
+
     assert flux_ph.shape == (len(spectro.lbda), *spectro.spx_shape)
     assert np.all(flux_ph>=0), "not all data are positively defined."
 
@@ -66,11 +62,11 @@ def test_resolving_power(spectro):
     # this is another way to build it.
     # should be self consistant.
 
-    # dispersion resolution. Is it self-consistant ? 
+    # dispersion resolution. Is it self-consistant ?
     dispersion_resolution = spectro.get_lsf_dispersion(as_ = "resolution") #
     assert (dispersion_resolution == spectro.dispersion_resolution)
 
-    # definition of R. Is it self-consistant ? 
+    # definition of R. Is it self-consistant ?
     dlbda = np.diff(spectro.lbda_edges)
     wres = spectro.lbda / (dispersion_resolution * dlbda)  # (nlbda,)
     assert (resolving_power == wres).all()
@@ -108,7 +104,7 @@ def test_throughput(spectro):
 
 
 def test_oversampling(slicer):
-    
+
     spectrum = np.ones( slicer.lbda.shape ) * 1e-18
     cube = slicer.generate_pointsource(spectrum)
     cube_oversampling = slicer.generate_pointsource(spectrum, oversampling=10)
@@ -119,9 +115,9 @@ def test_oversampling(slicer):
 
 def test_cube_profile(slicer):
     """ """
-    
+
     flux = np.ones(slicer.lbda.shape)
-    
+
     # generate cubes using 3 different profiles.
     cube_gaussian = slicer.generate_pointsource( flux,  psf_profile="gaussian", oversampling=10)
     cube_gaussianastro = slicer.generate_pointsource( flux,  psf_profile="Gaussian2D", oversampling=10) # astropy Gaussian
@@ -131,9 +127,9 @@ def test_cube_profile(slicer):
     specsum_gaussian = cube_gaussian.sum((-2,-1))
     specsum_gaussianastro = cube_gaussianastro.sum((-2,-1))
     specsum_airy = cube_airy.sum((-2,-1))
-    
+
     assert np.isclose(specsum_gaussian/specsum_airy, 1, rtol=0.1).all()
-    assert np.isclose(specsum_gaussian/specsum_gaussianastro, 1, rtol=0.1).all()    
+    assert np.isclose(specsum_gaussian/specsum_gaussianastro, 1, rtol=0.1).all()
 
 
 def test_thermal_dark(spectro):
@@ -143,10 +139,10 @@ def test_thermal_dark(spectro):
 
     thermal_dark_sum = spectro.get_thermal_dark(pixel_area, as_sum=True)
     thermal_dark_details = spectro.get_thermal_dark(pixel_area, as_sum=False)
-    
+
     assert thermal_dark_sum >= 0
     assert np.all(thermal_dark_details>=0)
-    assert thermal_dark_details.shape == spectro.optics.temperature.shape    
+    assert thermal_dark_details.shape == spectro.optics.temperature.shape
 
 
 def test_cube_to_slice(spectro):
@@ -166,10 +162,10 @@ def test_cube_to_slice(spectro):
     slice_blue_and_red = spectro.cube_to_slice( cube, [lbda_range_blue, lbda_range_red])
 
     slice_full = spectro.cube_to_slice( cube, [spectro.lbda[0], spectro.lbda[-1]], func=np.nansum, squeeze=True)
-    
+
     assert slice_blue.shape == (1, *cube.shape[1:])
     assert slice_red.shape == (1, *cube.shape[1:])
-    
+
     assert slice_bluesqueeze.shape == cube.shape[1:]
     assert slice_blue_and_red.shape == (2, *cube.shape[1:])
     assert (slice_full == np.nansum(cube, axis=0)).all()

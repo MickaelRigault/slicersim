@@ -1,0 +1,15 @@
+[scene.pointsource]
+name = "SN Ia"
+source = "twins-embedding"  # twins embedding model (flux in [erg/cm²/s/Å])
+redshift = 1.5
+phase = 0                  # Phase of the target. 0 means at max for SN Ia.
+position = [1, 0.5]        # Position in MLA [spx] (to account for sub-px effect)
+magnitude = 0.1            # twins embedding magnitude offset
+color = 0.1                # twins embedding color parameter
+coordinates = [0.0, 1.0, 2.0]  # twins embedding coordinates
+
+[scene.background]
+name = "zodi"
+model = "Aldering01.BB5800"  # Model [erg/cm²/s/Å/arcsec²] at North Ecliptic Pole
+# See 2022A&A...662A.112E (Euclid prep. I)
+scale = 2.0                  # Scaling factor (roughly 20° from ecliptic)

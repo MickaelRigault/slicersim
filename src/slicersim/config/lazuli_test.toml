@@ -1,0 +1,97 @@
+# Instrumental parameters ==============================
+
+# ============= # 
+#  Telescope    #
+# ============= # 
+[telescope]
+diameter_ext = 3.0				# Primary mirror external diameter [m]
+diameter_int = 0           			# Primary mirror internal diameter [m]
+temperature = [283, 253, 283, 278]          	# Mirror temperature [K] (0 for none)
+emissivity = [0.05, 0.02, 0.02, 0.02]       	# Mirror emissivity
+nelements = [1, 1, 1, 1]  		    	# number of optics per elements
+
+
+# ============= # 
+# Spectrograph  #
+# ============= #
+[spectrograph]
+name = "LazuliSlicer"
+spectral_range = [4_000, 17_000]		# Wavelength domain [Å]
+lbda_ref = 10_000               		# reference wavelength [Å]
+
+# ------------- #
+#  disperion    #	 # disperion *or* spectral resolution #
+# ------------- #
+dispersion_law = "dispersion_default.ecsv"	# Dispersion law ECSV file
+                                           	# (wavelength, offset [px])
+                                           	# (should be consistent w/ px_size)
+dispersion_scale = 1.3                     	# Dispersion law scaling 1.3: default, 1.6 = Bertin's (for a dispersion_resolution of 2)
+dispersion_resolution = 2.0		   	# number of pixel per resolution element.
+# spectral_resolution = 100   			# Constant 2-px resolving power (log sampling)
+
+# ------------- #
+#  Spaxel       #
+# ------------- #
+spatial_scale = 0.040				# spatial sampling (spaxel scale) [arcsec/spx]
+spatial_shape = [29, 58]   	    		# IFS shape (ny, nx) [spatial] *prior* anamorphone
+
+# ------------- #
+#  Throughput   #
+# ------------- #
+[spectrograph.throughput]
+throughput = "throughput_default.csv"		# Detailed throughput from dec 2025
+noptics = [9, 4, 1, 1]				# internal optics, IFU, filter, prism
+
+# ------------- #
+#  Optics       #	 # elements that matter for the thermal dark -> after dispersor #  
+# ------------- #
+[spectrograph.optics]
+temperature = [220, 220, 220, 220]		# Mirror temperature [K] (0 for none)
+emissivity = [0.05, 0.05, 0.03, 0.03]       	# Mirror emissivity
+nelements = [5, 6, 1, 4]  		    	# number of optics per elements
+fratio = [ [15, 30], [7.5, 5.2], [7.5, 5.2], [7.5, 5.2] ]
+geometry = ["circular", "square", "square", "square"] # optics geometrical shape
+
+# ------------- #
+#  PSF          #
+# ------------- #
+[spectrograph.psf.spatial]
+psf_profile = "normal"				# Chromatic PSF profile
+psf_sigma_spectral = "default"  		# Chromatic (∝ λ) spatial PSF on MLA [arcsec] at {lbda_ref}
+guiding_profile = "normal"      		# Achromatic guiding/jitter/aberrations profile
+guiding_sigma = 0.010       			# Achromatic guiding/jitter/aberrations on MLA [arcsec]
+
+[spectrograph.psf.detector]
+xdisp_profile = "normal"			# [MLA] 
+xdisp_sigma_spectral = 0.9			# [MLA] Chromatic (∝ λ) cross-dispersion PSF [px] at {lbda_ref}
+xdisp_sigma = 0.3      				# [MLA] Achromatic cross-dispersion PSF [px]
+
+
+
+# ============= # 
+#  Detector     #        # QE: either a constant or an ECSV file #
+# ============= #
+[detector]
+name = "H4RG17"
+shape = [4096, 4096]
+QE = "qe_H4RG17_default.ecsv"			# Quantum efficiency ECSV file [e-/ph] (wavelength, qe) ; could be e.g. QE = 0.8
+gain = 1.0                 			# Gain [ADU/e-]
+saturation = 65635         			# Saturation limit [ADU] (0 for none)
+readout_noise = 10.0       			#  read-out noise per frame [e-]
+tframe = 2.830             			# Single frame (read) time [s]
+pixel_size = 10.0          			# Pixel physical size [µm]	   
+readout_mode = [16, 8, 0]			# (N * (M + D) - D) = 256 frames, exptime = 12'05''
+max_group = 64 	           			# maximum number of groups per ramp
+variance_model = "Rauscher07"  			# Variance model (Kubik20 or Rauscher07)
+dark = 2.8e-3              			# Dark current [e-/s/px] 
+
+
+
+# ============= # 
+#  Extraction   #        # nramps is part of extraction, not detector #
+# ============= #
+[extraction]
+nramps = 1                     			# Number of (similar) ramps
+xdisp_width_insigma = 10			# [MLA] Spectrogram cross-disp. aperture width [xdisp_sigma]
+aperture_radius_insigma = 10  			# Spatial aperture radius [spatial_sigma]
+

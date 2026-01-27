@@ -1,0 +1,11 @@
+[scene.point_source]
+name = "PN"
+source = "SMC-SMP-20"      # PN name
+reference = "SMC-SMP-20_spectrum.fits" # Spectrum file name
+position = [1, 0.5]        # Position in MLA [spx] (to account for sub-px effect)
+
+[scene.background]
+name = "zodi"
+model = "Aldering01.BB5800"  # Model [erg/cm²/s/Å/arcsec²] at North Ecliptic Pole
+# See 2022A&A...662A.112E (Euclid prep. I)
+scale = 2.0                  # Scaling factor (roughly 20° from ecliptic)
