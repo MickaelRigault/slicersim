@@ -8,24 +8,21 @@ from scipy.interpolate import UnivariateSpline
 import astropy.units as u
 from astropy.table import Table
 
-if sys.version_info[:2] >= (3, 10):
-    from importlib.resources import files  # Python 3.10+
-else:
-    from importlib_resources import files  # External backport
+from importlib.resources import files  
 try:
     import tomllib                         # Python 3.11+
 except ModuleNotFoundError:
     import tomli as tomllib                # External
 
 
-MLAPERF_PATH = files("slicersim.config")     #: Path to data & config files.
+PACKAGE_PATH = files("slicersim.config")     #: Path to data & config files.
 
 
 def expand_path(filename):
     """Get the full file path, including the config path if necessary.
 
     If the input filename does not specifically include a path, it will be
-    looked for in the default :data:`MLAPERF_PATH` directory.
+    looked for in the default :data:`PACKAGE_PATH` directory.
 
     Parameters
     ----------
@@ -40,8 +37,8 @@ def expand_path(filename):
 
     if os.path.dirname(filename):  # filename includes a path
         fname = filename
-    else:                          # use MLAPERF_PATH as default
-        fname = MLAPERF_PATH.joinpath(filename)
+    else:                          # use PACKAGE_PATH as default
+        fname = PACKAGE_PATH.joinpath(filename)
 
     return fname
 
@@ -113,7 +110,7 @@ def read_config(filename, verbose=False):
     """Read a single configuration file.
 
     - If the input filename does not specifically include a path, it will be
-      looked for in the default :data:`MLAPERF_PATH` directory.
+      looked for in the default :data:`PACKAGE_PATH` directory.
     - Currently, only `.toml` configuration files are supported.
 
     Parameters
@@ -275,7 +272,6 @@ def read_ecsv(filename, colnames=None, description=''):
 #: CalSpec repository URL
 CALSPEC_URL = "https://archive.stsci.edu/hlsps/reference-atlases/cdbs/current_calspec/"
 
-
 def read_calspec(filename, url=CALSPEC_URL, wrange=[3_990, 17_010],
                  description=''):
     """Read a CalSpec reference flux FITS file.
@@ -330,43 +326,6 @@ def read_calspec(filename, url=CALSPEC_URL, wrange=[3_990, 17_010],
     wsel = ~((wcol < wmin) | (wcol > wmax))  # Wavelength select
 
     return tab[wsel]['wavelength', 'flux']
-
-
-def read_xshooter(filename, wrange=[3_990, 17_010], description=''):
-    """Read an XShooter PN spectrum FITS file.
-
-    Parameters
-    ----------
-    filename : str
-        Name of the spectrum file.
-    wrange : list, optional
-        Wavelength domain in Angstroms. Default is `[3_990, 17_010]`.
-    description : str, optional
-        Description string (used as a verbose flag). Default is ''.
-
-    Returns
-    -------
-    astropy.table.Table
-        File content as a table with columns `["wavelength", "flux"]`.
-    """
-
-    fname = expand_path(filename)  # use explicit or config/ file
-    if description:
-        print(f"Reading {description} XShooter file {fname!r}...")
-
-    tab = Table.read(fname, cache=True)  # cache the table
-    # Rename and assign proper units
-    tab['WAVE'].name = "wavelength"
-    tab['wavelength'].unit = "angstrom"
-    tab['FLUX'].name = 'flux'
-    tab['flux'].unit = u.erg / u.s / u.cm**2 / u.angstrom  # flambda
-
-    wmin, wmax = wrange
-    wcol = tab['wavelength']
-    wsel = ~((wcol < wmin) | (wcol > wmax))  # Wavelength select
-
-    return tab[wsel]['wavelength', 'flux']
-
 
 def chromatic_interpolator(wavelength, quantity,
                            k=3, ext='raise', inverse=False):
