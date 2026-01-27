@@ -2,13 +2,12 @@
 import numpy as np
 import pytest
 
-from slicersim import iotools
 from slicersim.spectrograph import OpticsThroughput
 
+
 @pytest.fixture
-def throughput():
-    config = iotools.get_config()["spectrograph"]["throughput"]
-    return OpticsThroughput.from_config(config)
+def throughput(default_config):
+    return OpticsThroughput.from_config(default_config["spectrograph"]["throughput"])
 
 def get_test_case(throughput):
     """ """
@@ -20,12 +19,12 @@ def get_test_case(throughput):
 
 def test_instanciation(throughput):
     assert isinstance(throughput, OpticsThroughput)
-    
+
 def test_get_throughput(throughput):
     """ """
     test_name, test_lbda = get_test_case(throughput)
 
-    
+
     current_curve_per_optics = throughput.get_element_throughput(test_name, test_lbda, incl_noptics=False)
     current_curve = throughput.get_element_throughput(test_name, test_lbda, incl_noptics=True)
 
@@ -35,17 +34,17 @@ def test_get_throughput(throughput):
 def test_update(throughput):
     """ """
     test_name, test_lbda = get_test_case(throughput)
-    
+
     throughput.update(**{f"noptics.{test_name}": 1})
     current_curve_ref = throughput.get_element_throughput(test_name, test_lbda, incl_noptics=True)
 
     throughput.update(**{f"noptics.{test_name}": 2})
     current_curve_comp = throughput.get_element_throughput(test_name, test_lbda, incl_noptics=True)
 
-    
+
     assert np.all(current_curve_comp <= current_curve_ref)
     if np.any(current_curve_ref < 1): # not just perfect
         assert np.any(current_curve_comp < current_curve_ref) # strictly lower
-        
+
     if np.all(current_curve_ref < 1): # not just perfect
         assert np.all(current_curve_comp < current_curve_ref) # strictly lower
