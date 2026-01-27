@@ -177,3 +177,16 @@ def test_cube_to_slice(spectro):
     assert slice_bluesqueeze.shape == cube.shape[1:]
     assert slice_blue_and_red.shape == (2, *cube.shape[1:])
     assert (slice_full == np.nansum(cube, axis=0)).all()
+
+
+
+def test_lbda_from_resolution_power():
+    """ """
+    from slicersim.spectrograph import lbda_from_resolution_power
+    lbda, lbda_edges = lbda_from_resolution_power([5000, 10000], 100, npx_resolution=2)
+    assert len(lbda_edges) == len(lbda)+1
+    assert np.isclose(lbda/np.diff(lbda_edges) / 2, 100, rtol=0.01).all()
+
+    lbda, lbda_edges = lbda_from_resolution_power([5000, 10000], 100, npx_resolution=3)
+    assert len(lbda_edges) == len(lbda)+1
+    assert np.isclose(lbda/np.diff(lbda_edges) / 3, 100, rtol=0.01).all()

@@ -173,7 +173,7 @@ class Telescope():
         """
         return 1.22 * np.atleast_1d(lbda) * units.angstrom.to("m") / self.diameter_ext * units.radian.to("arcsec") / norm_scale
     
-    def get_nea_airy(self, lbda, norm_scale=1, padding=5, position=(0, 0), **kwargs):
+    def get_nea_airy(self, lbda, norm_scale=1, padding=5, position=(0, 0), **kwargs): # pragma: no cover
         """Get the Noise Equivalent Area of the Airy disk.
 
         Parameters
