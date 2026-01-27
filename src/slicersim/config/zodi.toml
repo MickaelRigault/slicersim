@@ -1,5 +1,0 @@
-[scene.background]
-name = "zodi"
-model = "Aldering01.BB5800"  # Model [erg/cm²/s/Å/arcsec²] at North Ecliptic Pole
-# See 2022A&A...662A.112E (Euclid prep. I)
-scale = 2.0                  # Scaling factor (roughly 20° from ecliptic)

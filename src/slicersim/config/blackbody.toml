@@ -1,15 +1,15 @@
 [scene.pointsource]
 name = "blackbody"
-source = "blackbody"	# 
-temperature = 6000	# temperature in Kelvin
-position = [1, 0.5]     # Position in MLA [spx] (to account for sub-px effect)
-mag = 20       		# Position in MLA [spx] (to account for sub-px effect)
-band = "sdssr"		# name of the sncosmo band to compute the mag
-magsys = "ab" 		# magnitude system
+source = "blackbody"			# 
+temperature = 6000			# temperature in Kelvin
+position = [1, 0.5]     		# Position in MLA [spx] (to account for sub-px effect)
+mag = 20       				# Position in MLA [spx] (to account for sub-px effect)
+band = "sdssr"				# name of the sncosmo band to compute the mag
+magsys = "ab" 				# magnitude system
 
 
 [scene.background]
 name = "zodi"
-model = "Aldering01.BB5800"  # Model [erg/cm²/s/Å/arcsec²] at North Ecliptic Pole
-# See 2022A&A...662A.112E (Euclid prep. I)
-scale = 2.0                  # Scaling factor (roughly 20° from ecliptic)
+model = "Aldering01.BB5800"		# Model [erg/cm²/s/Å/arcsec²] at North Ecliptic Pole
+      					# See 2022A&A...662A.112E (Euclid prep. I)
+scale = 2.0                  	  	# Scaling factor (roughly 20° from ecliptic)
