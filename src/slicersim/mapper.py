@@ -1,5 +1,4 @@
 import numpy as np
-import warnings
 
 from .utils import mesh_kwargs, unbin_array
 

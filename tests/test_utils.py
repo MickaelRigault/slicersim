@@ -43,7 +43,8 @@ def test_restride_bin_unbin():
 def test_erf_functions():
     """ """
     # 1D case
-    x_edges = np.linspace(-10, 10, 41); sigma = 2
+    x_edges = np.linspace(-10, 10, 41)
+    sigma = 2
     assert np.isclose( utils.integ_gaussian1D_erf(x_edges, sigma=sigma, normed=True).sum(), 1)
     assert np.isclose( utils.integ_gaussian1D_erf(x_edges, sigma=sigma, normed=False).sum(), sigma * (2*np.pi)**0.5)
 
