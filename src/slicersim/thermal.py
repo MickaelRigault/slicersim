@@ -8,6 +8,52 @@ from copy import deepcopy
 
 import warnings
 
+def get_source_radiation(lbda, temperature, emissivity=1, angular_coefficient=1):
+    """ Calculate the blackbody photon flux for a given wavelength and temperature and emissivity
+    This function is based on blackbody_photonflux (emissivity * blackbody_photonflux)
+
+
+    Parameters
+    ----------
+    lbda : float
+        The wavelength in Angstrong.
+    temperature : float
+        The temperature in Kelvin.
+    emissivity: float
+        emissivity of the source. defined between [0, 1].
+    angular_coefficient: float
+        multiplicative coefficient associated to the opening angle of the source (area * 
+    Returns
+    -------
+    photonflux: float, array
+        The blackbody photon flux in [photon/s/sr/m²/A]
+    """
+    if emissivity<0 or emissivity>1:
+        raise ValueError(f"emissivity is defined in between 0 and 1,{emissivity=} given")
+
+    return emissivity * blackbody_photonflux(lbda, temperature)
+
+def blackbody_photonflux(lbda, temperature):
+    """ Calculate the blackbody photon flux for a given wavelength and temperature.
+
+    Parameters
+    ----------
+    lbda : float, array
+        The wavelength(s) in Angstrong.
+    temperature : float
+        The temperature in Kelvin.
+    Returns
+    -------
+    photonflux: float, array
+        The blackbody photon flux in [photon/s/sr/m²/A]
+    """
+    c = constants.c.value     # [m/s]
+    hc_over_kB = ( (constants.h*constants.c) / (constants.k_B) ).value  # [K.m]
+    
+    bbflux_per_m = 2 * c / ((lbda * 1e-10)**4 *
+                     (np.exp(hc_over_kB / (lbda*1e-10 * temperature)) - 1))  # [ph/s/sr/m²/m]
+                     
+    return bbflux_per_m * 1e-10  # [photon/s/sr/m²/A] | 1e-10 for A
 
 def fratio_to_solidangle(fratio, geometry="circular"):
     """ Convert f-ratio to solid angle.
@@ -458,7 +504,7 @@ class ThermalRadiation():
         float
             The blackbody flux in photons (or e-) per second per steradian per square meter per micrometer.
         """
-        flux_ph = cls._blackbody_photonflux(lbda, temperature)
+        flux_ph = blackbody_photonflux(lbda, temperature)
         
         if qe is None:
             flux = flux_ph
@@ -470,31 +516,7 @@ class ThermalRadiation():
             flux = flux_ph * qe
             
         return flux
-        
-    @staticmethod
-    def _blackbody_photonflux(lbda, temperature):
-        """ Calculate the blackbody photon flux for a given wavelength and temperature.
-
-        Parameters
-        ----------
-        lbda : float
-            The wavelength in Angstrong.
-
-        temperature : float
-            The temperature in Kelvin.
-
-        Returns
-        -------
-        float
-            The blackbody photon flux in photons per second per steradian per square meter per micrometer.
-        """
-        c = constants.c.value     # [m/s]
-        hc_over_kB = ( (constants.h*constants.c) / (constants.k_B) ).value  # [K.m]
-        
-        bbflux_per_m = 2 * c / ((lbda * 1e-10)**4 *
-                         (np.exp(hc_over_kB / (lbda*1e-10 * temperature)) - 1))  # [ph/s/sr/m²/m]
-        return bbflux_per_m * 1e-10  # [photon/s/sr/m²/A] | 1e-10 for A
-
+    
     # ============ #
     #  Properties  #
     # ============ #

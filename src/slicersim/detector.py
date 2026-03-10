@@ -359,7 +359,51 @@ class Detector():
             signals = np.sum(signals, axis=0)
         
         return signals
+
+
+    def get_effective_ron(self, nmd=None, variance_model="default", ron=None):
+        """ compute the effective impact of the read-out noise (ron) 
+
+        Parameters
+        ----------
+        nmd: list, None
+            MACC model (ngroups, nframes_per_group, ndrops). If None, self.nmd used.
+        ron: float, None
+            read-out noise per frame to use. If None, self.ron used.
+        variance_model : str, optional
+            Variance model to use (e.g., 'rauscher07', 'kubik16').
+            If "default", `self.variance_model` is used. Default is "default".
         
+        Returns
+        -------
+        ron: float
+            effective ron up the ramp.
+
+        """
+        # which ron
+        if ron is None:
+            ron = self.ron
+        
+        # which macc mode to use
+        if nmd is None:
+            nmd = self.nmd
+
+        n, m, d = nmd
+
+        # which variance model to use ?        
+        if variance_model == "default":
+            variance_model = self.variance_model
+
+
+        # compute the effective read-out noise estimator.
+        if variance_model.lower() in ["rauscher07", "rauscher10" "rauscher+07"]:
+            effective_ron = np.sqrt(12 * (n - 1) / (m * n * (n + 1)) * ron**2)
+        else:
+            raise NotImplementedError(f"effective ron has only been implemented for the Rauscher variance model ; {variance_model=} given. ")
+
+        return effective_ron
+            
+    
     def estimate_pixel_signal(self, flux, lbda=None,
                                   withdark=False,
                                   variance_model="default",
@@ -401,7 +445,7 @@ class Detector():
 
         # Variance estimate in [ADU²]
         ## gain, ron, dark etc. are in there.
-        variance = self.estimate_variance(flux=flux_e, incl_thermal=True) 
+        variance = self.estimate_variance(flux=flux_e, model=variance_model, incl_thermal=True) 
 
         # actual signal registered, including darks for staturation tests.
         effective_dark = self.dark + self.get_thermal_dark(units="e-/s")

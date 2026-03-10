@@ -2,7 +2,8 @@ import numpy as np
 
 from .simulation import Simulation
 from .target import Supernova, CalSpec, Target
-
+from .iotools import get_config
+        
 __all__ = ["lazuli_etc", "lazuli_sn_etc",
             "LazuliSupernova", "LazuliTarget", "LazuliCalSpec"]
 
@@ -208,7 +209,6 @@ class VirtualLazuliTarget():
         VirtualLazuliTarget
             An instance of the class.
         """
-        from .iotools import get_config        
         # create the simulator
         config = get_config( **(cls._DEFAULT_CONFIG | kwargs) )
         simulation = Simulation.from_config(config)
@@ -251,8 +251,7 @@ class VirtualLazuliTarget():
             config["spatial_scale"] = spatial_scale
 
         return self.simulation.update(**config)
-        
-        
+           
     # GETTER
     def get_readout_config(self):
         """Get the current MACC (nmd) mode and the number of ramps.
@@ -372,7 +371,6 @@ class VirtualLazuliTarget():
         img_med = mapper.project_slice(np.arange(nslices_fine+1, nslices_fine+1+nslices_medium)[::-1], cube_medium, lbda)
         img_ = np.sum([img_med, img_fine], axis=0)
         return img_
-
 
     def _get_field_positions(self, position=None, field=None):
         """ get the 'position' parameters for each of the two fields (fine and medium).
@@ -529,7 +527,6 @@ class LazuliSupernova( VirtualLazuliTarget, Supernova ):
             Goes to `scene.get_sn_scene()`.
         """
         from .scene import get_sn_scene
-        from .iotools import get_config
         scene = get_sn_scene(model=model, **kwargs)
         config = get_config( **( self._DEFAULT_CONFIG | {"scene": scene}) )
         simulation = Simulation.from_config(config)
@@ -641,4 +638,50 @@ class LazuliTarget( VirtualLazuliTarget, Target  ):
         simulation = Simulation.from_source(lbda, flux, background=background,
                                                 mag=mag, band=band,
                                                 **kwargs)
+        super().__init__(simulation=simulation)
+
+# Generic object
+class LazuliFlat( VirtualLazuliTarget, Target  ):
+    """Lazuli class for flat sources (no pointsource)
+
+    Parameters
+    ----------
+    lbda : array_like
+        Wavelength array.
+    flux : array_like
+        Flux array.
+    **kwargs
+        Goes to `simulation.Simulation.from_source()`.
+
+    """
+    def __init__(self, lbda, flux, amplitude=1,
+                 **kwargs):
+        """Initialize the LazuliTarget.
+
+        Parameters
+        ----------
+        lbda : array_like
+            Wavelength array.
+        flux : array_like
+            Flux array.
+        **kwargs
+            Goes to `simulation.Simulation.from_config()`.
+        """
+
+        def model_flux(wave, amplitude):
+            """ """
+            return np.interp(wave, lbda, flux, left=np.nan, right=np.nan) * amplitude
+
+        # build the scene config
+        scene = {"scene":{"pointsource": None,
+                           "host": None,
+                           "background": {"name": "generic",
+                                          "func": model_flux,
+                                          "amplitude": amplitude},
+                         }
+                 }
+
+        config = get_config(scene=scene, instrument=self._INSTRUMENT)
+        simulation = Simulation.from_config(config, **kwargs)
+        
         super().__init__(simulation=simulation)

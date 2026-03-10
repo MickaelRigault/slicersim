@@ -48,3 +48,9 @@ def test_thermal_dark(detector):
         thermaloptics_test, lbda_range=[10_000, 20_000], as_sum=False
     )
     assert thermaldark.shape == thermaloptics_test.temperature.shape
+
+
+def test_effective_ron(detector):
+    """ """
+    effective_ron = detector.get_effective_ron(nmd=(64, 1, 0), ron=25)
+    assert effective_ron>7 and effective_ron<15 # expected ~10.5

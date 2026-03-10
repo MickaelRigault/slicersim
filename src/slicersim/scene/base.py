@@ -24,14 +24,6 @@ class SceneElement:
         self._meta_in = meta.copy()
         self._lbda = lbda
         
-    def __str__(self):
-        import pprint
-        meta = pprint.pformat(self.meta, sort_dicts=False)
-        return meta
-
-    def __repr__(self):
-        return self.__str__
-
     @classmethod
     def from_config(cls, config):
         """Build the class from a configuration file.
@@ -120,7 +112,9 @@ class SceneElement:
         """
         # get default
         list_parameters, default_param = inspect_func(self.model_func)
-        list_parameters.remove("lbda") # this should not be there.
+        # remove the first param which should be lbda/wave
+        # see how get_spectrum() uses _parse_model_kwargs_()
+        list_parameters = list_parameters[1:] 
 
         # get meta input if any        
         model_parameters = {k: self.meta[k] for k in list_parameters
