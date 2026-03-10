@@ -532,7 +532,7 @@ class Simulation():
         """
         return self.spectrograph.lbda, self.spectrograph.get_resolving_power()
 
-    def get_pixel_variance(self, flux=0):
+    def get_pixel_variance(self, flux=0, **kwargs):
         """Get the variance associated with a single pixel on the detector.
 
         Parameters
@@ -547,7 +547,7 @@ class Simulation():
 
         """
         lbda = self.spectrograph.lbda
-        _, pixel_var = self.detector.estimate_pixel_signal(flux, lbda=lbda)
+        _, pixel_var = self.detector.estimate_pixel_signal(flux, lbda=lbda, **kwargs)
         pixel_var *= self.extraction["nramps"] # incl. multi ramp approach.
         return pixel_var
         
@@ -1068,7 +1068,7 @@ class Simulation():
                                         
         # slicers projected onto the detector: 1 lbda for 1 slice corresponds to 1 pixel
         lbda = self.spectrograph.lbda # make sure it is up to date
-        sig_cube, var_cube = self.detector.estimate_pixel_signal(cube, lbda=lbda) # expects input in [ph/...] 
+        sig_cube, var_cube = self.detector.estimate_pixel_signal(cube, lbda=lbda, cached_thermal=cached) # expects input in [ph/...] 
         
         return sig_cube, var_cube
         
@@ -1698,12 +1698,20 @@ class Simulation():
         if reset_param:
             self.update(nmd = input_nmd, nramps=input_nramps)
 
+
         if use_cache:
-            self._cube_cached = None # reset.
+            # just to make sure it is all clean.
+            self._reset_cached() 
             
         # return what you where looking for.
         return read_config, snr, integration_time
-    
+
+    def _reset_cached(self):
+        """ force reset any existing cached parameter. """
+        print("reset cache")
+        self._cube_cached = None 
+        self.detector._cached_thermal = None 
+
         
     def _fetch_snr(self, target_snr, free_parameter, 
                    lbda_range=[4000, 6800], frame="rest", statistic=np.nanmean,

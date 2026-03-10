@@ -229,3 +229,18 @@ def test_background_spectrum(simu):
 
     assert np.isclose(bkgd_spec_adu, spec_adu, rtol=0.1).all()
 
+
+def test_fetch_snr_caching(simu):
+    """ """
+    _cached = simu.fetch_snr(30, use_cache=True)
+    _not_cached = simu.fetch_snr(30, use_cache=False)
+    assert _cached == _not_cached
+    
+    _cached = simu.fetch_snr(10, use_cache=True)
+    _not_cached = simu.fetch_snr(10, use_cache=False)
+    assert _cached == _not_cached
+
+    simu.update(ron=50, dark=5e-3)
+    _cached = simu.fetch_snr(10, use_cache=True)
+    _not_cached = simu.fetch_snr(10, use_cache=False)
+    assert _cached == _not_cached

@@ -305,7 +305,8 @@ class Detector():
         # self.pixel_size is in micrometer
         return self.pixel_size * units.micrometer.to(unit)
 
-    def get_thermal_dark(self, thermaloptics=None, as_sum=True, units="ph/s", lbda_range=None):
+    def get_thermal_dark(self, thermaloptics=None, as_sum=True, units="ph/s", lbda_range=None,
+                             cached=False):
         """Get the thermal dark current.
 
         This is based on the `thermaloptics` object, if provided.
@@ -326,6 +327,11 @@ class Detector():
         float or array_like
             Thermal dark current (see units)
         """
+        if as_sum and cached and hasattr(self, "_cached_thermal") and self._cached_thermal is not None:
+            # cached by unit
+            if (cached := self._cached_thermal.get(units, None)) is not None:
+                return cached
+        
         # which thermaloptics to consider.
         if thermaloptics is None:
             thermaloptics = self.thermaloptics
@@ -357,6 +363,12 @@ class Detector():
         # sum over 1 element if only 1 temperature
         if as_sum:
             signals = np.sum(signals, axis=0)
+
+        if cached:
+            if not hasattr(self, "_cached_thermal") or self._cached_thermal is None:
+                self._cached_thermal = {}
+                
+            self._cached_thermal[units] = signals
         
         return signals
 
@@ -407,7 +419,8 @@ class Detector():
     def estimate_pixel_signal(self, flux, lbda=None,
                                   withdark=False,
                                   variance_model="default",
-                                  saturation="default"):
+                                  saturation="default",
+                                  cached_thermal=False):
         """Estimate measured signal and variance from incident flux.
 
         Parameters
@@ -445,10 +458,11 @@ class Detector():
 
         # Variance estimate in [ADU²]
         ## gain, ron, dark etc. are in there.
-        variance = self.estimate_variance(flux=flux_e, model=variance_model, incl_thermal=True) 
+        ## thermal dark is computed twice, for the variance and for the signal.
+        variance = self.estimate_variance(flux=flux_e, model=variance_model, incl_thermal=True, cached_thermal=cached_thermal) 
 
         # actual signal registered, including darks for staturation tests.
-        effective_dark = self.dark + self.get_thermal_dark(units="e-/s")
+        effective_dark = self.dark + self.get_thermal_dark(units="e-/s", cached=cached_thermal)
         signal = (flux_e + effective_dark) * self.electronpers_to_adu()  # Total signal [ADU]
 
         # Detect and mask saturated pixels
@@ -472,7 +486,7 @@ class Detector():
 
         return signal, variance  # [ADU], [ADU²]
 
-    def estimate_variance(self, flux, model=None, incl_thermal=True):
+    def estimate_variance(self, flux, model=None, incl_thermal=True, cached_thermal=False):
         """Estimate the variance associated with the input flux.
 
         Parameters
@@ -494,7 +508,7 @@ class Detector():
             model = self.variance_model
 
         if incl_thermal:
-            effective_dark = self.dark + self.get_thermal_dark(units="e-/s")
+            effective_dark = self.dark + self.get_thermal_dark(units="e-/s", cached=cached_thermal)
         else:
             effective_dark = self.dark
             
