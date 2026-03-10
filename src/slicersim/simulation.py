@@ -1708,7 +1708,6 @@ class Simulation():
 
     def _reset_cached(self):
         """ force reset any existing cached parameter. """
-        print("reset cache")
         self._cube_cached = None 
         self.detector._cached_thermal = None 
 
