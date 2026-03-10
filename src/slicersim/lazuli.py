@@ -34,7 +34,7 @@ def lazuli_sn_etc(model, redshift, snr, phase=0,
         - salt: SN Ia - parameters: x1, c
         - twin: SN Ia - parameters: xi1, xi2, xi3, color
     redshift : float
-        The redshift of the supernova.
+ ta       The redshift of the supernova.
     snr : float
         The target Signal-to-Noise Ratio to achieve.
     phase : float, optional

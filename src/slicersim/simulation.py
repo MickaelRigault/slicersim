@@ -532,7 +532,7 @@ class Simulation():
         """
         return self.spectrograph.lbda, self.spectrograph.get_resolving_power()
 
-    def get_pixel_variance(self, flux=0):
+    def get_pixel_variance(self, flux=0, **kwargs):
         """Get the variance associated with a single pixel on the detector.
 
         Parameters
@@ -547,7 +547,7 @@ class Simulation():
 
         """
         lbda = self.spectrograph.lbda
-        _, pixel_var = self.detector.estimate_pixel_signal(flux, lbda=lbda)
+        _, pixel_var = self.detector.estimate_pixel_signal(flux, lbda=lbda, **kwargs)
         pixel_var *= self.extraction["nramps"] # incl. multi ramp approach.
         return pixel_var
         
@@ -826,7 +826,7 @@ class Simulation():
     def get_projected_scene(self, in_photons=True, switch_off=[],
                                 psf_profile="default",
                                 as_oversampled=False, oversampling=None,
-                                apply_lsf=True,
+                                apply_lsf=True, cached=False,
                                 **kwargs):
         """Project the scene through spectrograph and get flux cube [ph or
         flambda].
@@ -855,14 +855,17 @@ class Simulation():
             (nlbda, ny, nx) cube.
 
         """
+        # should this be recomputed ?
+        if cached and hasattr(self, "_cube_cached") and self._cube_cached is not None:
+            # cached exists and use to the cached cube requested.
+            return self._cube_cached
+        
+        # ok cube to be computed.
         if oversampling is None:
             oversampling = 3
 
         #if not as_oversampled:
         #    oversampling = None
-        
-            
-
         cube = self.spectrograph.get_empty_cube(filled=0, oversampling=None if not as_oversampled else oversampling)
         
         # spectra (3, nlbda):
@@ -900,12 +903,17 @@ class Simulation():
         # apply_lsf once
         if apply_lsf:
             cube = self.spectrograph.apply_line_spread_function(cube)
+
+
+        # cached requested and non existed (see top). Hence let's store it.
+        if cached:
+            self._cube_cached = cube
             
         return cube  # (nlbda, ny, nx) | [ph/s] or [erg/cm²/Å/s]
     
     def get_cube(self, switch_off=[], psf_profile="default",
                      as_oversampled=False, oversampling=None,
-                     per_ramp=False, apply_lsf=True,
+                     per_ramp=False, apply_lsf=True, cached=False,
                      **kwargs):
         """Get data cube as extracted from exposure [ADU].
 
@@ -933,6 +941,7 @@ class Simulation():
             (nlbda, ny, nx) in [ADU].
 
         """
+        
         # change accepted.        
         # 
         # component within the cube
@@ -979,7 +988,8 @@ class Simulation():
         cube_prop = dict(psf_profile=psf_profile,
                           switch_off=switch_off,
                           as_oversampled=as_oversampled, oversampling=oversampling,
-                          per_ramp=per_ramp, apply_lsf=apply_lsf
+                          per_ramp=per_ramp, apply_lsf=apply_lsf,
+                          cached=cached,
                         ) | kwargs
         
         # mla
@@ -1018,7 +1028,7 @@ class Simulation():
 
     def _get_slicer_cube_(self, psf_profile="default", switch_off=[],
                            oversampling=None, as_oversampled=False,
-                           per_ramp=False, apply_lsf=True, 
+                           per_ramp=False, apply_lsf=True, cached=False,
                            **kwargs):
         """Get slicer cube.
 
@@ -1053,17 +1063,18 @@ class Simulation():
                                         as_oversampled=as_oversampled,
                                         oversampling=oversampling,
                                         apply_lsf=apply_lsf,
+                                        cached=cached,
                                         **kwargs)  # (nlbda, nslices_with_anamorphose, npixels)
                                         
         # slicers projected onto the detector: 1 lbda for 1 slice corresponds to 1 pixel
         lbda = self.spectrograph.lbda # make sure it is up to date
-        sig_cube, var_cube = self.detector.estimate_pixel_signal(cube, lbda=lbda) # expects input in [ph/...] 
+        sig_cube, var_cube = self.detector.estimate_pixel_signal(cube, lbda=lbda, cached_thermal=cached) # expects input in [ph/...] 
         
         return sig_cube, var_cube
         
     def _get_mla_cube_(self, psf_profile="default", switch_off=[],
                            as_oversampled=False, oversampling=None,
-                           per_ramp=False, apply_lsf=True,
+                           per_ramp=False, apply_lsf=True, cached=False,
                            **kwargs): # pragma: no cover 
         """Get MLA cube. 
 
@@ -1099,7 +1110,8 @@ class Simulation():
                                         psf_profile=psf_profile,
                                         as_oversampled=as_oversampled,
                                         oversampling=oversampling,
-                                        apply_lsf=apply_lsf, 
+                                        apply_lsf=apply_lsf,
+                                        cached=cached,
                                         **kwargs)  # (nlbda, ny, nx)
                                         
         xdisp_sigmas = self.spectrograph.get_xdisp_sigma_spectral()   # (nlbda,)
@@ -1124,7 +1136,7 @@ class Simulation():
     def get_slice(self, lbda_range, frame="obs", switch_off=[], incl_error=False, 
                   squeeze=False, psf_profile="default",
                   as_oversampled=False, oversampling=None,
-                  apply_lsf=True,
+                  apply_lsf=True, cached=False,
                   **kwargs):
         """Get slices of the cube.
 
@@ -1173,7 +1185,7 @@ class Simulation():
                                                    psf_profile=psf_profile,
                                                    as_oversampled=as_oversampled,
                                                    oversampling=oversampling,
-                                                   apply_lsf=apply_lsf,
+                                                   apply_lsf=apply_lsf, cached=cached,
                                                    **kwargs)
         
         band_sigs = self.spectrograph.cube_to_slice(cube_signal, lbda_range, func=np.nansum, squeeze=squeeze)
@@ -1184,8 +1196,9 @@ class Simulation():
             
         return band_sigs, band_vars        
     
-    def get_spectrum(self, switch_off=[], incl_error=False, psf_profile="default",
-                         apply_lsf=True):
+    def get_spectrum(self, switch_off=[], incl_error=False,
+                         psf_profile="default",
+                         apply_lsf=True, cached=False):
         """Get the pointsource signal and variance [ADU].
 
         Parameters
@@ -1210,7 +1223,7 @@ class Simulation():
         sig_cube, var_cube = self.get_cube(switch_off=switch_off,
                                                per_ramp=True, # see later.
                                                psf_profile=psf_profile,
-                                               apply_lsf=apply_lsf)
+                                               apply_lsf=apply_lsf, cached=cached)
 
         try:
             radius = self.extraction["aperture_radius"]  # [spx/slicers]
@@ -1313,7 +1326,6 @@ class Simulation():
             return band_sigs[0], band_vars[0]
         else:
             return np.asarray(band_sigs), np.asarray(band_vars)
-
         
     def get_band_snr(self, lbda_range, frame="obs",
                      statistic=np.nanmean, **kwargs):
@@ -1357,11 +1369,6 @@ class Simulation():
         # effective one
         times["total_exptime"] = self.observing_time # incl nrampss
         return times
-
-    def estimate_variance_contribution(self, *args, **kwargs):
-        """DEPRECATED, use get_band_variance_contribution()"""
-        warnings.warn("DEPRECATED, use get_band_variance_contribution instead of estimate_variance_contribution")
-        return self.get_band_variance_contribution(args, **kwargs)
         
     def get_band_variance_contribution(self, lbda_range, frame="rest",
                                        statistic=np.nanmean):
@@ -1534,6 +1541,7 @@ class Simulation():
                       ndrop=None,
                       guess=None,
                       fitter="native",
+                      use_cache=True,
                       #
                       lbda_range=[4000, 6800], frame="rest",
                       statistic=np.nanmean,
@@ -1611,19 +1619,23 @@ class Simulation():
                                   "nramps": 1}
         self.update(**full_singleramp_config)
 
+
+        # who the snr is computed
+        snr_prop = {"lbda_range": lbda_range,
+                    "frame": frame,
+                    "statistic": statistic,
+                    "cached": use_cache}
+        #
+        
         # compute the snr for 1 ramp.
-        single_fullramp_snr = self.get_band_snr(lbda_range=lbda_range,
-                                                frame=frame,
-                                                statistic=statistic)
+        single_fullramp_snr = self.get_band_snr(**snr_prop)
 
         
         # is one ramp enought ?
         if single_fullramp_snr >= (target_snr-tol):
             # yes ? Check if small ramp ok ?
             self.update( nramps = 1, nmd=(np.max(small_ngroup_range), nframe_per_group_small, 0) ) # e.g., 1* (n, 4, 0)
-            single_ramp_smallgroup_snr = self.get_band_snr(lbda_range=lbda_range,
-                                                                   frame=frame,
-                                                                   statistic=statistic)
+            single_ramp_smallgroup_snr = self.get_band_snr(**snr_prop)
             # do you reach the SNR with `np.max(small_ngroup_range)` "small ramps"
             if single_ramp_smallgroup_snr <= (target_snr-tol):
                 # no ? use larger groups
@@ -1635,9 +1647,7 @@ class Simulation():
                 # yes ? then it's a bright target.
                 # => Is that so bright that (np.min(small_ngroup_range), 4, 0) would do the jobs ?
                 self.update( nramps = 1, nmd=(np.min(small_ngroup_range), nframe_per_group_small, 0) ) # e.g., 1* (8, 4, 0)
-                single_framegroup_snr = self.get_band_snr(lbda_range=lbda_range,
-                                                                   frame=frame,
-                                                                   statistic=statistic)
+                single_framegroup_snr = self.get_band_snr(**snr_prop)
                 if single_framegroup_snr >= (target_snr-tol):
                     # yes ? then super bright, let's move to signel frame ramps starting from np.max(small_ngroup_range)
                     self.update( nramps = 1, nmd=(np.max(small_ngroup_range), 1, 0) ) # e.g., 1* (n, 1, 0)
@@ -1661,6 +1671,7 @@ class Simulation():
         read_config, snr, integration_time = self._fetch_snr(target_snr,
                                                              free_parameter=free_parameter,
                                                              iterstep=iterstep, maxiter=maxiter,
+                                                             use_cache=use_cache,
                                                              **prop_fetch)
         # fine tune ramps
         if free_parameter == "nramps" and allow_smaller_ramps and \
@@ -1682,17 +1693,30 @@ class Simulation():
             read_config, snr, integration_time = self._fetch_snr(target_snr,
                                                              free_parameter=free_parameter,
                                                              iterstep=iterstep, maxiter=maxiter,
+                                                             use_cache=use_cache,
                                                              **prop_fetch)            
         if reset_param:
             self.update(nmd = input_nmd, nramps=input_nramps)
 
+
+        if use_cache:
+            # just to make sure it is all clean.
+            self._reset_cached() 
+            
         # return what you where looking for.
         return read_config, snr, integration_time
-    
+
+    def _reset_cached(self):
+        """ force reset any existing cached parameter. """
+        print("reset cache")
+        self._cube_cached = None 
+        self.detector._cached_thermal = None 
+
         
     def _fetch_snr(self, target_snr, free_parameter, 
                    lbda_range=[4000, 6800], frame="rest", statistic=np.nanmean,
-                   min_value=None, max_value=None,
+                   use_cache=False,
+                   min_value=None, max_value=None, 
                    maxiter=100, tol=0.5, iterstep=1):
         """Vary the free_parameter to reach the target SNR.
 
@@ -1734,6 +1758,11 @@ class Simulation():
         if min_value is None:
             min_value = minimal_values.get(free_parameter)
 
+        snr_prop = dict(lbda_range=lbda_range, 
+                        frame=frame, 
+                        statistic=statistic,
+                        cached=use_cache)
+            
         # internal function that perform the fit steps
         def change(value, current_snr, iterstep):
             """ """    
@@ -1756,7 +1785,7 @@ class Simulation():
                 new_value = max_value
                 
             _ = self.update(**{free_parameter: new_value})
-            new_snr = self.get_band_snr(**prop_snr)
+            new_snr = self.get_band_snr(**snr_prop)
             
             # need to go in the same direction
             if (new_snr >= target_snr and was_high):
@@ -1775,9 +1804,6 @@ class Simulation():
         if free_parameter not in ["ngroup", "nramps", 'nframe']:
             raise ValueError(f"free_parameter should be 'ngroup', 'nramps' or 'nframe' {free_parameter} given.")
         
-        prop_snr = dict(lbda_range=lbda_range, 
-                        frame=frame, 
-                        statistic=statistic)
 
         # nframe supposed to change the macc mode to (1,1,0)
         if free_parameter == "nframe":
@@ -1786,7 +1812,7 @@ class Simulation():
 
         # initial state
         current_value = self.get_parameter(free_parameter)
-        current_snr = self.get_band_snr(**prop_snr)
+        current_snr = self.get_band_snr(**snr_prop)
         break_at_next = False
         # while loop
         counter = 0
@@ -1796,7 +1822,7 @@ class Simulation():
             if np.isnan(current_value) or current_value<=min_value: # moving to too small value
                 current_value = min_value # reset to minimum 
                 self.update(**{free_parameter: current_value })
-                current_snr = self.get_band_snr(**prop_snr) # and get corresponding SNR
+                current_snr = self.get_band_snr(**snr_prop) # and get corresponding SNR
                 
             if break_at_next or (current_value<=min_value and current_snr>=target_snr): # means lowest is already enough
                 break
@@ -1874,7 +1900,7 @@ class Simulation():
         return ax
 
     def show_cube(self, in_photons=True, switch_off=[], spec_prop={},
-                      psf_profile="default", **kwargs): # pragma: no cover
+                      psf_profile="default", cached=False, **kwargs): # pragma: no cover
         """Display the cube generated by :meth:`get_projected_scene`.
 
         The figure has two panels:
@@ -1904,7 +1930,8 @@ class Simulation():
 
         cube = self.get_projected_scene(in_photons=in_photons,
                                             switch_off=switch_off,
-                                            psf_profile=psf_profile)
+                                            psf_profile=psf_profile,
+                                            cached=cached)
 
         unit = "ph/s" if in_photons else "erg/cm²/Å/s"
 
