@@ -1839,7 +1839,8 @@ class Spectrograph:
     @property
     def omega(self):
         """Spaxel solid angle in steradians."""
-        hspx = self.spx_spatial_scale * 4.84813681109536e-06  # [rad]
+        # spx_spatial_scale is in arcsec (e.g. 0.04 for 40mas spaxels)
+        hspx = self.spx_spatial_scale * u.arcsecond.to("rad")  # [rad]
         if np.ndim(hspx) == 0:
             hspx_y = hspx_x = hspx
         else:

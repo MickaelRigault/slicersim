@@ -1,5 +1,5 @@
 import numpy as np
-
+import warnings
 from .base import SceneElement
 from ..utils import inspect_func
 
@@ -20,11 +20,15 @@ def get_background_model_func(name):
     """
     if "zodi" in name:
         model_func = zodiacal_spectrum
+        
+    elif name in ["bb", "blackbody"]:
+        from ..thermal import get_source_radiation
+        model_func = get_source_radiation
+        
     else:
         raise NotImplementedError(f"background: {name} is not implemented")
 
     return model_func
-
 
 def zodiacal_spectrum(lbda, scale=1, model="Aldering01.BB5800"):
     """Sky background (zodi) spectrum at the North Ecliptic Pole.
@@ -109,10 +113,17 @@ class Background(SceneElement):
         Background
             An instance of the Background class.
         """
+        func = config.get("func", None)
         name = config.get("name", None)
-        if name is None:
-            raise ValueError("no name in config. One needed")
+        if name is None and func is None:
+            raise ValueError("neither name nor func in config. One needed")
 
-        model_func = get_background_model_func(name)
-        _, default = inspect_func(model_func)
-        return cls(model_func, meta=default | config)
+        # no function given, look for one
+        if func is None:
+            func = get_background_model_func(name)
+        
+        inputnames, default = inspect_func(func)
+        if inputnames[0] not in ["lbda", "wave", "wavelength"]:
+            warnings.warn(f"first argument of modeling function should be this wavelength, it is called {inputnames[0]} in the given model. It could mean there is a problem.")
+            
+        return cls(func, meta=default | config)

@@ -1,5 +1,4 @@
 import warnings
-import pprint
 
 import numpy as np
 
@@ -48,9 +47,6 @@ class Scene:
         self._host = host
         self._lbda = lbda
         self._scene_meta = meta.copy()
-
-    def __str__(self):
-        return pprint.pformat(self.meta, sort_dicts=False)
 
     @classmethod
     def from_config(cls, config, lbda=None):

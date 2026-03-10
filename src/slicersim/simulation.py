@@ -873,7 +873,7 @@ class Simulation():
         _, (pointsource, host, background) = self.scene.get_stacked_spectra(lbda=lbda, fillna=0)
 
         # Fill the cube with scene elements in photons/s/spx
-        if "pointsource" not in switch_off:
+        if "pointsource" not in switch_off and self.scene.has_element("pointsource"):
             cube += self.spectrograph.generate_pointsource(pointsource,
                                                             position=self.scene.pointsource_position,
                                                             psf_profile=psf_profile,
