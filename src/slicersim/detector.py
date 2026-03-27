@@ -67,7 +67,8 @@ class Detector():
     mutable_parameters = ['ngroup', "nframe_per_group",
                           'nmd', 'tframe',
                           'ron', 'gain', 'qe', 'dark',
-                          'saturation', 'variance_model']
+                          'saturation', 'variance_model',
+                          "ron_floor"]
 
     def __init__(self, tframe, dark, ron, qe, pixel_size,
                      gain=1, saturation=65_635,
@@ -76,6 +77,7 @@ class Detector():
                      lbda=10_000.,
                      variance_model="rauscher07",
                      thermaloptics=None,
+                     ron_floor=0,
                      shape=[4096, 4096],
                      meta={} ):
         # from other components
@@ -88,6 +90,7 @@ class Detector():
         meta["tframe"] = tframe
         meta["dark"] = dark
         meta["ron"] = ron
+        meta["ron_floor"] = ron_floor
         meta["qe"] = qe
         meta["pixel_size"] = pixel_size
         meta["gain"] = gain
@@ -373,7 +376,7 @@ class Detector():
         return signals
 
 
-    def get_effective_ron(self, nmd=None, variance_model="default", ron=None):
+    def get_effective_ron(self, nmd=None, variance_model="default", ron=None, as_variance=False):
         """ compute the effective impact of the read-out noise (ron) 
 
         Parameters
@@ -395,6 +398,9 @@ class Detector():
         # which ron
         if ron is None:
             ron = self.ron
+
+        if ron == 0: # switched off.
+            return 0
         
         # which macc mode to use
         if nmd is None:
@@ -406,14 +412,18 @@ class Detector():
         if variance_model == "default":
             variance_model = self.variance_model
 
-
+        
         # compute the effective read-out noise estimator.
         if variance_model.lower() in ["rauscher07", "rauscher10" "rauscher+07"]:
-            effective_ron = np.sqrt(12 * (n - 1) / (m * n * (n + 1)) * ron**2)
+            rauscher_ron_variance = 12 * (n - 1) / (m * n * (n + 1)) * ron**2
+            effective_ron_variance = rauscher_ron_variance + self.meta["ron_floor"]**2
         else:
             raise NotImplementedError(f"effective ron has only been implemented for the Rauscher variance model ; {variance_model=} given. ")
 
-        return effective_ron
+        if as_variance:
+            return effective_ron_variance
+        
+        return np.sqrt(effective_ron_variance)
             
     
     def estimate_pixel_signal(self, flux, lbda=None,
@@ -553,8 +563,7 @@ class Detector():
         return self.integration_time * self.gain
         
     # - Internal
-    @staticmethod
-    def _estimate_variance_rauscher07(flux, nmd, tframe, ron, dark, gain):
+    def _estimate_variance_rauscher07(self, flux, nmd, tframe, ron, dark, gain):
         """Variance from Rauscher+2007 (corrected in Rauscher+2010).
 
         Note
@@ -590,7 +599,7 @@ class Detector():
         tgroup = tframe * (m + d)
 
         # Rauscher works in e-
-        term1 = 12 * (n - 1) / (m * n * (n + 1)) * ron**2
+        term1 = self.get_effective_ron(variance_model="rauscher07", ron=ron, nmd=nmd,  as_variance=True)
         term2 = 6 * (n**2 + 1) / (5 * n * (n + 1)) * (n - 1) * tgroup * signal
         term3 = 2 * (m**2 - 1) * (n - 1) / (m * n * (n + 1)) * tframe * signal
         var = term1 + term2 - term3 # [e-²]
