@@ -13,6 +13,7 @@ __all__ = ["Simulation"]
 COLORS = {# detector
           "dark": "#25283C",
           "thermal_dark": "#005D8F",
+          "roic_glow": "#89937C",
           "ron": "#80B056", 
           # scene
           "pointsource": "#C2C1B0", 
@@ -60,7 +61,9 @@ class Simulation():
         A dictionary of metadata.
 
     """
-    VARIANCE_SOURCES = ["dark", "thermal_dark", "ron", "pointsource", "background", "host", "thermal"]
+    VARIANCE_SOURCES = ["dark", "roic_glow", "thermal_dark", "ron",
+                        "pointsource", "background", "host", "thermal",
+                        ]
     
     def __init__(self,
                  scene=None,
@@ -984,6 +987,13 @@ class Simulation():
         else:
             current_ron = None
 
+        # detector dark
+        if "roic_glow" in switch_off:
+            current_roic_glow = self.get_parameter("detector__roic_glow")
+            self.update(detector__roic_glow = 0)   # Switch off roic glow
+        else:
+            current_roic_glow = None
+            
         #
         # Get cubes
         #
@@ -1018,6 +1028,9 @@ class Simulation():
         if current_ron is not None:
             self.update(detector__ron=current_ron)
 
+        if current_roic_glow is not None:
+            self.update(detector__roic_glow=current_roic_glow)
+            
         #
         # include ramps.
         #
@@ -2164,7 +2177,7 @@ class Simulation():
             ax.set_ylabel("Flux [ADU]", fontsize="large")
         axsnr.set_ylabel("Signal / Noise", fontsize="large")
         axv.set_ylabel("variance contrib.", fontsize="large")
-        axv.legend(loc=[0.01, 1.3], fontsize="small", frameon=False)
+        axv.legend(loc=[0.01, 1.15], fontsize="small", frameon=False)
         
         ax.set_title(f"z={self.get_parameter('redshift')} | c={self.get_parameter('c')}, x1={self.get_parameter('x1')} | t={self.get_times()['total_exptime']/60:.1f} min",
                     color="k", fontsize="small", loc="right")

@@ -68,10 +68,11 @@ class Detector():
                           'nmd', 'tframe',
                           'ron', 'gain', 'qe', 'dark',
                           'saturation', 'variance_model',
-                          "ron_floor"]
+                          "ron_floor", "roic_glow"]
 
     def __init__(self, tframe, dark, ron, qe, pixel_size,
                      gain=1, saturation=65_635,
+                     roic_glow=0,
                      nmd=(64, 8, 0), lbda_range=None,
                      min_group=2, max_group=64,
                      lbda=10_000.,
@@ -89,6 +90,7 @@ class Detector():
         meta["shape"] = shape
         meta["tframe"] = tframe
         meta["dark"] = dark
+        meta["roic_glow"] = roic_glow # e-/read
         meta["ron"] = ron
         meta["ron_floor"] = ron_floor
         meta["qe"] = qe
@@ -163,6 +165,9 @@ class Detector():
 
         ## dark
         dict_init["dark"] = float(config.get("dark"))                 #: Dark current [e-/s]
+
+        ## roic gow
+        dict_init["roic_glow"] = float(config.get("roic_glow", 0))    #: Roic glow [e-/frame]
 
         ## gain
         dict_init["gain"] = float(config.get("gain", 1))              #: Gain [ADU/e-]
@@ -375,7 +380,6 @@ class Detector():
         
         return signals
 
-
     def get_effective_ron(self, nmd=None, variance_model="default", ron=None, as_variance=False):
         """ compute the effective impact of the read-out noise (ron) 
 
@@ -424,7 +428,26 @@ class Detector():
             return effective_ron_variance
         
         return np.sqrt(effective_ron_variance)
+
+    def get_effective_dark(self, cached_thermal=False, incl_thermal=True):
+        """ get the total effective dark signal.
+        
+        This is a combination from the actual true detector dark (self.dark), 
+        that induce by the roic glow (self.roic_glow e-/frame) and the thermal dark 
+        from surrounding elements' radiations.
+
+        Returns
+        -------
+        effective_dark: float
+            e-/s total dark signal.
+        """
+        roic_glow_e_per_sec = self.roic_glow / self.tframe # e-/frame => e-/s
+        
+        dark = self.dark + roic_glow_e_per_sec
+        if incl_thermal:
+            dark += self.get_thermal_dark(units="e-/s", cached=cached_thermal)
             
+        return dark
     
     def estimate_pixel_signal(self, flux, lbda=None,
                                   withdark=False,
@@ -472,7 +495,7 @@ class Detector():
         variance = self.estimate_variance(flux=flux_e, model=variance_model, incl_thermal=True, cached_thermal=cached_thermal) 
 
         # actual signal registered, including darks for staturation tests.
-        effective_dark = self.dark + self.get_thermal_dark(units="e-/s", cached=cached_thermal)
+        effective_dark = self.get_effective_dark(cached_thermal=cached_thermal, incl_thermal=True)
         signal = (flux_e + effective_dark) * self.electronpers_to_adu()  # Total signal [ADU]
 
         # Detect and mask saturated pixels
@@ -517,10 +540,7 @@ class Detector():
         if model is None:
             model = self.variance_model
 
-        if incl_thermal:
-            effective_dark = self.dark + self.get_thermal_dark(units="e-/s", cached=cached_thermal)
-        else:
-            effective_dark = self.dark
+        effective_dark = self.get_effective_dark(incl_thermal=incl_thermal, cached_thermal=cached_thermal)
             
         variance_input = dict(nmd=self.nmd, tframe=self.tframe,
                               ron=self.ron, dark=effective_dark,
@@ -708,6 +728,16 @@ class Detector():
         """
         return self.meta.get("dark")
     
+    @property
+    def roic_glow(self):
+        """ Roic glow in e-/frame.
+
+        Note
+        ----
+        This is the additional signal induced by the roic read.
+        """
+        return self.meta.get("roic_glow", 0)
+
     @property
     def ron(self):
         """Detector Read-Out Noise per frame in e-."""

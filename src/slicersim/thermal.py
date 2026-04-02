@@ -162,6 +162,7 @@ class ThermalOptics():
         
         self._geometry = np.atleast_1d(geometry).astype(str)
         self._meta = deepcopy(meta)
+        self._meta_in = deepcopy(self._meta)
     
     @classmethod
     def from_config(cls, config, no_solidangle_ok=True):
@@ -261,6 +262,11 @@ class ThermalOptics():
     # ============= #
     #  Properties   #
     # ============= #
+    @property
+    def meta(self):
+        """ meta data of the instance """
+        return self._meta
+    
     @property
     def temperature(self):
         """The temperature of the components [K]."""

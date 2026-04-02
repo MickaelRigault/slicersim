@@ -1,5 +1,5 @@
 import numpy as np
-
+import pandas
 from .utils import mesh_kwargs, unbin_array
 
 
