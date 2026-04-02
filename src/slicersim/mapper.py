@@ -20,6 +20,9 @@ class SlicerMapper():
     @classmethod
     def from_spotdata(cls, spotdata, spot_units="mm"):
         """ """
+        if type(spotdata) in [str, np.str_]:
+            spotdata = pandas.read_csv(spotdata, sep=" ")
+            
         return cls(spotdata, spot_units=spot_units)
 
     @staticmethod
@@ -28,9 +31,7 @@ class SlicerMapper():
         from scipy.interpolate import LinearNDInterpolator
         from astropy import units as u
         units_convert = getattr(u, lbda_in).to(lbda_out)
-        print(units_convert)
         spotdata["lbda"] = spotdata["wavel_nm"].astype(float)*units_convert
-        print(spotdata["lbda"])
         sliceposwave = spotdata[["slice", "fieldpos", "lbda"]].astype(float).values
         xy = spotdata[["x_mm", "y_mm"]].astype(float).values # in milimiter
         return LinearNDInterpolator(sliceposwave, xy)
@@ -38,6 +39,27 @@ class SlicerMapper():
     # =============== #
     #   method        #
     # =============== #
+    def project_lazulitarget(self, lazulitarget, psf_profile="airy", switch_off=[],
+                                 **kwargs):
+        """ """
+        
+        # generate the cubes (one per channel), you can remove contributions.
+        (cube_fine, _), (cube_wide, _) = lazulitarget.get_cube(which='both',
+                                                               psf_profile=psf_profile,
+                                                               switch_off=switch_off)
+
+        # get the wavelength array
+        lbda = lazulitarget.simulation.spectrograph.lbda
+
+        # fine grid are slices between 1 and 59 | wide between 59 and 117
+        # [::-1] as top <-> bottom definition inversion
+        # project them one at the time.
+        img_fine = self.project_slice(np.arange(1, 59)[::-1], cube_fine, lbda)
+        img_med = self.project_slice(np.arange(59, 117)[::-1], cube_wide, lbda)
+        # combine them to get the full image.
+        return np.sum([img_med, img_fine], axis=0)
+
+ 
     def project_slice(self, sliceid, sliceimg, lbda, oversample=(5, 2), fill_value=0):
         """ project the slice(s) into the detector
         

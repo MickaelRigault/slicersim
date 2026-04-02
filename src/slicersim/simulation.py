@@ -284,7 +284,9 @@ class Simulation():
         Parameters
         ----------
         key : str
-            The key to search for in the mutable parameters.
+            The key to search for in the mutable parameters. Any mutable parameter
+            that ends with this key will be returned.
+            e.g., ron => detector.ron
 
         Returns
         -------
@@ -292,11 +294,11 @@ class Simulation():
             A list of matching mutable parameters, or None if no match is found.
 
         """
-        mutable_ = [param_ for param_ in self.mutable_parameters if key in param_]
+        mutable_ = [param_ for param_ in self.mutable_parameters if param_.endswith(key)]
         if len(mutable_)==0:
-            return None
+            mutable_ = None
         
-        return mutable_
+        return mutable_, key
 
     def change_pointsource(self, pointsource):
         """Override the considered pointsource.
@@ -375,15 +377,15 @@ class Simulation():
 
             # look for mutable parameters
             if k not in self.mutable_parameters:
-                k = self._fetch_mutable_parameters(k)
+                k, k_input = self._fetch_mutable_parameters(k)
                 if k is None:
-                    warnings.warn(f"Parameter {k!r} is not mutable.")
+                    warnings.warn(f"Parameter {k_input!r} is not mutable.")
                     continue
                 
                 if len(k) == 1:
                     k = k[0]
                 else:
-                    warnings.warn(f"Parameter {k} is not well defined. several correspondance {k}.")
+                    warnings.warn(f"Parameter {k_input} is not well defined. several correspondance {k}.")
                     continue
             
             if v is None:       # Nothing to do
@@ -1566,8 +1568,6 @@ class Simulation():
             group per frame ? (Ignored if allow_smaller_ramps is False).
         ndrop : int, optional
             Number of dropped frames. Default is None.
-        guess : int, optional
-            Initial guess for the free parameter. Default is None.
         fitter : str, optional
             Fitter to use ("native" or "scipy"). Default is "native".
         lbda_range : list, optional
@@ -1605,7 +1605,7 @@ class Simulation():
         # default values are these from the current config.
         if nframe_per_group is None:
             nframe_per_group = int(input_nmd[1] + 0.) # copy
-            
+
         if ndrop is None:
             ndrop = input_nmd[2]
             
@@ -1625,7 +1625,6 @@ class Simulation():
                     "frame": frame,
                     "statistic": statistic,
                     "cached": use_cache}
-        #
         
         # compute the snr for 1 ramp.
         single_fullramp_snr = self.get_band_snr(**snr_prop)

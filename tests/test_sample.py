@@ -55,3 +55,14 @@ def test_sample_setup_to_snr(sample):
     snr = np.asarray(snr)
     assert len(config) == sample.ntargets, "unmatched dimensions"
     assert np.all( (snr>15) & (snr<25) ), "returned snr is not what was expected" 
+
+
+def test_dask_or_not_in_setup(sample):
+    """ """
+    configs, snrs = sample.setup_to_snr(25, per_resolution=True, show_progress=False)
+    from dask.distributed import Client
+    client = Client()
+    configs_dask, snrs_dask = sample.setup_to_snr(25, per_resolution=True, client=client)
+    assert np.isclose(snrs_dask, snrs).all()
+    assert (configs_dask == configs).all().all()
+    

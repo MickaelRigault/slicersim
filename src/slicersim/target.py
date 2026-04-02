@@ -165,9 +165,11 @@ class VirtualTarget():
             snr = snr / np.sqrt(self.simulation.spectrograph.dispersion_resolution)
 
         # get configuration to reach this SNR
-        config, reached_snr, exptime = self.simulation.fetch_snr(target_snr=snr, 
-                                                    lbda_range=lbda_range, frame=frame,
-                                                    statistic=statistic, **kwarg)
+        config, reached_snr, exptime = self.simulation.fetch_snr(target_snr=snr,
+                                                                 lbda_range=lbda_range, frame=frame,
+                                                                 statistic=statistic,
+                                                                 nframe_per_group=8, # default guess
+                                                                 **kwarg)
         # update simulation at this config
         if inplace:
             self.simulation.update(**config)

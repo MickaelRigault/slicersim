@@ -78,7 +78,7 @@ def test_update(simu):
     assert np.isclose(exptime_3/exptime_1, 3.), "3 ramps is not 3x longer than 1 ramp."
 
     # update spectroscopic property
-    request_shape  = [20,40]
+    request_shape  = [20, 40]
     experted_output_shape = np.asarray(request_shape) * simu.spectrograph._ANAMORPHOSE
     simu.update(spatial_shape=request_shape)
     cube, cubevar = simu.get_cube()
@@ -138,9 +138,9 @@ def test_etc(simu):
 
 def test_data_volume(simu):
     """ """
-    simu.update(nramp=1, nmd=(64, 8, 0)) # 1 ramp by default
+    simu.update(nramps=1, nmd=(64, 8, 0)) # 1 ramp by default
     datavolume_1ramp = simu.get_data_volume("GB")
-    simu.update(nramp=2) # 2 ramps as test
+    simu.update(nramps=2) # 2 ramps as test
     datavolume_2ramp = simu.get_data_volume("GB")
 
     assert (datavolume_1ramp>0.01) # 1 ramp should be at least 10 MB (500 likely)

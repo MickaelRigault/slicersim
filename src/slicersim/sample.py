@@ -94,32 +94,35 @@ class Sample( object ):
     def setup_to_snr(self, snr, per_resolution=True,
                      lbda_range=[4000, 6800], frame='rest',
                      statistic=np.mean, inplace=True,
-                     client=None,
+                     client=None, show_progress=False,
                      **kwargs):
         """ setup all individual targets to this snr """
-        
-        configs, snrs = [], []
-        for target in self.targets:
-            prop = dict(per_resolution=per_resolution,
-                        lbda_range=lbda_range, frame=frame,
-                        statistic=statistic, inplace=inplace
-                       ) | kwargs
 
-            if client is not None:
-                import dask
+        
+        prop = dict(per_resolution=per_resolution,
+                    lbda_range=lbda_range, frame=frame,
+                    statistic=statistic, inplace=inplace
+                    ) | kwargs
+
+        # no dask client. Fine, let's use call_down
+        if client is None:
+            configs_and_snr = self.call_down("setup_to_snr", snr=snr, show_progress=show_progress,
+                                                 **prop)
+            configs = [case_[0] for case_ in configs_and_snr]
+            snrs = [case_[1] for case_ in configs_and_snr]
+        
+        else:
+            # dask client given
+            import dask
+            configs, snrs = [], []
+            for target in self.targets:
                 # dask will not manage inplace=True. This has to be done manually if needed
                 thisout = dask.delayed(target.setup_to_snr)(snr, **(prop| {"inplace":False}) ).persist()
                 configs.append(thisout[0])
                 snrs.append(thisout[1])
-            else:
-                config, snr = target.setup_to_snr(snr, **prop)
-                configs.append(config)
-                snrs.append(snr)
-
-        if client is not None:
-            # if client, few extra steps
-            # => thisout has been persisted, so this should be quick.
-            configs = client.gather(client.compute(configs))
+            
+            # => 'thisout' has been persisted, so this should be quick.
+            configs = client.gather( client.compute(configs) )
             
             # if inplace needed, this is now where it's done, 
             # now that each individual configs are known.
@@ -128,14 +131,18 @@ class Sample( object ):
                     target.change_detector(**config)
     
             snrs = client.gather(client.compute(snrs))
-        
-        return configs, snrs
+
+        # get as dataframe and array
+        return pandas.DataFrame(configs), np.stack(snrs)
         
     # ============= #
     #  Internal     #
     # ============= #
-    def call_down(self, which, mapargs=None, allow_call=True, level_down="", **kwargs):
+    def call_down(self, which, mapargs=None, allow_call=True, level_down="",
+                      show_progress=False, **kwargs):
         """ Call a method on each target in the collection. """
+        if show_progress:
+            from tqdm import tqdm
         # applied to target.simulation
         if level_down is not None:
             level_down = level_down.strip()
@@ -145,11 +152,13 @@ class Sample( object ):
         if mapargs is not None:
             mapargs = broadcast_mapping(mapargs, self.ntargets)
             return [getattr(eval(f"target{level_down}"), which)(maparg_, **kwargs)
-                    for maparg_, target in zip(mapargs, self.targets)]
+                    for maparg_, target in
+                        ( zip(mapargs, self.targets) if not show_progress else tqdm( zip(mapargs, self.targets) ) )
+                        ]
         
         return [attr if not (callable(attr:=getattr(eval(f"target{level_down}"), which)) and allow_call) else\
                 attr(**kwargs) 
-                for target in self.targets]
+                for target in (self.targets if not show_progress else tqdm(self.targets)) ]
 
     # ============= #
     #  Properties   #
