@@ -127,7 +127,7 @@ def build_lbda_from_config(config):
     dispersion_scale = float(config.get("dispersion_scale", 1))
     
     spectral_resolution = config.get("spectral_resolution", None)
-    npx_resolution = config.get("dispersion_resolution", 2)  # number of pixel per resolution element.
+    npx_resolution = config.get("dispersion_resolution", 2.1)  # number of pixel per resolution element.
 
     # Set by dispersion law ?
     if dispersion_law is not None:
@@ -361,7 +361,8 @@ class Spectrograph:
                      "throughput": throughput,
                      "spatial_psf": psf,
                      "optics": optics,
-                     "meta": input_config}
+                     "dispersion_resolution": input_config.get("dispersion_resolution", 2),
+                     "meta": input_config, }
 
         return init_prop, input_config
 

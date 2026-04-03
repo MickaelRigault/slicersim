@@ -503,9 +503,9 @@ class Detector():
             saturated = signal > saturation
             self.nsaturated_detpx = np.count_nonzero(saturated)
             if self.nsaturated_detpx > 0:
-                warnings.warn(
-                    f"{self.nsaturated_detpx} detector px above {self.saturation} ADU.",
-                    SaturationWarning)
+                #warnings.warn(
+                #    f"{self.nsaturated_detpx} detector px above {self.saturation} ADU.",
+                #    SaturationWarning)
                 if np.ndim(signal):
                     signal[saturated] = np.nan
                     variance[saturated] = np.inf

@@ -2177,7 +2177,13 @@ class Simulation():
             ax.set_ylabel("Flux [ADU]", fontsize="large")
         axsnr.set_ylabel("Signal / Noise", fontsize="large")
         axv.set_ylabel("variance contrib.", fontsize="large")
-        axv.legend(loc=[0.01, 1.15], fontsize="small", frameon=False)
+
+        
+        # reordering the labels
+        handles, labels = axv.get_legend_handles_labels()
+        axv.legend(handles=handles[::-1],
+                   labels=labels[::-1],
+                    loc=[0.01, 1.15], fontsize="small", frameon=False)
         
         ax.set_title(f"z={self.get_parameter('redshift')} | c={self.get_parameter('c')}, x1={self.get_parameter('x1')} | t={self.get_times()['total_exptime']/60:.1f} min",
                     color="k", fontsize="small", loc="right")
