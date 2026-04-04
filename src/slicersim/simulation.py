@@ -1533,9 +1533,10 @@ class Simulation():
             
         # adu <=> photons
         elif units_in == "adu" and units_out == "fphoton":
-            coefs = 1/self.detector.photonflux_to_adu(self.spectrograph.lbda)
+            print("this is used")
+            coefs = 1/ (self.detector.photonflux_to_adu(self.spectrograph.lbda) * self.get_parameter("nramps"))
         elif units_in == "fphoton" and units_out == "adu":
-            coefs = self.detector.photonflux_to_adu(self.spectrograph.lbda)
+            coefs = (self.detector.photonflux_to_adu(self.spectrograph.lbda) * self.get_parameter("nramps"))
     
         # not implemented
         else:
