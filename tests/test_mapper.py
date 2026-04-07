@@ -2,13 +2,13 @@ import numpy as np
 import pandas
 
 from slicersim.utils import mesh_kwargs
-from slicersim.mapper import SlicerMapper
+from slicersim.mapper import SlicerMapper, LinearNDInterpolator
 from slicersim.iotools import expand_path
 
 import pytest
 
 DETECTOR_MAX_SIZE = 5_000
-data = pandas.read_csv(expand_path("mapping_spotdata.csv"), sep=" ")
+data = pandas.read_csv( expand_path("mapping_spotdata.csv"), sep=" ")
 
 @pytest.fixture
 def mapper():
@@ -22,7 +22,11 @@ def test_instanciation(mapper):
 
 def test_interpmap():
     """ """
-    interpmap = SlicerMapper._build_interp_map_(data)
+
+    param3d, param2d, _ = SlicerMapper._get_interp_structures_(data,
+                                                                    wavelength_units="micrometer",
+                                                                    xy_units = "mm")
+    interpmap = LinearNDInterpolator(param3d, param2d)
     xy =  interpmap(20, 0.5, 10_000 ) # slice #1 in near 0 the center of the slice (-1->1) at 1micron
     assert xy.shape == (2,), "expect shape doesn't match"
     
@@ -31,8 +35,7 @@ def test_get_pixel_positions(mapper):
     slicepos = np.linspace(-1, 1, 5)
     wavelength = np.linspace(5_000, 10_000, 10)
     
-    df_in = mesh_kwargs(sliceid=20, slicepos=slicepos, 
-                                wavelength=wavelength)
+    df_in = mesh_kwargs(sliceid=20, slicepos=slicepos, wavelength=wavelength)
     pixels = mapper.get_pixel_positions(df_in)
     assert np.all(pixels>=0), "pixels should be positive"
     assert np.all(pixels<=DETECTOR_MAX_SIZE), "pixels with values larger than 10_000. This is unlikely."
@@ -43,8 +46,11 @@ def test_project_slice(mapper):
 
     # target to be projected
     from slicersim import LazuliTarget
+    
     lbda_model = np.linspace(3000, 19_000, 1000)
     flux_model = np.ones( lbda_model.shape )
+
+    # build a target
     target = LazuliTarget(lbda_model, flux_model, mag=20)
     _ = target.setup_to_snr(25)
     
@@ -79,3 +85,18 @@ def test_get_slice_contours(mapper):
         assert isinstance(contours, shapely.Polygon)
     except ImportError as e: # no need to test
         pass
+
+
+def test_xy_to_or_from_slice_pos_wave(mapper):
+    """ """
+    # 3d -> 2d
+    sliceid, fieldpos, lbda = [1, 10, 80], -1, 8000
+    xy = mapper.slice_pos_wave_to_xy(sliceid, fieldpos, lbda)
+    assert xy.shape == (2, 3)
+
+    # 2d -> 3d
+    sliceid_recovered, fieldpos_recovered, lbda_recovered = mapper.xy_to_slice_pos_wave(*xy)
+    assert sliceid_recovered.shape == np.shape(sliceid)
+    assert np.isclose(sliceid_recovered, sliceid).all()
+    assert np.isclose(fieldpos_recovered, fieldpos).all()
+    assert np.isclose(lbda_recovered, lbda).all()

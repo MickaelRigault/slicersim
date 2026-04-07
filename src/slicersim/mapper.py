@@ -1,40 +1,56 @@
 import numpy as np
 import pandas
+from scipy.interpolate import LinearNDInterpolator
+from astropy import units as u
+    
 from .utils import mesh_kwargs, unbin_array
 
 
 class SlicerMapper():
-    
+    _LBDA_UNITS = "angstrom"
+    _XY_UNITS = "mm"
     def __init__(self, spotdata,
                  detector_shape=(4096, 4096), 
                  pixel_size=10, # in micrometer
-                 spot_units="mm"
+                 xy_units="mm", **kwargs
                 ):
         """ """
         self._spotdata = spotdata
-        self._interp_map = self._build_interp_map_(spotdata)
+        self._sliceposwave, self._xy, self._metakey = self._get_interp_structures_(spotdata,
+                                                                                    xy_units=xy_units,
+                                                                                       **kwargs)
         self._detector_shape = np.asarray(detector_shape, dtype="int")
         self._pixel_size = float(pixel_size) # in micro
-        self._units_in = spot_units
         
     @classmethod
-    def from_spotdata(cls, spotdata, spot_units="mm"):
+    def from_spotdata(cls, spotdata, xy_units="mm"):
         """ """
         if type(spotdata) in [str, np.str_]:
             spotdata = pandas.read_csv(spotdata, sep=" ")
             
-        return cls(spotdata, spot_units=spot_units)
+        return cls(spotdata, xy_units=xy_units)
 
-    @staticmethod
-    def _build_interp_map_(spotdata, lbda_in="micrometer", lbda_out="angstrom"):
+    @classmethod
+    def _get_interp_structures_(cls, spotdata,
+                                    wavelength_units="micrometer",
+                                    xy_units = "micrometer",
+                                    x="x", y="y",
+                                    sliceid="slice",
+                                    fieldpos="fieldpos",
+                                     wavelength="lbda"):
         """ """
-        from scipy.interpolate import LinearNDInterpolator
-        from astropy import units as u
-        units_convert = getattr(u, lbda_in).to(lbda_out)
-        spotdata["lbda"] = spotdata["wavel_nm"].astype(float)*units_convert
-        sliceposwave = spotdata[["slice", "fieldpos", "lbda"]].astype(float).values
-        xy = spotdata[["x_mm", "y_mm"]].astype(float).values # in milimiter
-        return LinearNDInterpolator(sliceposwave, xy)
+        # for record
+        metakey = {k: v for k,v in locals().items() if k not in ["cls", "spotdata"]}
+    
+        # wavelength 
+        lbda_units_convert = getattr(u, wavelength_units).to(cls._LBDA_UNITS) # make sure unit make sense 
+        spotdata["lbda"] = spotdata[wavelength].astype(float)*lbda_units_convert # in requested units
+        sliceposwave = spotdata[ [sliceid, fieldpos, "lbda"] ].astype(float).values
+
+        # spot location
+        xy_units_convert = getattr(u, xy_units).to(cls._XY_UNITS) # make sure unit make sense 
+        xy = spotdata[[x, y]].astype(float).values * xy_units_convert # in requested units
+        return sliceposwave, xy, metakey
         
     # =============== #
     #   method        #
@@ -182,7 +198,7 @@ class SlicerMapper():
                             wavelength=wavelength)
         
         # xy are the "position" in the detector
-        xy = self.interp_map(df_in)
+        xy = self.interp_3d_to_2d(df_in)
             
         # which "units" you want this position to be in ?
         if units in ["pixels", "pxl", "pixel"]:
@@ -233,20 +249,85 @@ class SlicerMapper():
         -------
         pixels
         """
-        xy = self.interp_map(coordinates)
+        xy = self.interp_3d_to_2d(coordinates)
         return self.physical_to_pixels(xy)
         
-    def physical_to_pixels(self, a, from_center=True):
-        """ converts physical coordinates into pixel coordinates """
-        from astropy import units
-
-        
-        a_pixels = a * getattr(units, self._units_in).to("micrometer") / self._pixel_size
+    def physical_to_pixels(self, a_physical, from_center=True):
+        """ converts physical coordinates into pixel coordinates """        
+        a_pixels = a_physical * getattr(u, self._XY_UNITS).to("micrometer") / self._pixel_size
         if from_center:
             a_pixels += self._detector_shape / 2 # set back the centroid to (0,0)
             
         return a_pixels
 
+    def pixels_to_physical(self, a_pixels, from_center=True):
+        """ converts pixel coordinates to physical coordinates """
+        a_pixels = np.atleast_1d(a_pixels) # copies
+        
+        if from_center:
+            a_pixels -= self._detector_shape / 2 # set back the centroid to (0,0)
+
+        a_physical = a_pixels / ( getattr(u, self._XY_UNITS).to("micrometer") / self._pixel_size)
+        return a_physical
+
+    # ------------ #
+    # convertions  #
+    # ------------ #
+    def slice_pos_wave_to_xy(self, sliceid, fieldpos, lbda):
+        """ convert slice, field position and wavelength into xy pixel coordinates 
+    
+        Parameters
+        ----------
+        sliceid, fieldpos, lbda: float, array
+            Broadcasting 3d coordinates.
+            e.g. sliceid=[1, 10, 80], fieldpos=-1, lbda=8000
+            is understood as -1 position at lbda=8000 for each of the 3 slideid
+            while sliceid=[10, 80], fieldpos=[0, -1], lbda=8000
+            is undeunderstood as field pos 0 for slice 10 and -1 for slice 80; each at 8000A.
+    
+        Returns
+        -------
+        x, y: array
+            coordinates [in pixels] in the detector.
+        """
+        # structure broadcasting
+        sliceid = np.atleast_1d(sliceid)
+        fieldpos = np.broadcast_to(fieldpos, sliceid.shape)
+        lbda = np.broadcast_to(lbda, sliceid.shape)
+    
+        # stack to match the interpolation's expectations
+        coordinates = np.stack([sliceid, fieldpos, lbda]).T
+        xy = self.interp_3d_to_2d(coordinates)
+        
+        # make sure we have that in pixels
+        return self.physical_to_pixels(xy).squeeze().T
+    
+    def xy_to_slice_pos_wave(self, x, y):
+        """ convert xy pixel coordinates into slice, field position and wavelength 
+    
+        Parameters
+        -----------
+        x, y: float, array
+            Broadcasting 2d coordinates (in pixels).
+            e.g. x=[1, 10], y=90
+            is understood as y=90 for both x=1 and x=10
+            while x=[1, 10], y=[80, 90]
+            is undeunderstood as xy_0 = [1, 80] and xy_1=[10, 90].
+    
+        Returns
+        -------
+        sliceid, fieldpos, lbda: array
+            3d coordinates.
+        """
+        x = np.atleast_1d(x)
+        y = np.broadcast_to(y, x.shape)
+        
+        # coordinates are as expected by interpolate (in physical units, not pixel.)
+        xy = np.stack([x, y]).T
+        xy = self.pixels_to_physical(xy)
+        return self.interp_2d_to_3d(xy).T
+
+    
     # ======== #
     #   plot   #
     # ======== #
@@ -336,7 +417,6 @@ class SlicerMapper():
         cmap = plt.get_cmap(cmap)
         lbda_bins = np.linspace(norm.vmin, norm.vmax, nlbda)
 
-        
         for lbda_min_, lbda_max_ in zip(lbda_bins[:-1], lbda_bins[1:]):
             lbda_mean = np.mean([lbda_min_, lbda_max_])
             xys = self.get_slice_contours(sliceid, lbda_range=[lbda_min_, lbda_max_],
@@ -357,24 +437,42 @@ class SlicerMapper():
             cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), cax=axsc)
             cbar.set_label(r"Wavelength [$\AA$]")
             axsc.tick_params(labelsize="small")
+            
         return fig
         
     # =============== #
     #   Properties    #
     # =============== #
     @property
+    def keys(self):
+        """ """
+        return self._metakey
+
+    @property
     def nslices(self):
         """ """
-        return self.spotdata["slice"].nunique()
+        return self.spotdata[ self.keys["sliceid"] ].nunique()
+    
     @property
     def spotdata(self):
         """ """
         return self._spotdata
     
     @property
-    def interp_map(self):
+    def interp_3d_to_2d(self):
         """ """
-        return self._interp_map
+        if not hasattr(self, "_interp_3d_to_2d") or self._interp_3d_to_2d is None:
+            self._interp_3d_to_2d = LinearNDInterpolator(self._sliceposwave, self._xy)
+            
+        return self._interp_3d_to_2d
+
+    @property
+    def interp_2d_to_3d(self):
+        """ """
+        if not hasattr(self, "_interp_2d_to_3d") or self._interp_2d_to_3d is None:
+            self._interp_2d_to_3d = LinearNDInterpolator(self._xy, self._sliceposwave)
+            
+        return self._interp_2d_to_3d
         
     @property
     def detector(self):
