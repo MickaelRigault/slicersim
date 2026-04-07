@@ -79,3 +79,18 @@ def test_get_slice_contours(mapper):
         assert isinstance(contours, shapely.Polygon)
     except ImportError as e: # no need to test
         pass
+
+
+def test_xy_to_or_from_slice_pos_wave(mapper):
+    """ """
+    # 3d -> 2d
+    sliceid, fieldpos, lbda = [1, 10, 80], -1, 8000
+    xy = mapper.slice_pos_wave_to_xy(sliceid, fieldpos, lbda)
+    assert xy.shape == (2, 3)
+
+    # 2d -> 3d
+    sliceid_recovered, fieldpos_recovered, lbda_recovered = mapper.xy_to_slice_pos_wave(*xy)
+    assert sliceid_recovered.shape == np.shape(sliceid)
+    assert np.isclose(sliceid_recovered, sliceid).all()
+    assert np.isclose(fieldpos_recovered, fieldpos).all()
+    assert np.isclose(lbda_recovered, lbda).all()
