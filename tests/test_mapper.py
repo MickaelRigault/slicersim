@@ -8,13 +8,13 @@ from slicersim.iotools import expand_path
 import pytest
 
 DETECTOR_MAX_SIZE = 5_000
-data = pandas.read_csv( expand_path("mapping_spotdata.csv"), sep=" ")
 
 @pytest.fixture
 def mapper():
     """ """
+    data = pandas.read_csv( expand_path("mapping_spotdata.csv"), sep=" ")
+    # load the mapper object
     return SlicerMapper.from_spotdata(data)
-
 
 def test_instanciation(mapper):
     """ """
@@ -22,14 +22,14 @@ def test_instanciation(mapper):
 
 def test_interpmap():
     """ """
-
+    data = pandas.read_csv( expand_path("mapping_spotdata.csv"), sep=" ")
     param3d, param2d, _ = SlicerMapper._get_interp_structures_(data,
                                                                     wavelength_units="micrometer",
                                                                     xy_units = "mm")
     interpmap = LinearNDInterpolator(param3d, param2d)
     xy =  interpmap(20, 0.5, 10_000 ) # slice #1 in near 0 the center of the slice (-1->1) at 1micron
     assert xy.shape == (2,), "expect shape doesn't match"
-    
+
 def test_get_pixel_positions(mapper):
     """ """
     slicepos = np.linspace(-1, 1, 5)
@@ -40,7 +40,7 @@ def test_get_pixel_positions(mapper):
     assert np.all(pixels>=0), "pixels should be positive"
     assert np.all(pixels<=DETECTOR_MAX_SIZE), "pixels with values larger than 10_000. This is unlikely."
     assert np.all((pixels[0]-pixels[-1])>1), "dynamic range of tested pixels is lower and 1"
-
+    
 def test_project_slice(mapper):
     """ """
 

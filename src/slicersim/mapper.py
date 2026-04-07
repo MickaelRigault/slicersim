@@ -18,7 +18,7 @@ class SlicerMapper():
         self._spotdata = spotdata
         self._sliceposwave, self._xy, self._metakey = self._get_interp_structures_(spotdata,
                                                                                     xy_units=xy_units,
-                                                                                       **kwargs)
+                                                                                    **kwargs)
         self._detector_shape = np.asarray(detector_shape, dtype="int")
         self._pixel_size = float(pixel_size) # in micro
         
