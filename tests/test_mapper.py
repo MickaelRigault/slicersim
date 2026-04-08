@@ -14,7 +14,7 @@ def mapper():
     """ """
     data = pandas.read_csv( expand_path("mapping_spotdata.csv"), sep=" ")
     # load the mapper object
-    return SlicerMapper.from_spotdata(data)
+    return SlicerMapper.from_data(data)
 
 def test_instanciation(mapper):
     """ """

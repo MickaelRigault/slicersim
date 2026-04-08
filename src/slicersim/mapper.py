@@ -9,29 +9,29 @@ from .utils import mesh_kwargs, unbin_array
 class SlicerMapper():
     _LBDA_UNITS = "angstrom"
     _XY_UNITS = "mm"
-    def __init__(self, spotdata,
+    def __init__(self, data,
                  detector_shape=(4096, 4096), 
                  pixel_size=10, # in micrometer
                  xy_units="mm", **kwargs
                 ):
         """ """
-        self._spotdata = spotdata
-        self._sliceposwave, self._xy, self._metakey = self._get_interp_structures_(spotdata,
+        self._data = data
+        self._sliceposwave, self._xy, self._metakey = self._get_interp_structures_(data,
                                                                                     xy_units=xy_units,
                                                                                     **kwargs)
         self._detector_shape = np.asarray(detector_shape, dtype="int")
         self._pixel_size = float(pixel_size) # in micro
         
     @classmethod
-    def from_spotdata(cls, spotdata, xy_units="mm"):
+    def from_data(cls, data, xy_units="mm", **kwargs):
         """ """
-        if type(spotdata) in [str, np.str_]:
-            spotdata = pandas.read_csv(spotdata, sep=" ")
+        if type(data) in [str, np.str_]:
+            data = pandas.read_csv(data, sep=" ")
             
-        return cls(spotdata, xy_units=xy_units)
+        return cls(data, xy_units=xy_units,  **kwargs)
 
     @classmethod
-    def _get_interp_structures_(cls, spotdata,
+    def _get_interp_structures_(cls, data,
                                     wavelength_units="micrometer",
                                     xy_units = "micrometer",
                                     x="x", y="y",
@@ -40,16 +40,16 @@ class SlicerMapper():
                                      wavelength="lbda"):
         """ """
         # for record
-        metakey = {k: v for k,v in locals().items() if k not in ["cls", "spotdata"]}
+        metakey = {k: v for k,v in locals().items() if k not in ["cls", "data"]}
     
         # wavelength 
         lbda_units_convert = getattr(u, wavelength_units).to(cls._LBDA_UNITS) # make sure unit make sense 
-        spotdata["lbda"] = spotdata[wavelength].astype(float)*lbda_units_convert # in requested units
-        sliceposwave = spotdata[ [sliceid, fieldpos, "lbda"] ].astype(float).values
+        data["lbda"] = data[wavelength].astype(float)*lbda_units_convert # in requested units
+        sliceposwave = data[ [sliceid, fieldpos, "lbda"] ].astype(float).values
 
         # spot location
         xy_units_convert = getattr(u, xy_units).to(cls._XY_UNITS) # make sure unit make sense 
-        xy = spotdata[[x, y]].astype(float).values * xy_units_convert # in requested units
+        xy = data[[x, y]].astype(float).values * xy_units_convert # in requested units
         return sliceposwave, xy, metakey
         
     # =============== #
@@ -75,6 +75,26 @@ class SlicerMapper():
         # combine them to get the full image.
         return np.sum([img_med, img_fine], axis=0)
 
+
+    def deproject_data(self, sliceid, fieldpos, lbda, key=None):
+        """ """
+        if key is None:
+            key = self.data.columns
+            
+        df = mesh_kwargs(sliceid = sliceid, 
+                         fieldpos = fieldpos, 
+                         lbda = lbda)
+    
+        # interpolation happens xy in the physical space (see self._xy)
+        xy = self.get_pixel_positions(df)
+        xy_physical = self.pixels_to_physical(xy) 
+        
+        # store the pixel position 
+        df["xpixel"], df["ypixel"] = xy.T
+        
+        # get the corresponding values
+        df[key] = LinearNDInterpolator(self._xy, self.data[key])( xy_physical )
+        return df    
  
     def project_slice(self, sliceid, sliceimg, lbda, oversample=(5, 2), fill_value=0):
         """ project the slice(s) into the detector
@@ -451,12 +471,12 @@ class SlicerMapper():
     @property
     def nslices(self):
         """ """
-        return self.spotdata[ self.keys["sliceid"] ].nunique()
+        return self.data[ self.keys["sliceid"] ].nunique()
     
     @property
-    def spotdata(self):
+    def data(self):
         """ """
-        return self._spotdata
+        return self._data
     
     @property
     def interp_3d_to_2d(self):
