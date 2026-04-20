@@ -62,7 +62,8 @@ class SlicerMapper():
         # generate the cubes (one per channel), you can remove contributions.
         (cube_fine, _), (cube_wide, _) = lazulitarget.get_cube(which='both',
                                                                psf_profile=psf_profile,
-                                                               switch_off=switch_off)
+                                                               switch_off=switch_off,
+                                                                **kwargs)
 
         # get the wavelength array
         lbda = lazulitarget.simulation.spectrograph.lbda
