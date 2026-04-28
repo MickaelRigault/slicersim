@@ -76,12 +76,50 @@ class SlicerMapper():
         # combine them to get the full image.
         return np.sum([img_med, img_fine], axis=0)
 
+    def project_lazulicube(self, cube, which, lbda, fill_value=0, **kwargs):
+        """" """
+        if which in ["fine", "narrow"]:
+            index_ = np.arange(1, 59)[::-1]
+        elif which in ["medium", "wide"]:
+            index_ = np.arange(59, 117)[::-1]
+        else:
+            raise ValueError(f"{which=} is not available (narrow or wide")
+        
+        return self.project_slice(index_, cube, lbda, fill_value=fill_value, **kwargs)
 
-    def deproject_data(self, sliceid, fieldpos, lbda, key=None):
+    def deproject_cubeof(self, key, deproj_df=None,
+                            nslices=58, nfieldpos=58, nlbda=571):
+        """ """
+        if deproj_df is None:
+            if self._deprojected_df is None:
+                raise ValueError("No deprojected given, none in self.")
+            
+            deproj_df = self._deprojected_df
+
+        cube = deproj_df[key].array.reshape(nslices, nfieldpos, nlbda)
+        # move lbda as first axis
+        cube = np.moveaxis(cube, -1, 0)
+        # replace location of sliceid and fieldpos
+        cube = np.moveaxis(cube, 1, -1)
+        return cube
+        
+    
+    def deproject_data(self, sliceid, fieldpos, lbda, key=None, inplace=False):
         """ """
         if key is None:
             key = self.data.columns
             
+        df = self._deproject_data(sliceid=sliceid, fieldpos=fieldpos, lbda=lbda,
+                                 key=key)
+
+        # store deprojected data in place.
+        if inplace:
+            self._hdeprojected_df = df
+            
+        return df
+
+    def _deproject_data(self, sliceid, fieldpos, lbda, key):
+        """ """
         df = mesh_kwargs(sliceid = sliceid, 
                          fieldpos = fieldpos, 
                          lbda = lbda)
@@ -95,7 +133,7 @@ class SlicerMapper():
         
         # get the corresponding values
         df[key] = LinearNDInterpolator(self._xy, self.data[key])( xy_physical )
-        return df    
+        return df
  
     def project_slice(self, sliceid, sliceimg, lbda, oversample=(5, 2), fill_value=0):
         """ project the slice(s) into the detector
@@ -169,6 +207,12 @@ class SlicerMapper():
         value_pixels_t = slice_oversampled.T.flatten()
         
         # build the corresponding image
+        if np.isnan(fill_value):
+            fill_zero_to_nan = True
+            fill_value = 0
+        else:
+            fill_zero_to_nan = False
+            
         ## 1. image full of nan
         image = np.full(self.detector["shape"], fill_value=fill_value, dtype="float")
         
@@ -177,6 +221,9 @@ class SlicerMapper():
         x_, y_ = pixels[~flag_nan].astype(int).T[::-1]
         image[x_, y_] += value_pixels_t[~flag_nan]
 
+        if fill_zero_to_nan:
+            image[image==0] = np.nan
+            
         # the detector image
         return image
     
@@ -500,3 +547,11 @@ class SlicerMapper():
         """ """
         return {"shape": self._detector_shape,
                 "pixel_size": self._pixel_size}
+
+    @property
+    def _deprojected_df(self):
+        """ locally stored deprojected data """
+        if not hasattr(self, "_hdeprojected_df"):
+            self._hdeprojected_df = None
+
+        return self._hdeprojected_df

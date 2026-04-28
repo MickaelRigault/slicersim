@@ -715,6 +715,7 @@ class Spectrograph:
             Guiding sigma override in arcsec. Default is None.
         in_spaxels : bool, optional
             If True, return sigma in spaxels. Default is False.
+            If False, the sigma is in arcsec.
         lbda : array_like, optional
             Wavelength array in Angstrom. If None (Default), 
             this uses self.lbda.
@@ -1261,6 +1262,12 @@ class Spectrograph:
     # ------------- #
     #    generate   #
     # ------------- #
+    # Generic
+    def generate_fullof_cube(self, array):
+        """ This generic funtion to project an array as a cube """
+        
+        
+    
     # Point Souce
     def generate_pointsource(self, spectrum, position=(0, 0),
                               psf_profile="default",
