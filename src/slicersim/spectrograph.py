@@ -99,7 +99,6 @@ def build_lbda(spectral_range, spectral_resolution=None,
 
     return lbda, lbda_edges
 
-
 def build_lbda_from_config(config):
     """Build wavelength coordinates from a configuration dictionary.
 
@@ -214,15 +213,13 @@ def build_throughput_from_config(config):
     # if we are here, throughput is a file containing the overall throughput
     return OpticsThroughput._read_ecsv(throughput)
 
+
 # ============== #
 #  Spectrograph  #
 # ============== #
 class Spectrograph:
-    """Spectrograph simulation.
+    """ Spectrograph simulation.
 
-    .. warning::
-        The spectral PSF impacts the cross-dispersion profile,
-        but is not applied in the dispersion direction.
     """
     _SPECTROGRAPH_TYPE = "Unknown"
 
@@ -449,7 +446,6 @@ class Spectrograph:
                 warnings.warn(f"Parameter {k!r} is not mutable.")
                 continue
 
-
             # lbda
             if k in ["dispersion_resolution", "spotsize"]:
                 # update the meta (for lsf and instrumental psf)
@@ -562,7 +558,6 @@ class Spectrograph:
         -------
         None
         """
-        
         # 
         if isinstance(throughput, pandas.DataFrame):
             throughput = throughput.iloc[:,0] # convert as serie
@@ -571,10 +566,6 @@ class Spectrograph:
         if isinstance(throughput, pandas.Series):
             throughput = iotools.chromatic_interpolator(
                 throughput.index, throughput.values, ext='zeros')
-
-        #elif isinstance(throughput, OpticsThroughput):
-        #    pass #
-            
 
         self.throughput = throughput
         
@@ -655,8 +646,33 @@ class Spectrograph:
         'R': array
             the resolving power for shape (nlbda, )
         """
-        return self.lbda / np.diff(self.lbda_edges) / self.dispersion_resolution
+        return self.lbda / np.diff(self.lbda_edges) / self.get_dispersion_resolution()
 
+    def get_dispersion_resolution(self, which=None):
+        """ """
+        dispersion_resolution = self.dispersion_resolution
+        if which is None:
+            return dispersion_resolution
+        
+        if type(dispersion_resolution) is not dict:
+            if np.ndim(dispersion_resolution) == 0: # float-like
+                dispersion_resolution = {"wavelength": dispersion_resolution,
+                                            "spatial": dispersion_resolution}
+            elif np.ndim(dispersion_resolution) == 1 and len(dispersion_resolution) == 2: # array like
+                disp_wave, disp_spatial = dispersion_resolution
+                return {"wavelength": disp_wave,
+                        "spatial": disp_spatial}
+            else:
+                raise ValueError(f"I cannot parse input dispersion resolution {dispersion_resolution}")
+
+        
+        if which in ["wavelength", "lsf", "wave", "lbda", "y"]:
+            return dispersion_resolution["wavelength"]
+        elif which in ["spatial", "psf", "x"]:
+            return dispersion_resolution["spatial"]
+        else:
+            raise ValueError(f"I cannot parse {which=}")
+            
 
     def get_spaxel_centroids(self, in_arcsec=False, squeeze=False, oversampling=None):
         """Get the spaxel centroids.
@@ -699,11 +715,12 @@ class Spectrograph:
     def get_psf_sigma_spectral(self, guiding_sigma=None,
                                    incl_telescope=True,
                                    in_spaxels=False, lbda=None):
-        """Get spatial PSF standard deviation in arcsec.
+        """Get spatial PSF standard deviation (in arcsec or in spaxels).
 
         The total (Gaussian) spatial PSF is made of two components:
         - the optical (chromatic) component, with stddev proportional
           to wavelength, normalized at wref=1 µm,
+
         - the guiding (achromatic) component, with constant stddev.
 
         If needed, the 1D vector can be embedded in a N-dim array of
@@ -713,6 +730,8 @@ class Spectrograph:
         ----------
         guiding_sigma : float, optional
             Guiding sigma override in arcsec. Default is None.
+            If None, self.spatial_psf["guiding_sigma"] is used.
+            If you don't want any, specify guiding_sigma=0.
         in_spaxels : bool, optional
             If True, return sigma in spaxels. Default is False.
             If False, the sigma is in arcsec.
@@ -728,7 +747,8 @@ class Spectrograph:
             lbda = self.lbda
 
         if guiding_sigma is None:
-            guiding_sigma = self.spatial_psf["guiding_sigma"]
+            # no default in .get() for it to break if not specified
+            guiding_sigma = self.spatial_psf.get("guiding_sigma")
 
         if incl_telescope:
             chromatic_sigma = self.psf_sigma_spectral
@@ -760,7 +780,8 @@ class Spectrograph:
         ----------
         guiding_sigma : float, optional
             Gaussian noise convolution (in arcsec) caused by jitter.
-            Default is None.
+            If None (default), this uses internally stored 'guiding_sigma'.
+            To force no guiding scatter, specify guiding_sigma=0.
         incl_instrument: bool
             should this also include instrumental induced PSF
             = this only apply to slicer spectrograph =
@@ -803,9 +824,11 @@ class Spectrograph:
         else:
             effective_sigma = guiding_sigma
 
+        # spaxels
         if in_spaxels:
             return effective_sigma
         
+        # arcsec        
         return effective_sigma * self.spx_spatial_scale
 
     def get_spatial_psf(self, profile="default", position=(0, 0),
@@ -864,7 +887,7 @@ class Spectrograph:
                                                             incl_instrument=incl_instrument)
         
         # 
-        # Gaussian, special as convolution with additional gaussan scatter is analytic
+        # Gaussian, special as convolution with additional gaussian scatter is analytic
         #
         if profile in ["default", "gaussian", "normal", "norm"]:
             # adding gaussian_sigma in arcsec (in_spaxels=False)| e.g. jitter
@@ -956,7 +979,7 @@ class Spectrograph:
         # effective_sigma is either None or [sigma_x, sigma_y]
         if effective_sigma is not None and np.any(effective_sigma > 0):
             # effective_sigma is already in spaxels.
-            psf = self._apply_guiding(psf, guiding=effective_sigma, oversampling=oversampling,
+            psf = self._apply_additional_scatter(psf, guiding=effective_sigma, oversampling=oversampling,
                                           in_units="spaxels")
 
         if oversampling != 1 and not as_oversampled:
@@ -994,7 +1017,7 @@ class Spectrograph:
             extra scattering. Format depends of in_spaxels and self.spx_spatial_scale
         """
         if spotsize is None:
-            spotsize = self.dispersion_resolution
+            spotsize = self.get_dispersion_resolution()
 
         if spotsize <= expected_size:
             return None # nothing to do | should a warning be added ? This should not happen
@@ -1011,7 +1034,7 @@ class Spectrograph:
         return extra_pixels * self.spx_spatial_scale # in arsec
 
     # - internal tricks
-    def _apply_guiding(self, image, guiding, oversampling=1, in_units="arcsec"):
+    def _apply_additional_scatter(self, image, guiding, oversampling=1, in_units="arcsec"):
         """Apply guiding error convolution.
 
         Parameters
@@ -1033,8 +1056,9 @@ class Spectrograph:
         from scipy.ndimage import gaussian_filter
         # gaussian convolution | guiding_sigma is given in arcsec
         # works by itself if spx_spatial_scale is a list or a float.
-        if in_units=="arcsec":
+        if in_units == "arcsec":
             guiding = guiding/self.spx_spatial_scale
+            
         elif in_units not in ["spaxels", "spx", "pixels"]:
             raise ValueError(f"in_units should be arcsec or spaxels, {in_units=} given.")
 
@@ -1216,7 +1240,6 @@ class Spectrograph:
 
         return variance  # (nlbda,) [ADU²]
 
-
     def get_lsf_dispersion(self, as_="scale"):
         """Get the gaussian LSF dispersion sigma in units of wavelength bin.
 
@@ -1227,10 +1250,10 @@ class Spectrograph:
             - sigma/scale: equivalent of a normal distribution sigma (i.e. 'scale' in scipy, numpy definition)
         """
         if as_ is None or as_ in ["resolution"]:
-            disp_ = self.dispersion_resolution
+            disp_ = self.get_dispersion_resolution()
         
         elif as_ in ["scale", "sigma"]:
-            disp_ = self.dispersion_resolution / 2.
+            disp_ = self.get_dispersion_resolution() / 2.
         else:
             raise NotImplementedError(f"{as_=} is not implemented, use: scale or resolution")
         
@@ -1262,8 +1285,33 @@ class Spectrograph:
     # ------------- #
     #    generate   #
     # ------------- #
+    def get_array_as_cube(self, array, oversampling=None):
+        """ """
+        spatial_shape = self.get_spectrograph_shape(oversampling=oversampling)
+        
+        array = np.asarray(array)
+        # float as input
+        if array.ndim == 0:
+            pass # this broadcasts good to go
+            
+        elif array.ndim == 1:
+            if array.shape == (self.nlbda,):
+                array = array[:, None, None]
+            else:
+                raise ValueError("cannot parse the input shape of array.")
+                
+        elif array.ndim == 2:
+            if array.shape == spatial_shape:
+                array = array[None, :]
+            else:
+                raise ValueError("cannot parse the input shape of array.")
+        elif array.ndim > 3:
+            raise ValueError("cannot parse the input shape of array.")
+            
+        return np.full((self.nlbda, *spatial_shape),  # lbda, y, x
+                        array)  # (nlbda, ny, nx)
     # Generic
-    def generate_fullof_cube(self, array):
+    def generate_fullof_cube(self, array, oversample=True):
         """ This generic funtion to project an array as a cube """
         
         
@@ -1350,6 +1398,9 @@ class Spectrograph:
         NotImplementedError
             This method is not yet implemented.
         """
+        # this will require the PSF
+        # => self.get_spatial_psf()
+        
         raise NotImplementedError("generate_structured_background() has not been implemented.")
 
     # Themal (pre-dispersor)
@@ -1748,8 +1799,8 @@ class Spectrograph:
         ax.set_xticklabels([])
 
         # adding guiding
-        psf_cube = self._apply_guiding(psf_cube, guiding=guiding_arcsec, oversampling=oversampling,
-                                           in_units="arcsec")
+        psf_cube = self._apply_additional_scatter(psf_cube, guiding=guiding_arcsec, oversampling=oversampling,
+                                                  in_units="arcsec")
         psf_slice = self.cube_to_slice(psf_cube, lbda_range, squeeze=True)
         axg.imshow(psf_slice, norm=norm(), extent=extent, **kwargs)
         axg.set_xticklabels([])
@@ -1836,7 +1887,9 @@ class Spectrograph:
     def dispersion_resolution(self):
         """ provide the effective dispersion resolution in pixels. 
         note: 2 is optimal. Lower, the PSF is unresolved, 
-        higher the PSF is oversampled hence producing unecessary pixel noise. """
+        higher the PSF is oversampled hence producing unecessary pixel noise. 
+        """
+        # - mapper -
         return self.meta.get("dispersion_resolution", 2)
 
     
@@ -1950,7 +2003,7 @@ class SlicerSpectrograph(Spectrograph):
         return 1
 
 
-class MLASpectrograph(Spectrograph): 
+class MLASpectrograph(Spectrograph):
     """A spectrograph with no anamorphose and x-dispersion for traces."""
     _ANAMORPHOSE = None
     _SPECTROGRAPH_TYPE = "mla"

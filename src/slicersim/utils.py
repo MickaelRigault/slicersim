@@ -285,29 +285,43 @@ def integ_gaussian2D_erf(xy_edges, sigma, mu=(0, 0), normed=True):
     array([ True])
 
     """
-
     from scipy.special import erf
 
     x_edges, y_edges = xy_edges  # (1, nx + 1) and (ny + 1, 1)
     if x_edges.shape[0] > 1 or y_edges.shape[1] > 1:
         raise NotImplementedError("Only 'open' mesh-grid is supported.")
 
-    mux, muy = mu
-
+    mus = np.broadcast_to(mu, sigma.shape)    
+    muy = mus[..., 0]
+    mux = mus[..., 1]
+    
     # allows for asymetric sigma
     sqrt2sig = 1.4142135623730951 * sigma
     if sqrt2sig.shape[-1] == 1:
         sqrt2sig_y = sqrt2sig_x = sqrt2sig
         
     elif sqrt2sig.shape[-1] == 2:
-        sqrt2sig_y = sqrt2sig[..., 0][...,None] # no dim reduction
-        sqrt2sig_x = sqrt2sig[..., 1][...,None] # no dim reduction
-        
+        sqrt2sig_y = sqrt2sig[..., 0][..., None] # no dim reduction
+        sqrt2sig_x = sqrt2sig[..., 1][..., None] # no dim reduction
+
+    # special case of third dimension for varying sigmas.
+    if sqrt2sig.shape[0] > 1:
+        # add the missing dimension.
+        x_edges = x_edges[:, None]
+        y_edges = y_edges[:, None]
+        muy = muy[:, None]
+        mux = mux[:, None]
+        # make sure mus broadcasts
+    
     tmpx = erf((x_edges - mux) / sqrt2sig_x)  # sig.shape + (1, nx+1)
     tmpy = erf((y_edges - muy) / sqrt2sig_y)  # sig.shape + (ny+1, 1)
     
     # Normalized Gaussian, sig.shape + (ny, nx)
-    f = np.diff(tmpx, axis=-1) * np.diff(tmpy, axis=-2) / 4
+    if tmpx.ndim == 3: # 3d as slices of 2d:
+        f = np.moveaxis(np.diff(tmpx, axis=-1), 0, 1) * np.moveaxis(np.diff(tmpy, axis=0), 0, 1) / 4.
+    else:
+        f = (np.diff(tmpx, axis=-1) * np.diff(tmpy, axis=-2) / 4)
+        
     if not normed:
         f *= 2 * np.pi * sigma**2
 

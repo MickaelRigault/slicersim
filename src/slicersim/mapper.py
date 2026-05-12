@@ -101,7 +101,8 @@ class SlicerMapper():
         cube = np.moveaxis(cube, -1, 0)
         # replace location of sliceid and fieldpos
         cube = np.moveaxis(cube, 1, -1)
-        return cube
+        
+        return np.asarray(cube)
         
     
     def deproject_data(self, sliceid, fieldpos, lbda, key=None, inplace=False):

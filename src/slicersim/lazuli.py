@@ -158,8 +158,6 @@ def lazuli_etc(lbda, flux, snr,
 
     return exptime, target
 
-
-
 class VirtualLazuliTarget():
     """A virtual class to build Lazuli Target (see child classes).
 

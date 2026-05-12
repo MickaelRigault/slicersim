@@ -251,8 +251,8 @@ def get_gaussian2d(xx, yy, sigma, mean=(0,0), **kwargs):
     sigma = np.atleast_2d(sigma)
     
     # center to edge
-    xedge = _center_to_edge_(np.squeeze(xx)) # (1,N)=>(N,) 
-    yedge = _center_to_edge_(np.squeeze(yy)) # (N,1)=>(N,)
+    xedge = _center_to_edge_(np.squeeze(xx)) # (1, N)=>(N,) 
+    yedge = _center_to_edge_(np.squeeze(yy)) # (N, 1)=>(N,)
     
     #return xedge, yedge
     pixels = integ_gaussian2D_erf(
