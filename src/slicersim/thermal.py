@@ -118,7 +118,7 @@ class ThermalOptics():
         A dictionary of metadata. Default is {}.
 
     """
-    mutable_parameters = ['temperature', 'emissivity'] # lbda
+    mutable_parameters = ['temperature', 'emissivity', 'nelements'] # lbda
 
     def __init__(self, temperature, emissivity, fratio=None, solid_angle=None,
                      nelements=1, geometry="circular",
@@ -150,6 +150,7 @@ class ThermalOptics():
         self._temperature = np.atleast_1d(temperature)[:, None].astype(float)
         self._emissivity = np.atleast_1d(emissivity)[:, None].astype(float)
         self._nelements = np.atleast_1d(nelements)[:, None].astype(int)
+        
         if fratio is not None:
             self._fratio = np.atleast_2d(fratio).astype(float)
         else:
@@ -219,7 +220,8 @@ class ThermalOptics():
             if k not in self.mutable_parameters:
                 warnings.warn(f"Parameter {k!r} is not mutable.")
                 continue
-            if k in ["temperature", "emissivity"]:
+            
+            if k in ["temperature", "emissivity", "nelements"]:
                 setattr(self, f"_{k}", np.atleast_2d(v).astype(float) )
             else:
                 warnings.warn(f"update not implemented for {k}. *Ignored* ")

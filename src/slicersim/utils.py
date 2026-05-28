@@ -285,29 +285,37 @@ def integ_gaussian2D_erf(xy_edges, sigma, mu=(0, 0), normed=True):
     array([ True])
 
     """
-
     from scipy.special import erf
 
     x_edges, y_edges = xy_edges  # (1, nx + 1) and (ny + 1, 1)
     if x_edges.shape[0] > 1 or y_edges.shape[1] > 1:
         raise NotImplementedError("Only 'open' mesh-grid is supported.")
 
-    mux, muy = mu
-
+    mu = np.asarray(mu)
+    sigma = np.asarray(sigma)
+    if sigma.ndim == 2 and sigma.shape[0]>1:
+        sigma = sigma[:, None, :]
+    
+    mu = np.broadcast_to(mu, sigma.shape)
+    muy = mu[..., 0][..., None]
+    mux = mu[..., 1][..., None]
+    
     # allows for asymetric sigma
     sqrt2sig = 1.4142135623730951 * sigma
     if sqrt2sig.shape[-1] == 1:
         sqrt2sig_y = sqrt2sig_x = sqrt2sig
         
     elif sqrt2sig.shape[-1] == 2:
-        sqrt2sig_y = sqrt2sig[..., 0][...,None] # no dim reduction
-        sqrt2sig_x = sqrt2sig[..., 1][...,None] # no dim reduction
-        
+        sqrt2sig_y = sqrt2sig[..., 0][..., None] # no dim reduction
+        sqrt2sig_x = sqrt2sig[..., 1][..., None] # no dim reduction
+
+ 
+    
     tmpx = erf((x_edges - mux) / sqrt2sig_x)  # sig.shape + (1, nx+1)
     tmpy = erf((y_edges - muy) / sqrt2sig_y)  # sig.shape + (ny+1, 1)
     
-    # Normalized Gaussian, sig.shape + (ny, nx)
-    f = np.diff(tmpx, axis=-1) * np.diff(tmpy, axis=-2) / 4
+    f = (np.diff(tmpx, axis=-1) * np.diff(tmpy, axis=-2) / 4)
+        
     if not normed:
         f *= 2 * np.pi * sigma**2
 

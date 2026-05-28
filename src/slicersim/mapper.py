@@ -5,33 +5,40 @@ from astropy import units as u
     
 from .utils import mesh_kwargs, unbin_array
 
+import warnings 
+warnings.warn("'slicersim.mapper' is deprecated. Install and use 'slicemapper' instead")
+
 
 class SlicerMapper():
     _LBDA_UNITS = "angstrom"
     _XY_UNITS = "mm"
-    def __init__(self, spotdata,
+    def __init__(self, data,
                  detector_shape=(4096, 4096), 
                  pixel_size=10, # in micrometer
                  xy_units="mm", **kwargs
                 ):
         """ """
-        self._spotdata = spotdata
-        self._sliceposwave, self._xy, self._metakey = self._get_interp_structures_(spotdata,
+        import warnings 
+        warnings.warn("'slicersim.SlicerMapper' is deprecated. Install and use 'slicemapper' instead")
+
+
+        self._data = data
+        self._sliceposwave, self._xy, self._metakey = self._get_interp_structures_(data,
                                                                                     xy_units=xy_units,
                                                                                     **kwargs)
         self._detector_shape = np.asarray(detector_shape, dtype="int")
         self._pixel_size = float(pixel_size) # in micro
         
     @classmethod
-    def from_spotdata(cls, spotdata, xy_units="mm"):
+    def from_data(cls, data, xy_units="mm", **kwargs):
         """ """
-        if type(spotdata) in [str, np.str_]:
-            spotdata = pandas.read_csv(spotdata, sep=" ")
+        if type(data) in [str, np.str_]:
+            data = pandas.read_csv(data, sep=" ")
             
-        return cls(spotdata, xy_units=xy_units)
+        return cls(data, xy_units=xy_units,  **kwargs)
 
     @classmethod
-    def _get_interp_structures_(cls, spotdata,
+    def _get_interp_structures_(cls, data,
                                     wavelength_units="micrometer",
                                     xy_units = "micrometer",
                                     x="x", y="y",
@@ -39,17 +46,18 @@ class SlicerMapper():
                                     fieldpos="fieldpos",
                                      wavelength="lbda"):
         """ """
+        data = data.copy()
         # for record
-        metakey = {k: v for k,v in locals().items() if k not in ["cls", "spotdata"]}
+        metakey = {k: v for k,v in locals().items() if k not in ["cls", "data"]}
     
         # wavelength 
         lbda_units_convert = getattr(u, wavelength_units).to(cls._LBDA_UNITS) # make sure unit make sense 
-        spotdata["lbda"] = spotdata[wavelength].astype(float)*lbda_units_convert # in requested units
-        sliceposwave = spotdata[ [sliceid, fieldpos, "lbda"] ].astype(float).values
+        data["lbda"] = data[wavelength].astype(float)*lbda_units_convert # in requested units
+        sliceposwave = data[ [sliceid, fieldpos, "lbda"] ].astype(float).values
 
         # spot location
         xy_units_convert = getattr(u, xy_units).to(cls._XY_UNITS) # make sure unit make sense 
-        xy = spotdata[[x, y]].astype(float).values * xy_units_convert # in requested units
+        xy = data[[x, y]].astype(float).values * xy_units_convert # in requested units
         return sliceposwave, xy, metakey
         
     # =============== #
@@ -62,7 +70,8 @@ class SlicerMapper():
         # generate the cubes (one per channel), you can remove contributions.
         (cube_fine, _), (cube_wide, _) = lazulitarget.get_cube(which='both',
                                                                psf_profile=psf_profile,
-                                                               switch_off=switch_off)
+                                                               switch_off=switch_off,
+                                                                **kwargs)
 
         # get the wavelength array
         lbda = lazulitarget.simulation.spectrograph.lbda
@@ -75,6 +84,65 @@ class SlicerMapper():
         # combine them to get the full image.
         return np.sum([img_med, img_fine], axis=0)
 
+    def project_lazulicube(self, cube, which, lbda, fill_value=0, **kwargs):
+        """" """
+        if which in ["fine", "narrow"]:
+            index_ = np.arange(1, 59)[::-1]
+        elif which in ["medium", "wide"]:
+            index_ = np.arange(59, 117)[::-1]
+        else:
+            raise ValueError(f"{which=} is not available (narrow or wide")
+        
+        return self.project_slice(index_, cube, lbda, fill_value=fill_value, **kwargs)
+
+    def deproject_cubeof(self, key, deproj_df=None,
+                            nslices=58, nfieldpos=58, nlbda=571):
+        """ """
+        if deproj_df is None:
+            if self._deprojected_df is None:
+                raise ValueError("No deprojected given, none in self.")
+            
+            deproj_df = self._deprojected_df
+
+        cube = deproj_df[key].array.reshape(nslices, nfieldpos, nlbda)
+        # move lbda as first axis
+        cube = np.moveaxis(cube, -1, 0)
+        # replace location of sliceid and fieldpos
+        cube = np.moveaxis(cube, 1, -1)
+        
+        return np.asarray(cube)
+        
+    
+    def deproject_data(self, sliceid, fieldpos, lbda, key=None, inplace=False):
+        """ """
+        if key is None:
+            key = self.data.columns
+            
+        df = self._deproject_data(sliceid=sliceid, fieldpos=fieldpos, lbda=lbda,
+                                 key=key)
+
+        # store deprojected data in place.
+        if inplace:
+            self._hdeprojected_df = df
+            
+        return df
+
+    def _deproject_data(self, sliceid, fieldpos, lbda, key):
+        """ """
+        df = mesh_kwargs(sliceid = sliceid, 
+                         fieldpos = fieldpos, 
+                         lbda = lbda)
+    
+        # interpolation happens xy in the physical space (see self._xy)
+        xy = self.get_pixel_positions(df)
+        xy_physical = self.pixels_to_physical(xy) 
+        
+        # store the pixel position 
+        df["xpixel"], df["ypixel"] = xy.T
+        
+        # get the corresponding values
+        df[key] = LinearNDInterpolator(self._xy, self.data[key])( xy_physical )
+        return df
  
     def project_slice(self, sliceid, sliceimg, lbda, oversample=(5, 2), fill_value=0):
         """ project the slice(s) into the detector
@@ -148,6 +216,12 @@ class SlicerMapper():
         value_pixels_t = slice_oversampled.T.flatten()
         
         # build the corresponding image
+        if np.isnan(fill_value):
+            fill_zero_to_nan = True
+            fill_value = 0
+        else:
+            fill_zero_to_nan = False
+            
         ## 1. image full of nan
         image = np.full(self.detector["shape"], fill_value=fill_value, dtype="float")
         
@@ -156,6 +230,9 @@ class SlicerMapper():
         x_, y_ = pixels[~flag_nan].astype(int).T[::-1]
         image[x_, y_] += value_pixels_t[~flag_nan]
 
+        if fill_zero_to_nan:
+            image[image==0] = np.nan
+            
         # the detector image
         return image
     
@@ -451,12 +528,12 @@ class SlicerMapper():
     @property
     def nslices(self):
         """ """
-        return self.spotdata[ self.keys["sliceid"] ].nunique()
+        return self.data[ self.keys["sliceid"] ].nunique()
     
     @property
-    def spotdata(self):
+    def data(self):
         """ """
-        return self._spotdata
+        return self._data
     
     @property
     def interp_3d_to_2d(self):
@@ -479,3 +556,11 @@ class SlicerMapper():
         """ """
         return {"shape": self._detector_shape,
                 "pixel_size": self._pixel_size}
+
+    @property
+    def _deprojected_df(self):
+        """ locally stored deprojected data """
+        if not hasattr(self, "_hdeprojected_df"):
+            self._hdeprojected_df = None
+
+        return self._hdeprojected_df
