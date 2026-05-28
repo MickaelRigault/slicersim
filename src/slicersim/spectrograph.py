@@ -226,6 +226,7 @@ class Spectrograph:
     #: Mutable parameters (list)
     mutable_parameters = [  # 'spectral_range', 'spectral_resolution', # lbda
         "dispersion_resolution", "spotsize", "dispersion_scale",
+        "which_throughput",
         'xdisp_sigma_spectral', 'xdisp_sigma',  # xdisp_profile,
         'psf_sigma_spectral', 'guiding_sigma',  # psf_profile
         'spatial_scale', 'spatial_shape',  # spaxels
@@ -468,6 +469,10 @@ class Spectrograph:
             elif k in ('spatial_scale', 'spatial_scale_insigma',
                        'spatial_shape', 'spatial_shape_insigma'):
                 spaxel_updates[k] = v
+                
+            # generic change
+            elif k in ["which_throughput"]:
+                updates[k] = v
             else:
                 warnings.warn(f"{k=} is unparsed")
 
@@ -599,7 +604,7 @@ class Spectrograph:
 
         return lbda
         
-    def get_throughput(self, lbda=None):
+    def get_throughput(self, lbda=None, **kwargs):
         """Get the spectrograph throughput.
 
         Returns
@@ -607,10 +612,14 @@ class Spectrograph:
         array_like or float
             Throughput as a function of wavelength or as a constant.
         """
+        # internal tool
+        which_throughput = {"which": self.meta.get("which_throughput", None)}
+        
         if callable(self.throughput):
             if lbda is None:
                 lbda = self.lbda
-            return self.throughput(lbda)
+                
+            return self.throughput(lbda, **(which_throughput | kwargs) )
         
         # float
         if lbda is not None:
@@ -2410,16 +2419,19 @@ class OpticsThroughput( object ):
             else:
                 self.meta[key] = value
         
-    def get_throughput(self, lbda, per_element=False, incl_noptics=True, ignore=None):
+    def get_throughput(self, lbda, which=None, per_element=False, incl_noptics=True, ignore=None):
         """Get the total throughput of the optical system.
 
         Parameters
         ----------
         lbda : array_like
             Wavelength array in Angstrom.
+        which : str, None, optional
+            limit the element to this entry.
         per_element : bool, optional
             If True, return the throughput of each element separately.
             Default is False.
+            - ignored if which is given -
         incl_noptics : bool, optional
             If True, include the number of optics in the calculation.
             Default is True.
@@ -2432,6 +2444,9 @@ class OpticsThroughput( object ):
         array_like or list of array_like
             Total throughput or list of throughputs per element.
         """
+        if which is not None:
+            return self.get_element_throughput(which, lbda, incl_noptics=incl_noptics)
+        
         curves_per_element = [self.get_element_throughput(name_, lbda, incl_noptics) 
                               for name_ in self.names if (ignore is None or name_ not in ignore)]
         if per_element:

@@ -5,6 +5,9 @@ from astropy import units as u
     
 from .utils import mesh_kwargs, unbin_array
 
+import warnings 
+warnings.warn("'slicersim.mapper' is deprecated. Install and use 'slicemapper' instead")
+
 
 class SlicerMapper():
     _LBDA_UNITS = "angstrom"
@@ -15,6 +18,10 @@ class SlicerMapper():
                  xy_units="mm", **kwargs
                 ):
         """ """
+        import warnings 
+        warnings.warn("'slicersim.SlicerMapper' is deprecated. Install and use 'slicemapper' instead")
+
+
         self._data = data
         self._sliceposwave, self._xy, self._metakey = self._get_interp_structures_(data,
                                                                                     xy_units=xy_units,
@@ -39,6 +46,7 @@ class SlicerMapper():
                                     fieldpos="fieldpos",
                                      wavelength="lbda"):
         """ """
+        data = data.copy()
         # for record
         metakey = {k: v for k,v in locals().items() if k not in ["cls", "data"]}
     

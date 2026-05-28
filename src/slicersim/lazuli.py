@@ -8,11 +8,16 @@ __all__ = ["lazuli_etc", "lazuli_sn_etc",
             "LazuliSupernova", "LazuliTarget", "LazuliCalSpec"]
 
 
-SPECTROGRAPH_SAMPLING = {"fine": {'spatial_shape': [29, 58], 'spatial_scale': 0.04,
-                            "throughput__noptics__coating": 11},
-                         "medium": {'spatial_shape': [29, 58], 'spatial_scale': 0.08,
-                                "throughput__noptics__coating": 9}
-                             }
+SPECTROGRAPH_FIELD = {"narrow": {'spatial_shape': [58, 58], 'spatial_scale': 0.04,
+                                    'ifu_nelements': 4,
+                                    "which_throughput": "narrow",  # limit throughput column entry
+                                    },
+                                    
+                         "wide": {'spatial_shape': [58, 58], 'spatial_scale': 0.08,
+                                    'ifu_nelements': 6,
+                                    "which_throughput": "wide",  # limit throughput column entry
+                                 }
+                        }
 
 
     
@@ -173,7 +178,7 @@ class VirtualLazuliTarget():
     """
     _INSTRUMENT = 'lazuli.toml'
     
-    def __init__(self, simulation=None):
+    def __init__(self, simulation=None, field="narrow"):
         """Initialize the VirtualLazuliTarget.
 
         Parameters
@@ -183,6 +188,8 @@ class VirtualLazuliTarget():
         """
         # set it.
         self._simulation = simulation
+        if field is not None:
+            self.change_spectrograph(field)
 
     @classmethod
     def from_scene(cls, scene=None, **kwargs):
@@ -215,31 +222,38 @@ class VirtualLazuliTarget():
     # =============== #
     #   Methods       #
     # =============== #
-    def change_spectrograph(self, sampling=None, spatial_shape=None, spatial_scale=None):
+    def change_spectrograph(self, field=None, spatial_shape=None, spatial_scale=None):
         """Change the spectrograph configuration.
 
         Parameters
         ----------
-        sampling : str, optional
-            Sampling mode to use:
+        field : str, optional
+            Field mode to use:
             - "fine": well-spatially sampled grid (~[58/2, 58] with 40mas spaxels)
-            - "medium": coarser grid sampling (~[58/2, 58] with 80mas spaxels)
+            - "medium": coarser grid field (~[58/2, 58] with 80mas spaxels)
             Default is None.
         spatial_shape : tuple of float, optional
             Manually set the grid shape (e.g., (40, 40)).
-            This is on top of `sampling` if any. Default is None.
+            This is on top of `field` if any. Default is None.
         spatial_scale : float or list, optional
             Manually set spaxel size in arcsec.
             If float, this is assumed to be squared. If list, (x, y).
-            This is on top of `sampling` if any. Default is None.
+            This is on top of `field` if any. Default is None.
         """
         # overwrites the current one.
-        if sampling is not None:
-            config = SPECTROGRAPH_SAMPLING.get(sampling, None)
+        if field is not None:
+            config = SPECTROGRAPH_FIELD.get(field, None)
             if config is None:
-                raise ValueError(f"cannot parse the given sampling {sampling=} | {SPECTROGRAPH_SAMPLING} expected")
+                raise ValueError(f"cannot parse the given field {field=} | {SPECTROGRAPH_FIELD} expected")
         else:
             config = {}
+
+        if "ifu_nelements" in config:
+            # get all spectrograph optics nelements
+            nelements_spectro = self.simulation.get_parameter("optics.nelements")
+            # ifu is the 2nd (so [1]) optics.
+            nelements_spectro[1] = config.pop("ifu_nelements")
+            config["spectrograph__optics__nelements"] = nelements_spectro
 
         # manual setting if any
         if spatial_shape is not None:
@@ -262,28 +276,28 @@ class VirtualLazuliTarget():
         """
         return self.get_properties(["nmd", "nramps"])
     
-    def get_spectrograph_sampling(self):
-        """Get the current spectrograph sampling configuration.
+    def get_spectrograph_field(self):
+        """Get the current spectrograph field configuration.
 
 
         Returns
         -------
         str
-            The name of the sampling mode if it exists, otherwise "manual".
+            The name of the field mode if it exists, otherwise "manual".
         dict
-            The configuration of the sampling.
+            The configuration of the field.
 
         """
         keys_to_check = ["spatial_shape", "spatial_scale"]
         current_config = self.get_properties(keys_to_check)
-        sampling = "manual"
-        for this_sampling, this_config in SPECTROGRAPH_SAMPLING.items():
-            sampling_config = {k: this_config.get(k, None) for k in keys_to_check}
-            if sampling_config == current_config:
-                sampling = this_sampling
+        field = "manual"
+        for this_field, this_config in SPECTROGRAPH_FIELD.items():
+            field_config = {k: this_config.get(k, None) for k in keys_to_check}
+            if field_config == current_config:
+                field = this_field
                 break
             
-        return sampling, current_config      
+        return field, current_config      
 
     def get_cube(self, which="both", **kwargs):
         """ returns both cubes, one for each slicer. 
@@ -313,13 +327,13 @@ class VirtualLazuliTarget():
             return self.simulation.get_cube(**kwargs)
     
         # let's see which configuration you have
-        current_sampling, current_config = self.get_spectrograph_sampling()
+        current_field, current_config = self.get_spectrograph_field()
         original_position = self.simulation.get_parameter("position")
-        if current_sampling not in ["fine", "medium"]:
-            raise ValueError(f"sampling is neither fine nor medium ({current_sampling}). Only which='current' available. {which=}")
+        if current_field not in ["fine", "medium"]:
+            raise ValueError(f"field is neither fine nor medium ({current_field}). Only which='current' available. {which=}")
     
         # => you want the other one, or both.
-        #    First, let's get the position in each sampling.
+        #    First, let's get the position in each field.
         pos_fine, pos_med = self._get_field_positions()
         
         # let's loop over fields, update the position 
@@ -339,7 +353,7 @@ class VirtualLazuliTarget():
             cubes_medium = None
     
         # revert back to original config (could be )
-        self.change_spectrograph(sampling=current_sampling, **current_config)
+        self.change_spectrograph(field=current_field, **current_config)
         self.simulation.update(position = original_position)
     
         if which == "both":
@@ -380,14 +394,14 @@ class VirtualLazuliTarget():
             position = np.asarray(self.simulation.get_parameter("position"))
             
         if field is None:
-            field, _ = self.get_spectrograph_sampling()
+            field, _ = self.get_spectrograph_field()
         
         anamorphe = np.asarray(self.simulation.spectrograph._ANAMORPHOSE)
         # information for the fine field
-        nx_fine, ny_fine = SPECTROGRAPH_SAMPLING["fine"]["spatial_shape"] / anamorphe
+        nx_fine, ny_fine = SPECTROGRAPH_FIELD["fine"]["spatial_shape"] / anamorphe
         
         # information for the fine field
-        nx_med, ny_med = SPECTROGRAPH_SAMPLING["medium"]["spatial_shape"] / anamorphe
+        nx_med, ny_med = SPECTROGRAPH_FIELD["medium"]["spatial_shape"] / anamorphe
     
         # multiplying factory between mid and large
         fine_to_med = 0.5
@@ -477,7 +491,7 @@ class VirtualLazuliTarget():
             metaslice_fine = np.nansum(cube_fine[lbda_min:lbda_max], axis=0)
             metaslice_medium = np.nansum(cube_medium[lbda_min:lbda_max], axis=0)
             
-        current_sampling, _ = self.get_spectrograph_sampling()
+        current_field, _ = self.get_spectrograph_field()
 
         # vmin, vmax        
         vmin, vmax = np.percentile(np.vstack([metaslice_fine, metaslice_medium]), [0.01, 99.99])

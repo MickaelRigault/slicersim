@@ -11,16 +11,18 @@ from .telescope import Telescope
 __all__ = ["Simulation"]
 
 COLORS = {# detector
-          "dark": "#25283C",
-          "thermal_dark": "#005D8F",
-          "roic_glow": "#89937C",
-          "ron": "#80B056", 
+          "dark": "#00283D",
+          "roic_glow": "#005566",
+          "thermal_dark": "#399378",          
+          "ron": "#9FC680", 
           # scene
-          "pointsource": "#C2C1B0", 
-          "background": "#FFBC42",
-          "host":"#E56C10",
+          "pointsource": "#E7D49D", 
+          "background": "#EE9B00",
+          "host":"#CA6602",
+          # BB3E03
+          # AE2012
           # thermal
-          "thermal":"#8C2B2B"
+          "thermal":"#9B2226"
           }
 
 class Simulation():
