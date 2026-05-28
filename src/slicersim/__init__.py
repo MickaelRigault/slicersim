@@ -8,7 +8,7 @@ Top-level functionalities of this package are currently built for the Lazuli Spa
 Telescope, but the code is generic and can be extended to any Integral Field
 Unit (slicer or micro-lens array).
 """
-__version__ = '0.33.1'
+__version__ = '0.34.0'
 
 # Top level simulations
 from .simulation import * # noqa: F403
