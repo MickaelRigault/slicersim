@@ -329,7 +329,28 @@ class Simulation():
                           dispersion_resolution=reference_resolution,
                           spotsize=spotsize)
         return self.update(**config)
-    
+
+    def update_from_config(self, config):
+        """ """
+        for key, thisconfig in config.items():
+            if key == "scene":
+                self.scene.update(**thisconfig)
+                
+            elif key == "telescope":
+                self.telescope.update(**thisconfig)
+
+            elif key == "spectrograph":
+                self.spectrograph.update(**thisconfig)
+                
+            elif key == "detector":
+                self.detector.update(**thisconfig)
+                
+            elif key == "extraction":
+                self.extraction |= thisconfig
+            else:
+                warnings.warn(f"the {key=}:{thisconfig} is not parsed  and thus ignored.")
+            
+        
     def update(self, reset_others=False, **kwargs):
         """Update any mutable parameter of the simulation.
 

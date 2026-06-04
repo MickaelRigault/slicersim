@@ -16,7 +16,7 @@ class VirtualTarget():
         The simulation object. Default is None.
 
     """
-    _DEFAULT_CONFIG = {"instrument":'lazuli.toml'}
+    _DEFAULT_CONFIG = {"instrument": None}
     
     def __init__(self, simulation=None):
         """Initialize the VirtualLazuliTarget.

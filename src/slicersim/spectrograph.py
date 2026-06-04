@@ -190,7 +190,8 @@ def build_throughput_from_config(config):
     float or callable
         Throughput as a constant value or a function of wavelength.
     """
-    throughput =  config.get("throughput", None)
+    throughput =  config.get("throughput", config)
+    
     if throughput is None:
         raise ValueError("No given 'throughput' in the input config.")
 
@@ -204,14 +205,12 @@ def build_throughput_from_config(config):
     else: # float worked, so let's return it.
         return throughput
         
-
     # if we are here, throughput is not simply a float.
     if isinstance(throughput, dict):
         # it is itself a config. Let's use the dedicated object
         return OpticsThroughput.from_config(throughput)
-
-    # if we are here, throughput is a file containing the overall throughput
-    return OpticsThroughput._read_ecsv(throughput)
+        
+    return OpticsThroughput.from_filename(throughput)
 
 
 # ============== #
@@ -343,7 +342,7 @@ class Spectrograph:
         spaxels = build_spaxels_from_config(input_config)
 
         # throughput
-        throughput = build_throughput_from_config(input_config)
+        throughput = build_throughput_from_config(input_config["throughput"])
 
         # thermal optics
         optics = ThermalOptics.from_config(input_config["optics"])
@@ -426,7 +425,13 @@ class Spectrograph:
             # Nothing to do, skip
             if v is None:
                 continue
-                        
+
+            # special case: changing the throughput structure
+            if k == "throughput": # no . at the end.
+                new_throughput = OpticsThroughput.from_config(v)
+                self.set_throughput(new_throughput)
+                continue
+            
             # telescope
             if k.startswith("telescope."):
                 telescope_updates[k.replace("telescope.", "")] = v
@@ -565,7 +570,7 @@ class Spectrograph:
         """
         # 
         if isinstance(throughput, pandas.DataFrame):
-            throughput = throughput.iloc[:,0] # convert as serie
+            throughput = throughput.iloc[:, 0] # convert as serie
 
         # Serie => func
         if isinstance(throughput, pandas.Series):
@@ -1413,6 +1418,23 @@ class Spectrograph:
         raise NotImplementedError("generate_structured_background() has not been implemented.")
 
     # Themal (pre-dispersor)
+    def _get_optics_dispersed_signal(self, lbda_bin):
+        """ 
+        """
+        all_surface_radiations = self.optics.get_signal(lbda_bin,
+                                                        area=self.telescope.surface,
+                                                        solid_angle=self.omega)
+        
+        dispersed_radiations = all_surface_radiations[ self.optics.meta["dispersed"] ]
+        return np.sum(dispersed_radiations, axis=0)
+
+    def _get_telescope_dispersed_signal(self, lbda_bin):
+        """ 
+        """
+        return self.telescope.get_thermal_signal(lbda_bin,
+                                                 solid_angle=self.omega,  # Spx solid angle [sr]
+                                                 as_sum=True)
+
     def generate_thermal_signal(self, lbda_bin=None,
                                 as_cube=False, oversampling=None,
                                 apply_lsf=True, as_sum=True):
@@ -1440,9 +1462,12 @@ class Spectrograph:
         if lbda_bin is None:
             lbda_bin = self.lbda_bin
 
-        signal = self.telescope.get_thermal_signal(lbda_bin,
-                                                   solid_angle=self.omega,  # Spx solid angle [sr]
-                                                   as_sum=as_sum)
+        # Telescope
+        signal = self._get_optics_dispersed_signal(lbda_bin=lbda_bin) \
+               + self._get_telescope_dispersed_signal(lbda_bin=lbda_bin)
+
+
+        #signal = 
         # output formating
         if as_cube:
             signal = np.full((self.nlbda, *self.get_spectrograph_shape(oversampling=oversampling)),
@@ -1452,36 +1477,6 @@ class Spectrograph:
             signal = self.apply_line_spread_function(signal)
 
         return signal  # [ph/s/spx/Δλ]
-
-    def get_thermal_dark(self, pixel_area, as_sum=True):
-        """Get the thermal dark current.
-
-        Parameters
-        ----------
-        pixel_area : float
-            Detector pixel surface in m^2.
-        as_sum : bool, optional
-            If True, sum the contribution from all optical elements.
-            Default is True.
-
-        Returns
-        -------
-        float or array_like
-            Thermal dark current in ph/s.
-        """
-        # properties at the detector
-        ## each pixels integrate the whole spectral range.
-        lbda_bin = self.lbda[[0, -1]]
-
-        # get the dark signal in ph/s
-        signals = self.optics.get_signal(lbda_bin=lbda_bin,  # expectedin in [A]
-                                         area=pixel_area)  # Collecting area [m²]
-
-        # note: this sums over 1 element if only 1 temperature
-        if as_sum:
-            signals = np.sum(signals, axis=0)
-
-        return signals
 
     # Empty cube
     def get_empty_cube(self, filled=0, oversampling=None):
@@ -2322,22 +2317,63 @@ class OpticsThroughput( object ):
         OpticsThroughput
             An OpticsThroughput instance.
         """
-        options = {"ext": "extrapolate"}
         throughput_file = config.get("throughput", None) # e.g. "throughput.cvs"
         if throughput_file is None:
             raise ValueError("no 'throughput' in input config")
 
-        if "ecsv" in throughput_file:
-            curves_df = cls._read_ecsv(throughput_file, as_dataframe=True) # backward compatibility
-        else:
-            throughput_file = iotools.expand_path(throughput_file) # make sure it is fullpath
-            curves_df = pandas.read_csv(throughput_file, index_col="wavelength", **kwargs)
-            
         noptics = config.get("noptics", 1)
+        return cls.from_filename(throughput_file, noptics=noptics, meta=config, **kwargs)
+
+    @classmethod
+    def from_filename(cls, filename, noptics=1, meta={}, **kwargs):
+        """ Create an OpticsThroughput instance from a datafile
+
+         Parameters
+        ----------
+        config : str
+            path (.ecsv or .csv)
+            
+        **kwargs
+            Additional arguments passed to `pandas.read_csv`.
+
+        Returns
+        -------
+        OpticsThroughput
+            An OpticsThroughput instance.        
+        """
+        import os
+        if not os.path.isfile(filename): # name of config file most likely.
+            filename = iotools.expand_path(filename) # make sure it is fullpath
+            
+        if str(filename).endswith(".ecsv"):
+            curves_df = cls._read_ecsv(filename, as_dataframe=True) # backward compatibility
+        else:
+            curves_df = pandas.read_csv(filename, index_col="wavelength", **kwargs)
+            
+        options = {"ext": "extrapolate"}
+        return cls.from_curvesdf(curves_df, noptics, meta=meta, **options)
+
+    @staticmethod
+    def _read_csv(filename):
+        """Read an ecsv file containing throughput data.
         
-        return cls.from_curvesdf(curves_df, noptics, meta=config, **options)
+        Parameters
+        ----------
+        filename : str
+            Path to the ecsv file.
 
+        as_dataframe : bool, optional
+            If True, return a pandas DataFrame. If False, return a
+            callable interpolator. Default is False.
 
+        Returns
+        -------
+        pandas.DataFrame or callable
+            Throughput data as a DataFrame or an interpolator.
+        """
+        fullpath = iotools.expand_path(filename)
+        return pandas.read_csv(fullpath)
+    
     @staticmethod
     def _read_ecsv(filename, as_dataframe=False):
         """Read an ecsv file containing throughput data.

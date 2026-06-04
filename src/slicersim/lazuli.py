@@ -176,7 +176,7 @@ class VirtualLazuliTarget():
         The simulation object. Default is None.
 
     """
-    _INSTRUMENT = 'lazuli.toml'
+    _INSTRUMENT = 'lazuli_cbe.toml'
     
     def __init__(self, simulation=None, field="narrow"):
         """Initialize the VirtualLazuliTarget.
@@ -215,13 +215,36 @@ class VirtualLazuliTarget():
             An instance of the class.
         """
         # create the simulator
-        config = get_config( **(cls._DEFAULT_CONFIG | kwargs) )
+        config = get_config( **(cls._DEFAULT_CONFIG | {"instrument": self._INSTRUMENT } | kwargs) )
         simulation = Simulation.from_config(config)
         return cls(simulation=simulation)
 
     # =============== #
     #   Methods       #
     # =============== #
+    def change_configuration(self, which):
+        """ change the intrumental configuration 
+        
+        This will look for lazuli_{which}.csv and update the current configuration with that one.
+
+        Parameters
+        ----------
+        which: str
+            name of the configuration. 
+
+        Returns
+        -------
+        None
+        """
+        from .iotools import read_config
+        if which == "eol":
+            config = read_config("lazuli_eol.toml")
+        elif which in ["bol","cbe"]:
+            config = read_config("lazuli_cbe.toml")
+            
+        return self.simulation.update_from_config(config)
+                
+        
     def change_spectrograph(self, field=None, spatial_shape=None, spatial_scale=None):
         """Change the spectrograph configuration.
 
@@ -540,7 +563,7 @@ class LazuliSupernova( VirtualLazuliTarget, Supernova ):
         """
         from .scene import get_sn_scene
         scene = get_sn_scene(model=model, **kwargs)
-        config = get_config( **( self._DEFAULT_CONFIG | {"scene": scene}) )
+        config = get_config( **( self._DEFAULT_CONFIG | {"instrument": self._INSTRUMENT} | {"scene": scene}) )
         simulation = Simulation.from_config(config)
         
         super().__init__(simulation=simulation)
