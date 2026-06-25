@@ -160,8 +160,8 @@ class Detector():
         if "min_group" in config:
             dict_init["min_group"] = int(config.get("min_group"))     #: maximum number of group per ramp
             
-        ## readout_noise
-        dict_init["ron"] = float(config.get("readout_noise"))         #: Read-Out Noise per frame [e-]
+        ## readout_noise aka, ron
+        dict_init["ron"] = float(config.get("ron", config.get("readout_noise")) ) #: Read-Out Noise per frame [e-]
 
         ## dark
         dict_init["dark"] = float(config.get("dark"))                 #: Dark current [e-/s]
@@ -220,9 +220,14 @@ class Detector():
             Keyword arguments representing the mutable attributes to update.
         """
         lbda = kwargs.pop("lbda", None)  # removes it from the kwargs
+
+        ALLOWED = {"readout_noise": "ron"}
         
         updates = {}
         for k, v in kwargs.items():
+            # allow alternative names for parameters.
+            
+            k = ALLOWED.get(k, k)
             if k not in self.mutable_parameters:
                 warnings.warn(f"Parameter {k!r} is not mutable.")
                 continue
@@ -367,7 +372,10 @@ class Detector():
         signals = thermaloptics.get_signal(lbda_bin = lbda_range, # expectedin in [A]
                                             area = pixel_area, # Collecting area [m²]
                                             qe=qe) # qe could be float or func
-                                          
+        # only take the undispersed one
+        signals = signals[ ~np.asarray(thermaloptics.meta["dispersed"]).astype(bool) ]
+
+        
         # sum over 1 element if only 1 temperature
         if as_sum:
             signals = np.sum(signals, axis=0)

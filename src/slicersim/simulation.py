@@ -329,7 +329,28 @@ class Simulation():
                           dispersion_resolution=reference_resolution,
                           spotsize=spotsize)
         return self.update(**config)
-    
+
+    def update_from_config(self, config):
+        """ """
+        for key, thisconfig in config.items():
+            if key == "scene":
+                self.scene.update(**thisconfig)
+                
+            elif key == "telescope":
+                self.telescope.update(**thisconfig)
+
+            elif key == "spectrograph":
+                self.spectrograph.update(**thisconfig)
+                
+            elif key == "detector":
+                self.detector.update(**thisconfig)
+                
+            elif key == "extraction":
+                self.extraction |= thisconfig
+            else:
+                warnings.warn(f"the {key=}:{thisconfig} is not parsed  and thus ignored.")
+            
+        
     def update(self, reset_others=False, **kwargs):
         """Update any mutable parameter of the simulation.
 
@@ -1862,7 +1883,55 @@ class Simulation():
     
     # ---------- #
     #  Plotting  #
-    # ---------- # 
+    # ---------- #
+    def show_config(self, axes=None, lbda_units=None, colors=["#194D80", "#A8B7C7"] ):
+        """ """
+        if axes is None:
+            import matplotlib.pyplot as plt
+            fig, (axr, axt) = plt.subplots(nrows=2, gridspec_kw={"hspace": 0.05, "top":0.95})
+        else:
+            axr, axt = axes
+            fig = axr.figure
+
+        if lbda_units is not None:
+            from astropy import units
+            lbda = self.spectrograph.lbda * units.Angstrom.to(lbda_units)
+        else:
+            lbda = self.spectrograph.lbda
+            
+
+        # resolution power
+        respow = self.spectrograph.get_resolving_power()
+        axr.plot(lbda, respow, lw=2, color=colors[0])
+
+        # throughput
+        throughput = self.spectrograph.get_throughput(lbda=lbda)
+        axt.fill_between(lbda, throughput,
+                         facecolor=colors[1], 
+                         edgecolor="None", label="optics")
+
+        # and qe
+        qe = self.detector.get_qe(lbda=lbda)
+        axt.fill_between(lbda, throughput*qe, 
+                         facecolor=colors[0], edgecolor="None",
+                        label="+qe")
+        
+        axt.set_ylim(0, 1)
+
+        axr.set_ylim(1)
+        axr.set_xlim(*axt.get_xlim())
+        axr.set_xticklabels([])
+
+        axt.legend(fontsize="small", ncols=2, frameon=False)
+        axr.set_ylabel("Resolving power $R$", fontsize="large")
+        axt.set_ylabel("Transmission", fontsize="large")
+        axt.set_xlabel("Wavelength", fontsize="large")
+        
+        [ax_.set_facecolor("w") for ax_ in fig.axes]
+        fig.set_facecolor("None")
+
+        return fig
+        
     def show_spectrum(self, ax=None, switch_off=[], snr=False, **kwargs): # pragma: no cover
         """Plot the detected spectrum.
 
