@@ -51,7 +51,7 @@ def lbda_from_resolution_power(spectral_range, res_power, npx_resolution=2):
 
     wmin, wmax = spectral_range
     # ln(10)=2.303...
-    dlog = 1 / (2.302585092994046 * res_power * npx_resolution)  
+    dlog = 1 / (2.302585092994046 * res_power * npx_resolution)
     npx = round((np.log10(wmax) - np.log10(wmin)) / dlog)
     loglbda_edges = np.linspace(np.log10(wmin), np.log10(wmax), npx + 1)
     loglbda_mid = (loglbda_edges[:-1] + loglbda_edges[1:]) / 2  # mean
@@ -111,7 +111,7 @@ def build_lbda_from_config(config):
         - dispersion_scale # float
         - spectral_resolution
         - dispersion_resolution
-        - 
+        -
 
     Returns
     -------
@@ -124,7 +124,7 @@ def build_lbda_from_config(config):
 
     dispersion_law = config.get("dispersion_law", None)
     dispersion_scale = float(config.get("dispersion_scale", 1))
-    
+
     spectral_resolution = config.get("spectral_resolution", None)
     npx_resolution = config.get("dispersion_resolution", 2.1)  # number of pixel per resolution element.
 
@@ -154,7 +154,7 @@ def build_lbda_from_config(config):
     lbda, lbda_edges = build_lbda(spectral_range, wsol=wsol, dsol=dsol,
                                   spectral_resolution=spectral_resolution,
                                   npx_resolution=npx_resolution)
-    
+
     return lbda, lbda_edges
 
 def build_spaxels_from_config(config):
@@ -191,25 +191,25 @@ def build_throughput_from_config(config):
         Throughput as a constant value or a function of wavelength.
     """
     throughput =  config.get("throughput", config)
-    
+
     if throughput is None:
         raise ValueError("No given 'throughput' in the input config.")
 
     # is that simply a float or something ?
-    try: 
+    try:
         throughput = float(throughput)
-        
+
     except (ValueError, TypeError):
         pass
-    
+
     else: # float worked, so let's return it.
         return throughput
-        
+
     # if we are here, throughput is not simply a float.
     if isinstance(throughput, dict):
         # it is itself a config. Let's use the dedicated object
         return OpticsThroughput.from_config(throughput)
-        
+
     return OpticsThroughput.from_filename(throughput)
 
 
@@ -285,7 +285,7 @@ class Spectrograph:
         self.spatial_psf = spatial_psf
 
         # affect the instance
-        telescope_mutable = [] 
+        telescope_mutable = []
         self.mutable_parameters = self.mutable_parameters + \
                                   ([f"telescope.{k}" for k in self.telescope.mutable_parameters] if self.telescope is not None else []) +\
                                   ([f"optics.{k}" for k in self.optics.mutable_parameters] if self.optics is not None else []) +\
@@ -313,7 +313,7 @@ class Spectrograph:
         """
         # spectrograph that inherit Spectrograph simply need to update _parse_config()
         init_prop, _ = cls._parse_config(config)
-        
+
         return cls(telescope=telescope, **init_prop)
 
     @staticmethod
@@ -385,17 +385,17 @@ class Spectrograph:
         """Update any mutable attribute of the spectrograph.
 
         remark: the method accepts django like format such that
-                a__b is understood as a.b. 
+                a__b is understood as a.b.
                 For instance: optics__temperature => optics.temperature.
-                so update(**{'optics.temperature':220}) is equivalent to 
+                so update(**{'optics.temperature':220}) is equivalent to
                 update(optics__temperature=220)
 
         Information:
         ------------
            # lbda:
-           - changing `dispersion_resolution` redefines self.lbda such that 
+           - changing `dispersion_resolution` redefines self.lbda such that
              the resolving_power() is unchanged
-           - changing `spotsize` updates self.dispersion_resolution 
+           - changing `spotsize` updates self.dispersion_resolution
              *without* updating lbda, effectively changing the resolving_power()
 
 
@@ -431,7 +431,7 @@ class Spectrograph:
                 new_throughput = OpticsThroughput.from_config(v)
                 self.set_throughput(new_throughput)
                 continue
-            
+
             # telescope
             if k.startswith("telescope."):
                 telescope_updates[k.replace("telescope.", "")] = v
@@ -474,7 +474,7 @@ class Spectrograph:
             elif k in ('spatial_scale', 'spatial_scale_insigma',
                        'spatial_shape', 'spatial_shape_insigma'):
                 spaxel_updates[k] = v
-                
+
             # generic change
             elif k in ["which_throughput"]:
                 updates[k] = v
@@ -495,7 +495,7 @@ class Spectrograph:
         # update internal optics
         if throughput_updates:
             what_changed.append("throughput")
-            self.throughput.update(**throughput_updates)            
+            self.throughput.update(**throughput_updates)
 
         # psf
         if psf_updates:
@@ -560,15 +560,15 @@ class Spectrograph:
             - float: constant throughput
             - array: must broadcast with self.lbda
             - func: function that input self.lbda such that throughput_array = throughput(self.lbda)
-            - pandas.Series: throughput with lbda [AA] as index. This is converted input a function 
+            - pandas.Series: throughput with lbda [AA] as index. This is converted input a function
               using a cubic interpolation.
             - OpticsThroughput: internal object that handle detailed throughout structure.
-        
+
         Returns
         -------
         None
         """
-        # 
+        #
         if isinstance(throughput, pandas.DataFrame):
             throughput = throughput.iloc[:, 0] # convert as serie
 
@@ -578,17 +578,17 @@ class Spectrograph:
                 throughput.index, throughput.values, ext='zeros')
 
         self.throughput = throughput
-        
+
     # --------- #
     #  GETTER   #
     # --------- #
     def get_lbda(self, units=None, oversample=None):
-        """ get the wavelength array 
+        """ get the wavelength array
 
         Parameters
         ----------
         units: None,string, astropy.units
-            the unit of the returned array. 
+            the unit of the returned array.
             None (default) corresponds to AA (Angstrom).
 
         oversample: None, int
@@ -608,7 +608,7 @@ class Spectrograph:
             lbda = np.interp( np.arange(nlbda, step=1/oversample), np.arange(nlbda), lbda)
 
         return lbda
-        
+
     def get_throughput(self, lbda=None, **kwargs):
         """Get the spectrograph throughput.
 
@@ -619,17 +619,17 @@ class Spectrograph:
         """
         # internal tool
         which_throughput = {"which": self.meta.get("which_throughput", None)}
-        
+
         if callable(self.throughput):
             if lbda is None:
                 lbda = self.lbda
-                
+
             return self.throughput(lbda, **(which_throughput | kwargs) )
-        
+
         # float
         if lbda is not None:
             warnings.warn("self.throughput is not callable, input lbda is ignored.")
-            
+
         return self.throughput
 
     def get_spectrograph_shape(self, oversampling=None):
@@ -651,10 +651,10 @@ class Spectrograph:
         return (np.asarray(self.spx_shape) * oversampling).astype(int)
 
     def get_resolving_power(self):
-        r""" this is 'R' such as $\mathcal{R} = \lambda/\Delta\lambda$ 
-        
+        r""" this is 'R' such as $\mathcal{R} = \lambda/\Delta\lambda$
+
         it is computed as lbda / np.difflbda_edges) / dispersion_resolution
-        
+
         Returns
         -------
         'R': array
@@ -667,7 +667,7 @@ class Spectrograph:
         dispersion_resolution = self.dispersion_resolution
         if which is None:
             return dispersion_resolution
-        
+
         if type(dispersion_resolution) is not dict:
             if np.ndim(dispersion_resolution) == 0: # float-like
                 dispersion_resolution = {"wavelength": dispersion_resolution,
@@ -679,14 +679,14 @@ class Spectrograph:
             else:
                 raise ValueError(f"I cannot parse input dispersion resolution {dispersion_resolution}")
 
-        
+
         if which in ["wavelength", "lsf", "wave", "lbda", "y"]:
             return dispersion_resolution["wavelength"]
         elif which in ["spatial", "psf", "x"]:
             return dispersion_resolution["spatial"]
         else:
             raise ValueError(f"I cannot parse {which=}")
-            
+
 
     def get_spaxel_centroids(self, in_arcsec=False, squeeze=False, oversampling=None):
         """Get the spaxel centroids.
@@ -750,7 +750,7 @@ class Spectrograph:
             If True, return sigma in spaxels. Default is False.
             If False, the sigma is in arcsec.
         lbda : array_like, optional
-            Wavelength array in Angstrom. If None (Default), 
+            Wavelength array in Angstrom. If None (Default),
             this uses self.lbda.
         Returns
         -------
@@ -768,15 +768,15 @@ class Spectrograph:
             chromatic_sigma = self.psf_sigma_spectral
         else:
             chromatic_sigma = 0
-            
+
         sigma = self._get_chromatic_sigma(lbda,
                                           chromatic_sigma=chromatic_sigma,
                                           constant_sigma=guiding_sigma,
                                           wref=self.lbda_ref)
-            
+
         # broadcast as (nlbda, 1, 1)
         sigma = sigma[..., None, None]
-        
+
         if in_spaxels:
             # for broadcasting reasons /= does not work.
             sigma = sigma/ self.spx_spatial_scale
@@ -787,9 +787,9 @@ class Spectrograph:
                                           incl_instrument=True,
                                           in_spaxels=True):
         """ scale of the scatter induced by telescope jitter and instrumental psf
-        
+
         Note: current implementation assumes scatter to the gaussian.
-        
+
         Parameters
         ----------
         guiding_sigma : float, optional
@@ -809,7 +809,7 @@ class Spectrograph:
             guiding_sigma = self.spatial_psf["guiding_sigma"]
 
         if guiding_sigma is not None:
-            # make sure it is 2d (RA, Dec) 
+            # make sure it is 2d (RA, Dec)
             guiding_sigma = np.full((2,), guiding_sigma) / self.spx_spatial_scale # in spaxels
 
         # Note:
@@ -826,7 +826,7 @@ class Spectrograph:
                 inst_psf = np.full((2,), inst_psf)
                 # and remove the "x" contribution (see LSF)
                 inst_psf[0] = 0
-        
+
             if guiding_sigma is None and inst_psf is None:
                 effective_sigma = None
             elif guiding_sigma is None:
@@ -841,8 +841,8 @@ class Spectrograph:
         # spaxels
         if in_spaxels:
             return effective_sigma
-        
-        # arcsec        
+
+        # arcsec
         return effective_sigma * self.spx_spatial_scale
 
     def get_spatial_psf(self, profile="default", position=(0, 0),
@@ -853,7 +853,7 @@ class Spectrograph:
                         **kwargs):
         """Get normalized 2D spatial PSF on the spectrograph.
 
-        This takes the psf generated by the telescope, includes jitter and 
+        This takes the psf generated by the telescope, includes jitter and
         add the contribution from the instrument caused by internal optics.
 
         Parameters
@@ -890,29 +890,29 @@ class Spectrograph:
         if not incl_telescope: # no telescope, no jitter
             if guiding_sigma>0:
                 warnings.warn("incl_telescope is False but guiding_sigma is none 0. We are forcing guiding_sigma=0 ; no telescope, no jitter.")
-                
+
             guiding_sigma = 0
-            
+
         # to solve the numpy vs. plot confusion
         position_xy = position
-            
-        # effective_sigma is 2d (x-scatter, y-scatter) | x == dispersion y=slice  
+
+        # effective_sigma is 2d (x-scatter, y-scatter) | x == dispersion y=slice
         effective_sigma = self.get_additonal_spatial_scatter(guiding_sigma=guiding_sigma,
                                                             incl_instrument=incl_instrument)
-        
-        # 
+
+        #
         # Gaussian, special as convolution with additional gaussian scatter is analytic
         #
         if profile in ["default", "gaussian", "normal", "norm"]:
             # adding gaussian_sigma in arcsec (in_spaxels=False)| e.g. jitter
             sigmas = self.get_psf_sigma_spectral(in_spaxels=True,
-                                                 guiding_sigma=0, # guiding is included after 
+                                                 guiding_sigma=0, # guiding is included after
                                                  incl_telescope=incl_telescope
                                                 ) # in spaxels
-                
+
             # adding gaussian scatter (e.g. jitter)
             if effective_sigma is not None:
-                # effective_sigma is in spaxel 
+                # effective_sigma is in spaxel
                 sigmas = np.hypot(sigmas, effective_sigma) # in spaxels
 
             prop = dict(in_arcsec=False, squeeze=False, oversampling=1)
@@ -926,7 +926,7 @@ class Spectrograph:
             # remark: if oversampled, the flux need to be *summed*, not *averaged*
             #         as the energy is conserved in the current structure.
             #         => smaller pixel (oversampled) -> less flux.
-            
+
             return psf
 
         # ----------------------------------------------------- #
@@ -947,18 +947,18 @@ class Spectrograph:
                 radius = self.telescope.get_airy_radius(self.lbda)  # in arcsec
             else:
                 radius = np.ones(self.lbda.shape) * 1e-4 # very close to zeros but non zero to avoid issues.
-                
+
             # assumed symetric on x and y
             psf_func = profiles.get_profilemodel("airy", position=position_xy,
                                                   radius=radius[:, None, None],
                                                   normalized=True)
-            
-            
+
+
         elif profile in ["Gaussian2D", "gaussian2d", "gaussian"]:
             sigmas = self.get_psf_sigma_spectral(in_spaxels=False,
                                                  guiding_sigma=0, # explicitely null, see after.
                                                  incl_telescope=incl_telescope
-                                                ) # in arcsec 
+                                                ) # in arcsec
             psf_func = profiles.get_profilemodel("Gaussian2D", position=position_xy,
                                                   sigma=sigmas,
                                                   normalized=True)
@@ -978,16 +978,16 @@ class Spectrograph:
         # - psf_scipy = self.get_spatial_psf("normal") # works in spaxels
         # - psf_profile = self.get_spatial_psf("Gaussian2D") # works in arcsec
         #   they must both agree within numerical errors.
-        
 
-        # oversampling: The PSF intensity need to be devided by oversampling area 
+
+        # oversampling: The PSF intensity need to be devided by oversampling area
         #               to conserve energy. Hence the rebinning needs to sum (not average)
         if oversampling is not None:
             if np.ndim(oversampling) == 1:
                 oversampling_y, oversampling_x = oversampling
             else:
                 oversampling_y = oversampling_x = oversampling
-                
+
             psf /= oversampling_y*oversampling_x
 
         # effective_sigma is either None or [sigma_x, sigma_y]
@@ -1007,24 +1007,24 @@ class Spectrograph:
         """ get the contribution of the spectrograph to the total spot size.
         This contribution is null if spot_size <= expected_size.
 
-        This simply provides: 
+        This simply provides:
         extra_pixels = np.sqrt(spotsize**2 - expected_size**2)
 
         Parameters
         ----------
         spotsize: float
-            total size of a pointsource on the detector. 
+            total size of a pointsource on the detector.
             This is the total contribution, Telescope + Spectrograph.
 
         expected_size: float
-            this is the expected geometric footprint of the psf on the 
+            this is the expected geometric footprint of the psf on the
             detector.
 
         in_spaxels: bool
-            should the 'extra_pixels' be given in spaxel units 
+            should the 'extra_pixels' be given in spaxel units
             (spaxel=pixel for slicer along the x-slice direction)
             or should this be given in arcsec.
-        
+
         Returns
         -------
         extra_pixels: array, float
@@ -1035,15 +1035,15 @@ class Spectrograph:
 
         if spotsize <= expected_size:
             return None # nothing to do | should a warning be added ? This should not happen
-    
+
         # additional contribution (assumed gaussian) for the effective spotsize
         extra_pixels = np.sqrt(spotsize**2 - expected_size**2)
-    
-        # get the scatter scale in pixels/spaxels 
+
+        # get the scatter scale in pixels/spaxels
         # pixels/spaxels: same for a slicer in that direction
-        if in_spaxels: 
+        if in_spaxels:
             return extra_pixels
-    
+
         # or get this scale in arcsec
         return extra_pixels * self.spx_spatial_scale # in arsec
 
@@ -1060,7 +1060,7 @@ class Spectrograph:
         oversampling : int, optional
             Oversampling factor. Default is 1.
         in_units: bool
-            the guiding parameter units: ["arcsec" or "spaxels"] 
+            the guiding parameter units: ["arcsec" or "spaxels"]
 
         Returns
         -------
@@ -1072,7 +1072,7 @@ class Spectrograph:
         # works by itself if spx_spatial_scale is a list or a float.
         if in_units == "arcsec":
             guiding = guiding/self.spx_spatial_scale
-            
+
         elif in_units not in ["spaxels", "spx", "pixels"]:
             raise ValueError(f"in_units should be arcsec or spaxels, {in_units=} given.")
 
@@ -1099,7 +1099,7 @@ class Spectrograph:
             Downsampled image.
         """
         from astropy import nddata
-        
+
         if np.ndim(image) == 2:
             block_size = (oversampling, oversampling)
         elif np.ndim(image) == 3:
@@ -1142,7 +1142,7 @@ class Spectrograph:
 
         return slices
 
-    def get_nea(self, position=(0, 0), nea_spatial=None, nea_pixels=None): # pragma: no cover 
+    def get_nea(self, position=(0, 0), nea_spatial=None, nea_pixels=None): # pragma: no cover
         """Noise Equivalent Area (PSF -> Spaxel -> detector).
 
         Parameters
@@ -1173,7 +1173,7 @@ class Spectrograph:
 
         return nea_spatial * nea_pixels
 
-    def get_nea_telescope_airy(self, position=(0, 0), in_spaxels=True): # pragma: no cover 
+    def get_nea_telescope_airy(self, position=(0, 0), in_spaxels=True): # pragma: no cover
         """Get the NEA of the telescope's Airy disk.
 
         Parameters
@@ -1265,12 +1265,12 @@ class Spectrograph:
         """
         if as_ is None or as_ in ["resolution"]:
             disp_ = self.get_dispersion_resolution()
-        
+
         elif as_ in ["scale", "sigma"]:
             disp_ = self.get_dispersion_resolution() / 2.
         else:
             raise NotImplementedError(f"{as_=} is not implemented, use: scale or resolution")
-        
+
         return disp_
 
     def apply_line_spread_function(self, fluxes, **kwargs):
@@ -1302,18 +1302,18 @@ class Spectrograph:
     def get_array_as_cube(self, array, oversampling=None):
         """ """
         spatial_shape = self.get_spectrograph_shape(oversampling=oversampling)
-        
+
         array = np.asarray(array)
         # float as input
         if array.ndim == 0:
             pass # this broadcasts good to go
-            
+
         elif array.ndim == 1:
             if array.shape == (self.nlbda,):
                 array = array[:, None, None]
             else:
                 raise ValueError("cannot parse the input shape of array.")
-                
+
         elif array.ndim == 2:
             if array.shape == spatial_shape:
                 array = array[None, :]
@@ -1321,15 +1321,15 @@ class Spectrograph:
                 raise ValueError("cannot parse the input shape of array.")
         elif array.ndim > 3:
             raise ValueError("cannot parse the input shape of array.")
-            
+
         return np.full((self.nlbda, *spatial_shape),  # lbda, y, x
                         array)  # (nlbda, ny, nx)
     # Generic
     def generate_fullof_cube(self, array, oversample=True):
         """ This generic funtion to project an array as a cube """
-        
-        
-    
+
+
+
     # Point Souce
     def generate_pointsource(self, spectrum, position=(0, 0),
                               psf_profile="default",
@@ -1414,22 +1414,22 @@ class Spectrograph:
         """
         # this will require the PSF
         # => self.get_spatial_psf()
-        
+
         raise NotImplementedError("generate_structured_background() has not been implemented.")
 
     # Themal (pre-dispersor)
     def _get_optics_dispersed_signal(self, lbda_bin):
-        """ 
+        """
         """
         all_surface_radiations = self.optics.get_signal(lbda_bin,
                                                         area=self.telescope.surface,
                                                         solid_angle=self.omega)
-        
+
         dispersed_radiations = all_surface_radiations[ self.optics.meta["dispersed"] ]
         return np.sum(dispersed_radiations, axis=0)
 
     def _get_telescope_dispersed_signal(self, lbda_bin):
-        """ 
+        """
         """
         return self.telescope.get_thermal_signal(lbda_bin,
                                                  solid_angle=self.omega,  # Spx solid angle [sr]
@@ -1467,7 +1467,7 @@ class Spectrograph:
                + self._get_telescope_dispersed_signal(lbda_bin=lbda_bin)
 
 
-        #signal = 
+        #signal =
         # output formating
         if as_cube:
             signal = np.full((self.nlbda, *self.get_spectrograph_shape(oversampling=oversampling)),
@@ -1496,13 +1496,13 @@ class Spectrograph:
         """
         # no apply LSF as zeros...
         ny, nx = self.get_spectrograph_shape(oversampling=oversampling)
-        
+
         return filled * np.ones((self.nlbda, ny, nx))
 
     # ------------ #
     #   GETTER     #
     # ------------ #
-    def get_nea_spatial(self, position=(0, 0), in_spaxels=True, guiding_sigma=None): # pragma: no cover 
+    def get_nea_spatial(self, position=(0, 0), in_spaxels=True, guiding_sigma=None): # pragma: no cover
         """Noise equivalent area in unit of slice/spaxels.
 
         i.e., how many "spaxel noise".
@@ -1529,7 +1529,7 @@ class Spectrograph:
 
         sigma_at_spectro = self.get_psf_sigma_spectral(in_spaxels=in_spaxels,
                                                        guiding_sigma=guiding_sigma)
-        
+
         return get_2dnorm_nea(sigma_at_spectro, mean=position)
 
     #
@@ -1734,7 +1734,7 @@ class Spectrograph:
 
         return fig
 
-    def show_psf(self, lbda_range, profile="default", 
+    def show_psf(self, lbda_range, profile="default",
                  guiding_arcsec=None, axes=None,
                  position=(0, 0), oversampling=5,
                  in_arcsec=False,
@@ -1889,14 +1889,14 @@ class Spectrograph:
 
     @property
     def dispersion_resolution(self):
-        """ provide the effective dispersion resolution in pixels. 
-        note: 2 is optimal. Lower, the PSF is unresolved, 
-        higher the PSF is oversampled hence producing unecessary pixel noise. 
+        """ provide the effective dispersion resolution in pixels.
+        note: 2 is optimal. Lower, the PSF is unresolved,
+        higher the PSF is oversampled hence producing unecessary pixel noise.
         """
         # - mapper -
         return self.meta.get("dispersion_resolution", 2)
 
-    
+
     @property
     def nlbda(self):
         """Number of spectral pixels."""
@@ -2104,17 +2104,17 @@ class MLASpectrograph(Spectrograph):
         if xdisp_sigma is None:
             xdisp_sigma = self.xdispersion["sigma"]
 
-        # adding the internal PSF 
+        # adding the internal PSF
         inst_psf = self.get_instrumental_psf(in_spaxels=True)
         if inst_psf is not None and inst_psf>0:
             xdisp_sigma = np.hypot(xdisp_sigma, inst_psf)
-            
+
         return self._get_chromatic_sigma(self.lbda,
                                          chromatic_sigma=self.xdispersion["sigma_spectral"],
                                          constant_sigma=xdisp_sigma,
                                          wref=self.lbda_ref,
                                          xdims=xdims)
-    
+
     def get_nea_spatial(self, position=(0, 0), in_spaxels=True, guiding_sigma=None): # pragma: no cover
         """Noise equivalent area in unit of slice/spaxels.
 
@@ -2221,20 +2221,20 @@ class OpticsThroughput( object ):
         self._curves = curves
         if noptics is not None:
             meta["noptics"] = noptics
-            
+
         self._meta_in = deepcopy(meta)
         self._meta = deepcopy(meta)
 
     @classmethod
     def from_curves(cls, curves, noptics=1, lbda=None, names=None):
-        """ builds the instance input curves. 
+        """ builds the instance input curves.
 
         Parameters
         ----------
         curves: list, pandas.DataFrame
             one curve per elements. Each curve is associated with noptics.
             format:
-            - dataframe: 
+            - dataframe:
                 index: wavelengths
                 columns: names
                 values: curves
@@ -2244,15 +2244,15 @@ class OpticsThroughput( object ):
         # reformat as dataframe
         curves = np.asarray(curves)
         nelements, nlbda = curves.shape
-        
+
         if names is None:
             names = np.arange(len)
         elif (nnames:=len(names)) != nelements:
             raise ValueError(f"{nnames} names but {nelements} elements")
-        
+
         if noptics is None:
             noptics = 1
-            
+
         if not isinstance(noptics, int):
             if (n_noptics := len(noptics)) != nelements:
                 raise ValueError(f"{n_noptics} noptics details but {nelements} elements")
@@ -2260,7 +2260,7 @@ class OpticsThroughput( object ):
         # as dataframe
         curves = pandas.DataFrame(curves.T, index=lbda, columns=names)
         return cls.from_curvesdf(curves, noptics=noptics)
-    
+
     @classmethod
     def from_curvesdf(cls, curves, noptics=1, ext="zeros", **kwargs):
         """Create an OpticsThroughput instance from a pandas DataFrame.
@@ -2291,7 +2291,7 @@ class OpticsThroughput( object ):
         if not isinstance(noptics, dict):
             names = curves.columns
             noptics = dict(zip(names,np.broadcast_to(noptics, np.shape( list(elements.values())))))
-            
+
         this = cls(elements, noptics=noptics, **kwargs)
         this._input_curves = curves
         return this
@@ -2332,31 +2332,31 @@ class OpticsThroughput( object ):
         ----------
         config : str
             path (.ecsv or .csv)
-            
+
         **kwargs
             Additional arguments passed to `pandas.read_csv`.
 
         Returns
         -------
         OpticsThroughput
-            An OpticsThroughput instance.        
+            An OpticsThroughput instance.
         """
         import os
         if not os.path.isfile(filename): # name of config file most likely.
             filename = iotools.expand_path(filename) # make sure it is fullpath
-            
+
         if str(filename).endswith(".ecsv"):
             curves_df = cls._read_ecsv(filename, as_dataframe=True) # backward compatibility
         else:
             curves_df = pandas.read_csv(filename, index_col="wavelength", **kwargs)
-            
+
         options = {"ext": "extrapolate"}
         return cls.from_curvesdf(curves_df, noptics, meta=meta, **options)
 
     @staticmethod
     def _read_csv(filename):
         """Read an ecsv file containing throughput data.
-        
+
         Parameters
         ----------
         filename : str
@@ -2373,7 +2373,7 @@ class OpticsThroughput( object ):
         """
         fullpath = iotools.expand_path(filename)
         return pandas.read_csv(fullpath)
-    
+
     @staticmethod
     def _read_ecsv(filename, as_dataframe=False):
         """Read an ecsv file containing throughput data.
@@ -2397,7 +2397,7 @@ class OpticsThroughput( object ):
                                 colnames=[wname, tname])
         if as_dataframe:
             return pandas.DataFrame({"spectro": tab[tname]}, index=tab[wname].to(u.AA))
-                                  
+
         # create the interpolator (wavelengths in Å)
         throughput = iotools.chromatic_interpolator(
             tab[wname].to(u.AA), tab[tname], ext='zeros')
@@ -2406,11 +2406,11 @@ class OpticsThroughput( object ):
 
     # -------- #
     #  Generic  #
-    # -------- # 
+    # -------- #
     def __call__(self, lbda, **kwargs):
         """ shortcut to get_throughput() """
         return self.get_throughput(lbda, **kwargs)
-        
+
     # -------- #
     #  Methods #
     # -------- #
@@ -2418,7 +2418,7 @@ class OpticsThroughput( object ):
         """ """
         if name not in self._curves.keys():
             raise ValueError(f"unknown curve: {name=}.")
-        
+
         elements = iotools.chromatic_interpolator(curve.index, curve.values, ext=ext)
         self._curves |= {name: elements}
 
@@ -2442,19 +2442,19 @@ class OpticsThroughput( object ):
                 if noptics_ != "noptics":
                     warnings.warn(f"cannot parse input format; noptics.`which` expected, {key} given")
                     continue
-                if which not in self.names: 
+                if which not in self.names:
                     warnings.warn(f"{which} (from {key}) is not a known name ({self.names})")
                     continue
 
                 # ok, let's change just the one you want.
                 self.meta["noptics"][which] = value
-                
+
             # change it all
-            elif key not in self.mutable_parameters: 
+            elif key not in self.mutable_parameters:
                 warnings.warn(f"unmutable key {key} ; ignored")
             else:
                 self.meta[key] = value
-        
+
     def get_throughput(self, lbda, which=None, per_element=False, incl_noptics=True, ignore=None):
         """Get the total throughput of the optical system.
 
@@ -2482,14 +2482,14 @@ class OpticsThroughput( object ):
         """
         if which is not None:
             return self.get_element_throughput(which, lbda, incl_noptics=incl_noptics)
-        
-        curves_per_element = [self.get_element_throughput(name_, lbda, incl_noptics) 
+
+        curves_per_element = [self.get_element_throughput(name_, lbda, incl_noptics)
                               for name_ in self.names if (ignore is None or name_ not in ignore)]
         if per_element:
             return curves_per_element
-            
+
         return np.prod(curves_per_element, axis=0)
-        
+
     def get_element_throughput(self, which, lbda, incl_noptics=True):
         """Get the throughput of a single optical element.
 
@@ -2512,17 +2512,17 @@ class OpticsThroughput( object ):
         noptics = self.noptics[which]
         if callable(curve):
             curve = curve(lbda)
-            
+
         elif (ncurve:=len(curve)) != (nlbda:=len(lbda)):
             raise ValueError(f"curve dimension {ncurve} doesn't match input lbda's {nlbda}")
 
         # at this put curve is an array of lbda's dimension.
         if incl_noptics:
             return np.asarray(curve)**noptics
-            
+
         return np.asarray(curve)
 
-    def show(self, lbda, ax=None): # pragma: no cover 
+    def show(self, lbda, ax=None): # pragma: no cover
         """Show the throughput of the optical system.
 
         This method plots the throughput of each element and the total
@@ -2542,7 +2542,7 @@ class OpticsThroughput( object ):
             The figure containing the plot.
         """
         import matplotlib.pyplot as plt
-        
+
         # data to show
         element_throughputs = self.get_throughput(lbda, per_element=True, incl_noptics=True)
         total_throughputs = self.get_throughput(lbda) # could simply np.prod, but so it test self consistancy.
@@ -2552,23 +2552,23 @@ class OpticsThroughput( object ):
             fig, ax = plt.subplots(figsize=(7, 3))
         else:
             fig = ax.figure
-            
+
         current_throughput = 1
         for name, throughput  in zip(self.names, element_throughputs):
             next_throughput = current_throughput*throughput
-            ax.fill_between(lbda, current_throughput, next_throughput, 
+            ax.fill_between(lbda, current_throughput, next_throughput,
                             alpha=0.2, label=name)
             current_throughput = next_throughput
-        
+
         ax.plot(lbda, total_throughputs, color="k")
-        
+
         ax.legend(ncols=len(self.names), frameon=False, loc="best")
         ax.set_ylim(0, 1)
         ax.set_xlabel("Wavelength", fontsize="large")
         ax.set_ylabel("Throughput", fontsize="large")
 
         return fig
-        
+
     # ============= #
     #  Properties   #
     # ============= #
