@@ -62,6 +62,7 @@ def source_to_modelfunc(source):
         - "salt"
         - "twins-embedding"
         - "blackbody"
+        - "powerlaw"
 
     Returns
     -------
@@ -76,6 +77,9 @@ def source_to_modelfunc(source):
 
     elif source == "blackbody":
         model_func = get_blackbody_flux
+
+    elif source == "powerlaw":
+        model_func = get_powerlaw_flux
 
     else:
         raise NotImplementedError(f"no model_func defined for source: {source}")
@@ -218,6 +222,52 @@ def get_blackbody_flux(lbda, temperature, mag,
     fluxcoef_for_target_mag = 10 ** (-0.4 * (mag - native_mag))
 
     return flux.value * fluxcoef_for_target_mag  # numpy array
+
+
+def get_powerlaw_flux(lbda, alpha, mag,
+                      lbda_ref=5500, band="sdssr", magsys="ab"):
+    """Get the flux of a power-law source.
+
+    The spectral shape is ``F_lambda proportional to (lbda/lbda_ref)**alpha``,
+    normalized to the requested magnitude in the given band.
+
+    Parameters
+    ----------
+    lbda : array_like
+        Wavelength array in Angstrom.
+    alpha : float
+        Power-law index of the flux density (in erg/s/cm^2/A).
+    mag : float
+        Target magnitude in the given band.
+    lbda_ref : float, optional
+        Reference wavelength in Angstrom. Default is 5500.
+    band : str, optional
+        Name of the bandpass (from sncosmo). Default is "sdssr".
+    magsys : str, optional
+        Name of the magnitude system (see sncosmo). Default is "ab".
+
+    Returns
+    -------
+    array_like
+        The power-law flux in erg/s/cm^2/A.
+    """
+    from sncosmo import Spectrum
+
+    if hasattr(lbda, 'unit'):  # work in Angstrom values
+        lbda = lbda.to(units.AA).value
+    lbda = np.atleast_1d(lbda).astype(float)
+
+    # arbitrary amplitude; normalized to the target mag below
+    flux = (lbda / lbda_ref) ** alpha
+
+    # let's get it to the target mag using sncosmo
+    spec_in = Spectrum(wave=lbda, flux=flux)
+    # the "whatever mag"
+    native_mag = spec_in.bandmag(band, magsys)
+    # convert the flux to the good amplitude
+    fluxcoef_for_target_mag = 10 ** (-0.4 * (mag - native_mag))
+
+    return flux * fluxcoef_for_target_mag  # numpy array
 
 
 # explicit here the parameters to enable mutable_parameters parsing

@@ -1,5 +1,6 @@
 .coverage*
 .idea/
+CLAUDE.md
 .ipynb_checkpoints/
 .tox/
 __pycache__/
