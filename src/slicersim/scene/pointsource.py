@@ -374,9 +374,10 @@ class PointSource(SceneElement):
                 else:  # assume it's a spectrum
                     mag = config.get("mag", None)
                     band = config.get("band", "bessellb")
+                    magsys = config.get("magsys", "ab")
                     lbda_, flux_ = source_
                     return cls.from_spectrum(lbda_, flux_,
-                                             mag=mag, band=band,
+                                             mag=mag, band=band, magsys=magsys,
                                              position=position, meta=config.copy())
             else:
                 raise ValueError("neither 'model_func' nor 'source' in the config. One is needed.")
@@ -385,7 +386,7 @@ class PointSource(SceneElement):
                    meta=config.copy())
 
     @classmethod
-    def from_spectrum(cls, lbda_, flux_, mag=20, band="bessellb",
+    def from_spectrum(cls, lbda_, flux_, mag=20, band="bessellb", magsys="ab",
                       position=(0, 0), lbda=None, meta={}):
         """Generate a `PointSource` from a spectrum.
 
@@ -399,6 +400,8 @@ class PointSource(SceneElement):
             Default magnitude of the target. Default is 20.
         band : str, optional
             Name of the bandpass (must be known by sncosmo). Default is "bessellb".
+        magsys : str, optional
+            Name of the magnitude system (see sncosmo). Default is "ab".
         position : tuple, optional
             Position of the point source (x, y). Default is (0, 0).
         lbda : array_like, optional
@@ -415,12 +418,13 @@ class PointSource(SceneElement):
         from sncosmo import Spectrum
         meta["mag"] = mag
         meta["band"] = band
+        meta["magsys"] = magsys
         meta["flux_ref"] = flux_
         meta["lbda_ref"] = lbda_
         this = cls(None, position=position, lbda=lbda, meta=meta)
 
         # internal function
-        def _internal_get_flux(lbda, mag, band):
+        def _internal_get_flux(lbda, mag, band, magsys):
             """Internal function to get the flux of the spectrum.
 
             Parameters
@@ -431,6 +435,8 @@ class PointSource(SceneElement):
                 Target magnitude.
             band : str
                 Bandpass name.
+            magsys : str
+                Magnitude system name (see sncosmo).
 
             Returns
             -------
@@ -441,7 +447,7 @@ class PointSource(SceneElement):
                 flux_ratio = 1
             else:
                 in_mag = Spectrum(meta["lbda_ref"], meta["flux_ref"]
-                                  ).bandmag(band, "ab")
+                                  ).bandmag(band, magsys)
                 flux_ratio = 10 ** (-0.4 * (mag - in_mag))
 
             flux_ = np.interp(lbda, meta["lbda_ref"], meta["flux_ref"],

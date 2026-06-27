@@ -99,7 +99,7 @@ class Simulation():
 
     @classmethod
     def from_source(cls, lbda, flux, mag=None,
-                        band="bessellb", position=(0, 0),
+                        band="bessellb", magsys="ab", position=(0, 0),
                         instrument="lazuli.toml",
                         background="zodi",
                         host=None,
@@ -120,6 +120,9 @@ class Simulation():
         band : str, optional
             Name of the band used to compute the magnitude (should be known by
             sncosmo). Default is "bessellb".
+        magsys : str, optional
+            Name of the magnitude system used to compute the magnitude (should
+            be known by sncosmo, e.g. "ab" or "vega"). Default is "ab".
         position : tuple, optional
             Location of the pointsource within the IFU. Default is (0, 0).
         instrument : str, dict, list, optional
@@ -153,6 +156,7 @@ class Simulation():
                                  {"source": [lbda, flux],
                                   "mag": mag,
                                   "band": band,
+                                  "magsys": magsys,
                                   "position":position},
                             }
                         }]
