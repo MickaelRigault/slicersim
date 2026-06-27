@@ -387,6 +387,7 @@ class CalSpec( VirtualTarget ):
     def __init__(self, name,
                      instrument=None,
                      background="zodi",
+                     magsys="ab",
                  **kwargs):
         """Initialize the LazuliCalSpec.
 
@@ -398,14 +399,18 @@ class CalSpec( VirtualTarget ):
             configuration of the instrument if any. (see self._INSTRUMENT for default)
         background : str, optional
             Background to use. Default is "zodi".
+        magsys : str, optional
+            Name of the magnitude system (see sncosmo, e.g. "ab" or "vega").
+            Default is "ab".
         **kwargs
             Goes to `simulation.Simulation.from_source()`.
         """
         if instrument is None and hasattr(self,"_INSTRUMENT"):
             instrument = self._INSTRUMENT
-        
+
         lbda, flux, _ = self._SOURCES.get_spectrum(name)
         simulation = Simulation.from_source(lbda, flux, background=background,
+                                            magsys=magsys,
                                             instrument=instrument,
                                             **kwargs)
         super().__init__(simulation=simulation)
@@ -452,14 +457,17 @@ class Target( VirtualTarget ):
         Magnitude of the target. Default is None.
     band : str, optional
         Photometric band for the magnitude. Default is "bessellb".
+    magsys : str, optional
+        Name of the magnitude system (see sncosmo, e.g. "ab" or "vega").
+        Default is "ab".
     background : str, optional
         Background to use. Default is "zodi".
     **kwargs
         Goes to `simulation.Simulation.from_source()`.
 
     """
-    def __init__(self, lbda, flux, 
-                     mag=None, band="bessellb",
+    def __init__(self, lbda, flux,
+                     mag=None, band="bessellb", magsys="ab",
                      background="zodi",
                      instrument=None,
                      **kwargs):
@@ -475,6 +483,9 @@ class Target( VirtualTarget ):
             Magnitude of the target. Default is None.
         band : str, optional
             Photometric band for the magnitude. Default is "bessellb".
+        magsys : str, optional
+            Name of the magnitude system (see sncosmo, e.g. "ab" or "vega").
+            Default is "ab".
         background : str, optional
             Background to use. Default is "zodi".
         **kwargs
@@ -482,9 +493,9 @@ class Target( VirtualTarget ):
         """
         if instrument is None and hasattr(self,"_INSTRUMENT"):
             instrument = self._INSTRUMENT
-        
+
         simulation = Simulation.from_source(lbda, flux, background=background,
-                                                mag=mag, band=band,
+                                                mag=mag, band=band, magsys=magsys,
                                                 instrument=instrument,
                                                 **kwargs)
         super().__init__(simulation=simulation)

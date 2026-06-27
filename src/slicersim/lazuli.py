@@ -584,7 +584,7 @@ class LazuliCalSpec( VirtualLazuliTarget, CalSpec  ):
     """
     from .extra.calspec import calspecsource
     _SOURCES = calspecsource
-    def __init__(self, name, background="zodi", 
+    def __init__(self, name, background="zodi", magsys="ab",
                  **kwargs):
         """Initialize the LazuliCalSpec.
 
@@ -594,11 +594,15 @@ class LazuliCalSpec( VirtualLazuliTarget, CalSpec  ):
             Name of the CalSpec star.
         background : str, optional
             Background to use. Default is "zodi".
+        magsys : str, optional
+            Name of the magnitude system (see sncosmo, e.g. "ab" or "vega").
+            Default is "ab".
         **kwargs
             Goes to `simulation.Simulation.from_source()`.
-        """        
+        """
         lbda, flux, _ = self._SOURCES.get_spectrum(name)
         simulation = Simulation.from_source(lbda, flux, background=background,
+                                                magsys=magsys,
                                                 **kwargs)
         super().__init__(simulation=simulation)
 
@@ -644,14 +648,17 @@ class LazuliTarget( VirtualLazuliTarget, Target  ):
         Magnitude of the target. Default is None.
     band : str, optional
         Photometric band for the magnitude. Default is "bessellb".
+    magsys : str, optional
+        Name of the magnitude system (see sncosmo, e.g. "ab" or "vega").
+        Default is "ab".
     background : str, optional
         Background to use. Default is "zodi".
     **kwargs
         Goes to `simulation.Simulation.from_source()`.
 
     """
-    def __init__(self, lbda, flux, mag=None, band="bessellb",
-                     background="zodi", 
+    def __init__(self, lbda, flux, mag=None, band="bessellb", magsys="ab",
+                     background="zodi",
                  **kwargs):
         """Initialize the LazuliTarget.
 
@@ -665,13 +672,16 @@ class LazuliTarget( VirtualLazuliTarget, Target  ):
             Magnitude of the target. Default is None.
         band : str, optional
             Photometric band for the magnitude. Default is "bessellb".
+        magsys : str, optional
+            Name of the magnitude system (see sncosmo, e.g. "ab" or "vega").
+            Default is "ab".
         background : str, optional
             Background to use. Default is "zodi".
         **kwargs
             Goes to `simulation.Simulation.from_source()`.
         """
         simulation = Simulation.from_source(lbda, flux, background=background,
-                                                mag=mag, band=band,
+                                                mag=mag, band=band, magsys=magsys,
                                                 **kwargs)
         super().__init__(simulation=simulation)
 

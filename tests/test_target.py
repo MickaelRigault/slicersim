@@ -145,6 +145,34 @@ def test_calspec():
     exptime = bd17.get_exposure_time()
     assert exptime > 10, "observing a mag=22 star should take more than 10s"
 
+def test_vega():
+    """ Vega magnitude system, tapped from sncosmo (no synphot). """
+    from sncosmo import Spectrum
+    from slicersim.scene.pointsource import PointSource
+
+    lbda = np.linspace(3_000, 11_000, 2_000)
+    flux = np.ones(lbda.shape)
+    band, mag = "bessellv", 15.0
+
+    # normalization path: same spectrum/mag, different magnitude system
+    ps_ab = PointSource.from_spectrum(lbda, flux, mag=mag, band=band, magsys="ab")
+    ps_vega = PointSource.from_spectrum(lbda, flux, mag=mag, band=band, magsys="vega")
+    _, f_ab = ps_ab.get_spectrum(lbda)
+    _, f_vega = ps_vega.get_spectrum(lbda)
+    realized = np.nanmedian(f_vega / f_ab)
+
+    # expected amplitude ratio from the reference spectrum's mag in each system
+    m_ab = Spectrum(lbda, flux).bandmag(band, "ab")
+    m_vega = Spectrum(lbda, flux).bandmag(band, "vega")
+    expected = 10 ** (-0.4 * (m_ab - m_vega))
+
+    assert not np.isclose(realized, 1.0), "ab and vega normalization should differ"
+    np.testing.assert_allclose(realized, expected, rtol=1e-3)
+
+    # end-to-end plumbing: magsys reaches the scene pointsource through LazuliTarget
+    t = slicersim.LazuliTarget(lbda, flux, mag=mag, band=band, magsys="vega")
+    assert t.simulation.scene.pointsource.meta["magsys"] == "vega", "magsys not plumbed through"
+
 def test_supernova_vs_lazulisupernova(instrument_config):
     """ """
     from slicersim.target import Supernova
