@@ -1,7 +1,7 @@
 import numpy as np
 import slicersim
 from slicersim.target import Target
-from slicersim.lazuli import lazuli_etc, LazuliCalSpec
+from slicersim.lazuli import lazuli_etc, LazuliCalSpec, LazuliPickles
 import pytest
 
 @pytest.fixture
@@ -144,6 +144,34 @@ def test_calspec():
     _ = bd17.setup_to_snr(20)
     exptime = bd17.get_exposure_time()
     assert exptime > 10, "observing a mag=22 star should take more than 10s"
+
+def test_pickles():
+    """ """
+    sun = LazuliPickles.from_spt("G2V", mag=20)
+    assert sun is not None, "failed to instanciate a LazuliPickles"
+    assert "G2V" in sun.source_names, "G2V should be an available spectral type"
+
+    # there is no noise included, so spec must be greater or equal to zero
+    lbda, spec, var = sun.get_spectrum(unit="flambda", incl_error=False)
+    assert lbda.shape == spec.shape == var.shape
+    assert np.isfinite(spec).all(), "pickles spectrum should be finite everywhere"
+    assert (spec >= 0).all(), "all spectrum should be >=0 as no error)"
+
+    # physics: a hotter star peaks bluer -> larger blue/red flux ratio
+    def blue_over_red(spt):
+        star = LazuliPickles.from_spt(spt, mag=20)
+        l, f, _ = star.get_spectrum(unit="flambda", incl_error=False)
+        return np.nanmean(f[l < 5000]) / np.nanmean(f[l > 8000])
+
+    assert blue_over_red("O5V") > blue_over_red("M0V"), "hotter star should be relatively bluer"
+
+    # ETC: a fainter target requires a longer exposure
+    _ = sun.setup_to_snr(20)
+    exptime = sun.get_exposure_time()
+
+    faint = LazuliPickles.from_spt("G2V", mag=22)
+    _ = faint.setup_to_snr(20)
+    assert faint.get_exposure_time() > exptime, "fainter target should take longer"
 
 def test_supernova_vs_lazulisupernova(instrument_config):
     """ """
