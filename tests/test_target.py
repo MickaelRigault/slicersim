@@ -31,6 +31,11 @@ def lazulisnia():
     """ """
     return slicersim.LazuliSupernova(redshift=1)
 
+@pytest.fixture
+def lazulibb():
+    """ """
+    return slicersim.LazuliBlackBody(temperature=5777, mag=20)
+
 def test_supernovae(lazulisnia):
     """ """
     # there is no noise included, so spec must be greater or equal to zero
@@ -48,6 +53,31 @@ def test_supernovae(lazulisnia):
     _ = lazulisnia.setup_to_snr(20)
     exptime_distance = lazulisnia.get_exposure_time()
     assert exptime_distance > exptime, "distance exposure time should be longer than nearby"
+
+def test_blackbody(lazulibb):
+    """ """
+    # there is no noise included, so spec must be greater or equal to zero
+    lbda, spec, var = lazulibb.get_spectrum(unit="flambda", incl_error=False)
+    assert lbda.shape == spec.shape == var.shape
+    assert np.isfinite(spec).all(), "blackbody spectrum should be finite everywhere"
+    assert (spec >= 0).all(), "all spectrum should be >=0 as no error)"
+
+    # physics: a hotter blackbody peaks bluer -> larger blue/red flux ratio
+    def blue_over_red(temperature):
+        bb = slicersim.LazuliBlackBody(temperature=temperature, mag=20)
+        l, f, _ = bb.get_spectrum(unit="flambda", incl_error=False)
+        return np.nanmean(f[l < 5000]) / np.nanmean(f[l > 8000])
+
+    assert blue_over_red(10000) > blue_over_red(4000), "hotter blackbody should be relatively bluer"
+
+    # ETC: a fainter target requires a longer exposure
+    _ = lazulibb.setup_to_snr(20)
+    exptime = lazulibb.get_exposure_time()
+    assert exptime > 1, "exposure shorter than 1s doesn't seem correct"
+
+    faint = slicersim.LazuliBlackBody(temperature=5777, mag=22)
+    _ = faint.setup_to_snr(20)
+    assert faint.get_exposure_time() > exptime, "fainter target should take longer"
 
 def test_target_and_lazuli(lazulitarget):
     """ """
