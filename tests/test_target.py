@@ -49,6 +49,36 @@ def test_supernovae(lazulisnia):
     exptime_distance = lazulisnia.get_exposure_time()
     assert exptime_distance > exptime, "distance exposure time should be longer than nearby"
 
+@pytest.fixture
+def lazulipowerlaw():
+    """ """
+    return slicersim.LazuliPowerLaw(alpha=0, mag=20)
+
+def test_powerlaw(lazulipowerlaw):
+    """ """
+    # there is no noise included, so spec must be greater or equal to zero
+    lbda, spec, var = lazulipowerlaw.get_spectrum(unit="flambda", incl_error=False)
+    assert lbda.shape == spec.shape == var.shape
+    assert np.isfinite(spec).all(), "power-law spectrum should be finite everywhere"
+    assert (spec >= 0).all(), "all spectrum should be >=0 as no error)"
+
+    # physics: F_lambda ~ lbda**alpha, so a more negative alpha is relatively bluer
+    def blue_over_red(alpha):
+        pl = slicersim.LazuliPowerLaw(alpha=alpha, mag=20)
+        l, f, _ = pl.get_spectrum(unit="flambda", incl_error=False)
+        return np.nanmean(f[l < 5000]) / np.nanmean(f[l > 8000])
+
+    assert blue_over_red(-2) > blue_over_red(2), "more negative alpha should be relatively bluer"
+
+    # ETC: a fainter target requires a longer exposure
+    _ = lazulipowerlaw.setup_to_snr(20)
+    exptime = lazulipowerlaw.get_exposure_time()
+    assert exptime > 1, "exposure shorter than 1s doesn't seem correct"
+
+    faint = slicersim.LazuliPowerLaw(alpha=0, mag=22)
+    _ = faint.setup_to_snr(20)
+    assert faint.get_exposure_time() > exptime, "fainter target should take longer"
+
 def test_target_and_lazuli(lazulitarget):
     """ """
     # config
