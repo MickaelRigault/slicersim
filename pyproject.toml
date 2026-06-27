@@ -48,7 +48,7 @@ zip-safe = false
 where = ["src"]
 
 [tool.setuptools.package-data]
-slicersim = ["config/*"]
+slicersim = ["config/*", "extra/pickles_models/*.csv", "extra/pickles_models/dat_uvk/*.fits"]
 
 [tool.sphinx]
 source-dir = "docs/"

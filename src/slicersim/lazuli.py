@@ -5,7 +5,8 @@ from .target import Supernova, CalSpec, Target
 from .iotools import get_config
         
 __all__ = ["lazuli_etc", "lazuli_sn_etc",
-            "LazuliSupernova", "LazuliTarget", "LazuliCalSpec"]
+            "LazuliSupernova", "LazuliTarget", "LazuliCalSpec",
+            "LazuliPickles"]
 
 
 SPECTROGRAPH_FIELD = {"narrow": {'spatial_shape': [58, 58], 'spatial_scale': 0.04,
@@ -718,5 +719,82 @@ class LazuliFlat( VirtualLazuliTarget, Target  ):
 
         config = get_config(scene=scene, instrument=self._INSTRUMENT)
         simulation = Simulation.from_config(config, **kwargs)
-        
+
         super().__init__(simulation=simulation)
+
+# Pickles stellar atlas templates
+class LazuliPickles( VirtualLazuliTarget, Target  ):
+    """Lazuli class for Pickles stellar atlas templates.
+
+    The spectrum is the relative Pickles (1998) stellar template for the
+    requested spectral type, normalized to the requested magnitude in the
+    given band.
+
+    Parameters
+    ----------
+    spt : str
+        Spectral type of the template (e.g. "G2V").
+        See `source_names` for the available types.
+    mag : float, optional
+        Target magnitude in the given band. Default is 20.
+    band : str, optional
+        Name of the bandpass (from sncosmo). Default is "sdssr".
+    background : str, optional
+        Background to use. Default is "zodi".
+    **kwargs
+        Goes to `simulation.Simulation.from_source()`.
+
+    """
+    from .extra.pickles import picklessource
+    _SOURCES = picklessource
+    def __init__(self, spt, mag=20, band="sdssr", background="zodi",
+                 **kwargs):
+        """Initialize the LazuliPickles.
+
+        Parameters
+        ----------
+        spt : str
+            Spectral type of the template (e.g. "G2V").
+            See `source_names` for the available types.
+        mag : float, optional
+            Target magnitude in the given band. Default is 20.
+        band : str, optional
+            Name of the bandpass (from sncosmo). Default is "sdssr".
+        background : str, optional
+            Background to use. Default is "zodi".
+        **kwargs
+            Goes to `simulation.Simulation.from_source()`.
+        """
+        lbda, flux, _ = self._SOURCES.get_spectrum(spt)
+        simulation = Simulation.from_source(lbda, flux, background=background,
+                                                mag=mag, band=band,
+                                                **kwargs)
+        super().__init__(simulation=simulation)
+
+    @classmethod
+    def from_spt(cls, spt, **kwargs):
+        """Build a `LazuliPickles` from a spectral type.
+
+        Parameters
+        ----------
+        spt : str
+            Spectral type of the template (e.g. "G2V").
+        **kwargs
+            Goes to `simulation.Simulation.from_source()`.
+
+        Returns
+        -------
+        LazuliPickles
+            An instance of the class.
+
+        """
+        # this is actually a wrapper of the init
+        return cls(spt, **kwargs)
+
+    # ============== #
+    #   Properties   #
+    # ============== #
+    @property
+    def source_names(self):
+        """List of available Pickles spectral types."""
+        return self._SOURCES.source.index.values.astype(str)
