@@ -10,7 +10,7 @@ import pandas
 from . import iotools
 from .profiles import build_pixels
 from .thermal import ThermalOptics
-from .utils import recursive_get
+from .utils import recursive_get# , bin_array
 
 
 # ================ #
@@ -648,7 +648,8 @@ class Spectrograph:
         if oversampling is None or oversampling == 1:
             return self.spx_shape
 
-        return (np.asarray(self.spx_shape) * oversampling).astype(int)
+        cube_shape = (np.asarray(self.spx_shape) * oversampling).astype(int)
+        return cube_shape
 
     def get_resolving_power(self):
         r""" this is 'R' such as $\mathcal{R} = \lambda/\Delta\lambda$
@@ -687,9 +688,8 @@ class Spectrograph:
         else:
             raise ValueError(f"I cannot parse {which=}")
 
-
     def get_spaxel_centroids(self, in_arcsec=False, squeeze=False, oversampling=None):
-        """Get the spaxel centroids.
+        """Get the spaxel False.
 
         Parameters
         ----------
@@ -723,6 +723,9 @@ class Spectrograph:
 
         if squeeze:
             x, y = np.squeeze(x), np.squeeze(y)
+
+        #if corr_anamorphose:
+        #    y = bin_array(y, self._ANAMORPHOSE, np.mean)
 
         return (x, y), spaxels_coords["oversampling"]
 
@@ -812,6 +815,7 @@ class Spectrograph:
             # make sure it is 2d (RA, Dec)
             guiding_sigma = np.full((2,), guiding_sigma) / self.spx_spatial_scale # in spaxels
 
+
         # Note:
         # Slicer: instrumental PSF affects the LSF along the "x" direction
         #     and the PSF along the "y" direction.
@@ -820,7 +824,7 @@ class Spectrograph:
         #     Not the spatial PSF
         #     => the effective "sigma" thus is just guiding_sigma
         if self._SPECTROGRAPH_TYPE == "slicer" and incl_instrument:
-            inst_psf = self.get_instrumental_psf() # in spaxels
+            inst_psf = self.get_instrumental_psf(in_spaxels=True) # in spaxels
             if inst_psf is not None: # if None, nothing to do.
                 # make sure the inst_psf is 2d (x and y)
                 inst_psf = np.full((2,), inst_psf)
@@ -899,7 +903,6 @@ class Spectrograph:
         # effective_sigma is 2d (x-scatter, y-scatter) | x == dispersion y=slice
         effective_sigma = self.get_additonal_spatial_scatter(guiding_sigma=guiding_sigma,
                                                             incl_instrument=incl_instrument)
-
         #
         # Gaussian, special as convolution with additional gaussian scatter is analytic
         #
@@ -926,7 +929,7 @@ class Spectrograph:
             # remark: if oversampled, the flux need to be *summed*, not *averaged*
             #         as the energy is conserved in the current structure.
             #         => smaller pixel (oversampled) -> less flux.
-
+            #
             return psf
 
         # ----------------------------------------------------- #
@@ -938,7 +941,7 @@ class Spectrograph:
         # ----------------------------------------------------- #
 
         # This part of the code works in arcsec.
-        position_xy = np.asarray(position_xy) * self.spx_spatial_scale[::-1] # in spaxels => arcsec
+        position_xy = np.asarray(position_xy) * self.spx_spatial_scale # in spaxels => arcsec
 
         # to accomodate with non-square spaxels (like slicer)
         # we work in arcsec, not in spaxels.
@@ -999,6 +1002,9 @@ class Spectrograph:
         if oversampling != 1 and not as_oversampled:
             # in the current structure, you need to sum oversampled pixels as energy is conserved.
             psf = self._remove_oversampling(psf, oversampling=oversampling, func=np.nansum)
+
+        #if self.type == "slicer":
+        #    psf = self._correct_anamorphose_(psf)
 
         return psf  # (nlbda, ny, nx)
 
@@ -1240,6 +1246,7 @@ class Spectrograph:
         # Aperture
         x0, y0 = position
         (x, y), oversampling = self.get_spaxel_centroids()
+        # y /= 2
         r_radius = np.hypot((x - x0) / radius_x, (y - y0) / radius_y)  # (ny, nx) [spx]
         aper = (r_radius <= 1)
         nspx = np.count_nonzero(aper)  # Selected spx
@@ -1322,12 +1329,16 @@ class Spectrograph:
         elif array.ndim > 3:
             raise ValueError("cannot parse the input shape of array.")
 
-        return np.full((self.nlbda, *spatial_shape),  # lbda, y, x
+        cube = np.full((self.nlbda, *spatial_shape),  # lbda, y, x
                         array)  # (nlbda, ny, nx)
+        #if self.type == "slicer":
+        #    cube = self._correct_anamorphose_(cube)
+
+        return cube
+
     # Generic
     def generate_fullof_cube(self, array, oversample=True):
         """ This generic funtion to project an array as a cube """
-
 
 
     # Point Souce
@@ -1335,7 +1346,7 @@ class Spectrograph:
                               psf_profile="default",
                               oversampling=None,
                               as_oversampled=False,
-                              apply_lsf=True):
+                              apply_lsf=True, **kwargs):
         """Generate a photon flux cube from a point source spectrum.
 
         Parameters
@@ -1353,6 +1364,7 @@ class Spectrograph:
         apply_lsf : bool, optional
             If True, apply the line spread function. Default is True.
 
+        kwargs goes to get_spatial_psf
         Returns
         -------
         array_like
@@ -1362,6 +1374,7 @@ class Spectrograph:
         psf = self.get_spatial_psf(profile=psf_profile, position=position,
                                     as_oversampled=as_oversampled,
                                     oversampling=oversampling,
+                                    **kwargs
                                     )  # (nlbda, ny, nx)
 
         # erg/s/cm²/Å / erg/ph * cm² * Å = ph/s
@@ -1370,6 +1383,9 @@ class Spectrograph:
         psf_cube = np.reshape(flux, (-1, 1, 1)) * psf  # Point source (nlbda, ny, nx)
         if apply_lsf:
             psf_cube = self.apply_line_spread_function(psf_cube)
+
+        # no self._correct_anamorphose_(psf_cube)
+        # as this is already including inside get_spatial_psf
 
         return psf_cube
 
@@ -1392,7 +1408,6 @@ class Spectrograph:
         array_like
             Photon flux cube (nlbda, ny, nx) in ph/s/spx.
         """
-
         # erg/s/cm²/Å/arcsec² * cm² * Å / erg/ph * arcsec² = ph/s/spx
         flux = spectrum * self.flambda2photon * self.spx_area
 
@@ -1400,6 +1415,9 @@ class Spectrograph:
                              flux[:, np.newaxis, np.newaxis])  # (nlbda, ny, nx)
         if apply_lsf:
             bkgd_cube = self.apply_line_spread_function(bkgd_cube)
+
+        #if self.type == "slicer":
+        #    bkgd_cube = self._correct_anamorphose_(bkgd_cube)
 
         return bkgd_cube
 
@@ -1476,6 +1494,9 @@ class Spectrograph:
         if apply_lsf:
             signal = self.apply_line_spread_function(signal)
 
+        #if self.type == "slicer":
+        #    signal = self._correct_anamorphose_(signal)
+
         return signal  # [ph/s/spx/Δλ]
 
     # Empty cube
@@ -1497,7 +1518,22 @@ class Spectrograph:
         # no apply LSF as zeros...
         ny, nx = self.get_spectrograph_shape(oversampling=oversampling)
 
-        return filled * np.ones((self.nlbda, ny, nx))
+        cube =  filled * np.ones((self.nlbda, ny, nx))
+        #if self.type == "slicer":
+        #    cube = self._correct_anamorphose_(cube)
+
+        return cube
+
+    def _correct_anamorphose_(self, cube):
+        """
+        in slicer, there are 2 detector pixels in the width.
+        In slicersim, spectrograph work at the half-width level for error treatment (1spaxel=>1^pixel)
+        Here we should just then re-bin the slice by 2 as this sampling does not exist in reality.
+        cubes are: (lbda, width, height). width should be merged.
+        """
+        warnings.warn("Anamorphose correction is disabled.")
+        return cube
+        #return bin_array(cube, (1, *self._ANAMORPHOSE), function=np.sum)
 
     # ------------ #
     #   GETTER     #
@@ -1775,7 +1811,7 @@ class Spectrograph:
         elif norm in ["log"]:
             norm = colors.LogNorm
 
-        extent = np.asarray(self.mla_extent)
+        extent = np.asarray(self.spaxel_extent)
         if in_arcsec:
             extent *= self.spx_spatial_scale
 
@@ -1820,8 +1856,8 @@ class Spectrograph:
     #  Properties       #
     # ================= #
     @property
-    def mla_extent(self):
-        """MLA extent in spaxels."""
+    def spaxel_extent(self):
+        """extent in spaxels."""
         hy, hx = np.asarray(self.spx_shape) / 2  # Half total width [spx]
         return [-hx, hx, -hy, hy]
 
@@ -1895,7 +1931,6 @@ class Spectrograph:
         """
         # - mapper -
         return self.meta.get("dispersion_resolution", 2)
-
 
     @property
     def nlbda(self):
@@ -1978,7 +2013,7 @@ class SlicerSpectrograph(Spectrograph):
         Type of the spectrograph, set to "slicer".
 
     """
-    _ANAMORPHOSE = (2, 1)
+    _ANAMORPHOSE = 2
     _SPECTROGRAPH_TYPE = "slicer"
 
     def set_spaxels(self, shape, spx_scale):
@@ -1991,8 +2026,8 @@ class SlicerSpectrograph(Spectrograph):
         spx_scale : float
             Spaxel scale in arcsec.
         """
-        shape = np.asarray(shape) * self._ANAMORPHOSE
-        spx_scale = np.asarray(spx_scale) / self._ANAMORPHOSE
+        shape = np.asarray(shape) * (1, self._ANAMORPHOSE)
+        spx_scale = np.asarray(spx_scale)
         self._spaxels = {"shape": shape, "spx_scale": spx_scale}
         self._spaxel_coords = {}
 
