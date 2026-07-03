@@ -34,7 +34,7 @@ extensions = [
     'sphinx_design',
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
-    'sphinx.ext.napoleon', # For NumPy and Google style docstrings    
+    'sphinx.ext.napoleon', # For NumPy and Google style docstrings
     'sphinx.ext.intersphinx',
     'sphinx.ext.autosectionlabel',
     'sphinx.ext.mathjax',
@@ -95,7 +95,7 @@ html_static_path = ['_static']
 autosummary_generate = True
 
 # Include both the class docstring and the __init__ method
-autoclass_content = "both" 
+autoclass_content = "both"
 
 numpydoc_show_class_members = True
 

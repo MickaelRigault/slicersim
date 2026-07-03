@@ -33,7 +33,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-docs = ["nbsphinx"]
+docs = [
+    "matplotlib",
+    "myst-nb",
+    "nbsphinx",
+    "numpydoc",
+    "pandas-sphinx",
+    "sphinx-book-theme",
+    "sphinx_copybutton",
+    "sphinx-design",
+    ]
 tests = ["pytest", "pytest-doctestplus", "pytest-cov"]
 
 

@@ -2,6 +2,7 @@
 
 import os
 import numpy as np
+import warnings
 
 from scipy.interpolate import UnivariateSpline
 import astropy.units as u
@@ -160,6 +161,10 @@ def read_config(filename, verbose=False):
     if extension is None or len(extension) ==0:
         extension = ".toml"
         fname = f"{fname}{extension}"
+
+    if fname == "lazuli.toml":
+        warnings.warn("lazuli.toml is deprecated, lazuli_cbe.toml to use.")
+        fname = "lazuli_cbe.toml"
 
     if extension.lower() == ".toml":
         config = tomllib.load(open(fname, "rb"))
