@@ -1,3 +1,4 @@
+[![PyPI](https://img.shields.io/pypi/v/slicersim.svg?style=flat-square)](https://pypi.python.org/pypi/slicersim)
 [![codecov](https://codecov.io/github/MickaelRigault/slicersim/graph/badge.svg?token=A78ZDQQ9N3)](https://codecov.io/github/MickaelRigault/slicersim)
 [![Run unit tests](https://github.com/MickaelRigault/slicersim/actions/workflows/ci.yml/badge.svg)](https://github.com/MickaelRigault/slicersim/actions/workflows/ci.yml)
 
