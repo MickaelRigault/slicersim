@@ -183,8 +183,8 @@ class Sample( object ):
         """
         readout = pandas.DataFrame(self.call_down("get_readout_config"))
         nmd = readout.pop("nmd")
-        return readout.join(pandas.DataFrame(np.stack([np.asarray(x) for x in nmd.values]),
-                                             columns=["ngroups", "nframes_per_group", "ndrops"])
+        return readout.join(pandas.DataFrame(np.stack(nmd.values),
+                            columns=["ngroups", "nframes_per_group", "ndrops"])
                            )
 
     def get_summary_stats(self):
@@ -332,8 +332,8 @@ class Sample( object ):
             # if inplace needed, this is now where it's done,
             # now that each individual configs are known.
             if inplace:
-                for config, _ in zip(configs, self.targets):
-                    _.change_detector(**config)
+                for config, target in zip(configs, self.targets):
+                    target.change_detector(**config)
 
             snrs = client.gather(client.compute(snrs))
 
@@ -371,6 +371,7 @@ class Sample( object ):
         """
         if show_progress:
             from tqdm import tqdm
+
         # applied to target.simulation
         if level_down is not None:
             level_down = level_down.strip()
@@ -386,7 +387,7 @@ class Sample( object ):
 
         return [attr if not (callable(attr:=getattr(eval(f"target{level_down}"), which)) and allow_call) else\
                 attr(**kwargs)
-                for _ in (self.targets if not show_progress else tqdm(self.targets)) ]
+                for target in (self.targets if not show_progress else tqdm(self.targets)) ]
 
     # ============= #
     #  Properties   #
