@@ -617,7 +617,7 @@ class LazuliCalSpec( VirtualLazuliTarget, CalSpec  ):
         """
         lbda, flux, _ = self._SOURCES.get_spectrum(name)
         simulation = Simulation.from_source(lbda, flux, background=background,
-                                            instrument=cls._INSTRUMENT,
+                                            instrument=self._INSTRUMENT,
                                             **kwargs)
         super().__init__(simulation=simulation)
 
