@@ -94,7 +94,7 @@ def lazuli_sn_etc(model, redshift, snr, phase=0,
 
     return exptime, target
 
-def lazuli_etc(lbda, flux, snr,
+def lazuli_etc(lbda, flux, snr, per_resolution=True,
                    mag=None, band="bessellb",
                    lbda_range=[4000, 6800], frame='rest',
                    statistic=np.nanmean,
@@ -113,6 +113,8 @@ def lazuli_etc(lbda, flux, snr,
         The flux values of the spectrum. See `mag` for the unit.
     snr : float
         The target Signal-to-Noise Ratio to achieve.
+    per_resolution : bool, optional
+        If True, the SNR is calculated per resolution element. Default is False.
     mag : float, optional
         Specify the desired magnitude of the target. If None, the input flux is
         assumed to be in erg/s/cm2/A. If given, the input flux will be
@@ -158,8 +160,9 @@ def lazuli_etc(lbda, flux, snr,
     target.change_detector(nmd=nmd, max_group=max_group)
 
     # setup the instrument to the requested signal to noise
-    _ = target.setup_to_snr(snr, lbda_range=lbda_range, frame='rest',
-                                statistic=statistic, inplace=True)
+    _ = target.setup_to_snr(snr, per_resolution=per_resolution,
+                    lbda_range=lbda_range, frame=frame,
+                    statistic=statistic, inplace=True)
 
     # get the exposure time
     exptime = target.get_exposure_time(full=time_details)

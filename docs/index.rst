@@ -71,10 +71,10 @@ Set observing conditions
         .. code-block:: python
 
 	    # say you want an average SNR of 20 between [5000, 6000] rest-frame
-	    _ = target.setup_to_snr(20, lbda_range=[5000, 6000], frame="rest")
+	    _ = target.setup_to_snr(20, per_resolution=True, lbda_range=[5000, 6000], frame="rest")
 
 	    # get corresponding total exposure time,
-	    exposure_time = target.get_exposure_time() # see options
+	    exposure_time = target.get_exposure_time() # [s] see options
 
 
     .. tab-item:: to a read-out mode
@@ -84,7 +84,7 @@ Set observing conditions
         .. code-block:: python
 
 	    # Specify the detector read-out mode and number of ramps
-	    target.change_detector_mode(nmd=(40, 10, 0), nramp=2)
+	    target.change_detector(nmd=(40, 10, 0), nramps=2)
 
 	    # get corresponding total exposure time,
 	    exposure_time = target.get_exposure_time() # see options
@@ -97,21 +97,3 @@ Get realistic spectra
 
     # get the flux and variance in erg/s/cm2/A ; see unit options
     lbda, flux, variance = target.get_spectrum(unit="flambda")
-
-.. tab-set::
-    :sync-group: category
-
-    .. tab-item:: Supernovae
-        :sync: sn
-
-        Showing the SN Ia
-
-    .. tab-item:: CalSpec
-        :sync: star
-
-        Showing the CalSpec
-
-    .. tab-item:: Anything
-        :sync: flat
-
-        Showing Anything
