@@ -102,7 +102,7 @@ class Simulation():
     @classmethod
     def from_source(cls, lbda, flux, mag=None,
                         band="bessellb", position=(0, 0),
-                        instrument="lazuli.toml",
+                        instrument="lazuli_cbe.toml",
                         background="zodi",
                         host=None,
                         snr=None, lbda_range=[4000, 6800], frame='obs',
@@ -125,7 +125,7 @@ class Simulation():
         position : tuple, optional
             Location of the pointsource within the IFU. Default is (0, 0).
         instrument : str, dict, list, optional
-            Configuration of the instrument. Default is "lazuli.toml".
+            Configuration of the instrument. Default is "lazuli_cbe.toml".
         background : str, dict, list, optional
             Configuration of the (spatially flat) scene background (e.g.
             "zodi"). Default is "zodi".
@@ -175,7 +175,7 @@ class Simulation():
     def from_scene(cls, redshift=None, snr=20,
                        lbda_range=[4000, 6800], frame='rest',
                        scene='supernova.toml',
-                       instrument='lazuli.toml',
+                       instrument='lazuli_cbe.toml',
                        slicer=True,
                        **kwargs):
         """Load the simulation setting the config to acquire the pointed
@@ -197,7 +197,7 @@ class Simulation():
         scene : str, optional
             Scene configuration file. Default is 'supernova.toml'.
         instrument : str, optional
-            Instrument configuration file. Default is 'lazuli.toml'.
+            Instrument configuration file. Default is 'lazuli_cbe.toml'.
         slicer : bool, optional
             If True, use a slicer spectrograph. Default is True.
         **kwargs
