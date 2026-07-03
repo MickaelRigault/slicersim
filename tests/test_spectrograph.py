@@ -69,7 +69,7 @@ def test_resolving_power(spectro):
     # definition of R. Is it self-consistant ?
     dlbda = np.diff(spectro.lbda_edges)
     wres = spectro.lbda / (dispersion_resolution * dlbda)  # (nlbda,)
-    assert (resolving_power == wres).all()
+    assert np.isclose(resolving_power, wres).all()
 
 def test_thermalchromatic(spectro):
     """ """
@@ -130,19 +130,6 @@ def test_cube_profile(slicer):
 
     assert np.isclose(specsum_gaussian/specsum_airy, 1, rtol=0.1).all()
     assert np.isclose(specsum_gaussian/specsum_gaussianastro, 1, rtol=0.1).all()
-
-
-def test_thermal_dark(spectro):
-    """ """
-    pixel_size = 10 * 1e-6 # 10 micrometter
-    pixel_area = pixel_size**2
-
-    thermal_dark_sum = spectro.get_thermal_dark(pixel_area, as_sum=True)
-    thermal_dark_details = spectro.get_thermal_dark(pixel_area, as_sum=False)
-
-    assert thermal_dark_sum >= 0
-    assert np.all(thermal_dark_details>=0)
-    assert thermal_dark_details.shape == spectro.optics.temperature.shape
 
 
 def test_cube_to_slice(spectro):

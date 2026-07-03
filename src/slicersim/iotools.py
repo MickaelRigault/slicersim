@@ -2,12 +2,13 @@
 
 import os
 import numpy as np
+import warnings
 
 from scipy.interpolate import UnivariateSpline
 import astropy.units as u
 from astropy.table import Table
 
-from importlib.resources import files  
+from importlib.resources import files
 try:
     import tomllib                         # Python 3.11+
 except ModuleNotFoundError:
@@ -59,7 +60,7 @@ def merge_dicts(d1, d2):
     """
     from copy import deepcopy
     d1 = deepcopy(d1) # do not change input d1.
-    
+
     for key in d2:
         if key in d1:
             if isinstance(d1[key], dict) and isinstance(d2[key], dict):
@@ -68,11 +69,11 @@ def merge_dicts(d1, d2):
                 d1[key] = d2[key]  # Override value
         else:
             d1[key] = d2[key]
-            
+
     return d1
 
 
-def get_config(scene="supernova.toml", instrument="lazuli.toml"):
+def get_config(scene="supernova.toml", instrument="lazuli_cbe.toml"):
     """Read configuration files.
 
     The final configuration has the following structure::
@@ -94,8 +95,8 @@ def get_config(scene="supernova.toml", instrument="lazuli.toml"):
         Default is "supernova.toml".
     instrument : str or dict, optional
         Filename defining the instrument, or a dictionary giving details.
-        Default is "lazuli.toml".
-        
+        Default is "lazuli_cbe.toml".
+
     Returns
     -------
     dict
@@ -142,15 +143,15 @@ def read_config(filename, verbose=False):
     # dict structure
     if type(filename) is dict:
         return filename
-        
+
     # list / array structure
     if hasattr(filename, "__iter__") and type(filename) not in (str, np.bytes_):
         d = {}
         for filename_ in filename:
             d = merge_dicts(d, read_config(filename_))
-            
+
         return d
-    
+
     # core
     fname = expand_path(filename)
     if verbose:
@@ -160,7 +161,11 @@ def read_config(filename, verbose=False):
     if extension is None or len(extension) ==0:
         extension = ".toml"
         fname = f"{fname}{extension}"
-        
+
+    if fname == "lazuli.toml":
+        warnings.warn("lazuli.toml is deprecated, lazuli_cbe.toml to use.")
+        fname = "lazuli_cbe.toml"
+
     if extension.lower() == ".toml":
         config = tomllib.load(open(fname, "rb"))
     else:

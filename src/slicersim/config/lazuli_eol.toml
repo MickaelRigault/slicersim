@@ -1,6 +1,6 @@
 # Instrumental parameters ==============================
 
-# ============= # 
+# ============= #
 # Spectrograph  #
 # ============= #
 [spectrograph]
@@ -12,10 +12,10 @@ dispersion_resolution = 2.5		   	# number of pixel per resolution element.
 [spectrograph.throughput]
 throughput = "throughput_eol.csv"		# Detailed throughput from dec 2025 *******
 
-# ============= # 
+# ============= #
 #  Detector     #        # QE: either a constant or an ECSV file #
 # ============= #
 [detector]
 readout_noise = 20.0       			#  read-out noise per frame [e-]
-dark = 1e-2              			# Dark current [e-/s/px] 
-roic_glow = 1e-2				# Roic glow in [e-/px/frame]
+dark = 1e-2              			# Dark current [e-/s/px]
+roic_glow = 1e-2				    # Roic glow in [e-/px/frame]

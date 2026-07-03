@@ -2,7 +2,6 @@ import numpy as np
 
 from .simulation import Simulation
 
-
 class VirtualTarget():
     """A virtual class to build Lazuli Target (see child classes).
 
@@ -17,7 +16,7 @@ class VirtualTarget():
 
     """
     _DEFAULT_CONFIG = {"instrument": None}
-    
+
     def __init__(self, simulation=None):
         """Initialize the VirtualLazuliTarget.
 
@@ -79,7 +78,7 @@ class VirtualTarget():
         """
         if max_group is not None:
             self.simulation.detector.max_group = max_group
-        
+
         if nmd is not None:
             self.simulation.update(nmd=nmd)
 
@@ -100,7 +99,7 @@ class VirtualTarget():
             This is on top of `sampling` if any. Default is None.
         """
         new_config = {}
-        
+
         # manual setting if any
         if spatial_shape is not None:
             new_config["spatial_shape"] = spatial_shape
@@ -109,7 +108,7 @@ class VirtualTarget():
             new_config["spatial_scale"] = spatial_scale
 
         return self.simulation.update(**new_config)
-        
+
     # SETTER
     def change_properties(self, **kwargs):
         """Shortcut to change any of the simulation properties.
@@ -119,9 +118,9 @@ class VirtualTarget():
         **kwargs
             The properties to change. The keys should be the name of the
             property to change, and the values the new value.
-        """                
+        """
         _ = self.simulation.update(**kwargs)
-        
+
     def setup_to_snr(self, snr, per_resolution=True,
                      lbda_range=[4000, 6800], frame='rest',
                      statistic=np.nanmean, inplace=True, **kwarg):
@@ -132,9 +131,9 @@ class VirtualTarget():
         snr : float
             The target Signal-to-Noise Ratio to achieve.
         per_resolution: bool
-            Did you provide the snr per spectral resolution element (True) or 
-            per wavelength bins (False). 
-            If per resolution, this method will convert this into snr per 
+            Did you provide the snr per spectral resolution element (True) or
+            per wavelength bins (False).
+            If per resolution, this method will convert this into snr per
             wavelength bin (snr_lbdabin = snr / sqrt(dispersion_resolution))
             and feed this to the fetch_snr() Simulation methods that expects it
             per wavelength bin.
@@ -205,7 +204,7 @@ class VirtualTarget():
         times = self.simulation.get_times()
         if full:
             return times
-        
+
         return times["total_exptime"]
 
     def get_readout_config(self):
@@ -223,7 +222,7 @@ class VirtualTarget():
     def get_data_volume(self, units="GB", per_ramp=False):
         """ get the data volume associated to each observations """
         return self.simulation.get_data_volume(units=units, per_ramp=per_ramp)
-    
+
     def get_spectrum(self, unit="adu", incl_error=True, **kwargs):
         """Get a realistic simulated spectrum given the current configurations.
 
@@ -266,8 +265,8 @@ class VirtualTarget():
         return lbda, flux*coefs, variance*coefs**2
 
     def get_cube(self):
-        """ returns the current cubes. 
-        
+        """ returns the current cubes.
+
         Returns
         -------
         cube, variance cube
@@ -318,7 +317,7 @@ class VirtualTarget():
         """Get mutable properties of the pointsource."""
         return [param_ for param_ in self.simulation.scene.mutable_parameters
                     if param_.startswith("pointsource__")]
-        
+
     @property
     def simulation(self):
         """Core attribute containing simulation details."""
@@ -359,12 +358,12 @@ class Supernova( VirtualTarget ):
         if instrument is None and hasattr(self,"_INSTRUMENT"):
             instrument = self._INSTRUMENT
 
-        
+
         scene = get_sn_scene(model=model, **kwargs)
         config = get_config( **( self._DEFAULT_CONFIG | {"scene": scene, "instrument": instrument}) )
 
         simulation = Simulation.from_config(config)
-        
+
         super().__init__(simulation=simulation)
 
 # CalSpec Stars
@@ -383,7 +382,7 @@ class CalSpec( VirtualTarget ):
     """
     from .extra.calspec import calspecsource
     _SOURCES = calspecsource
-    
+
     def __init__(self, name,
                      instrument=None,
                      background="zodi",
@@ -403,7 +402,7 @@ class CalSpec( VirtualTarget ):
         """
         if instrument is None and hasattr(self,"_INSTRUMENT"):
             instrument = self._INSTRUMENT
-        
+
         lbda, flux, _ = self._SOURCES.get_spectrum(name)
         simulation = Simulation.from_source(lbda, flux, background=background,
                                             instrument=instrument,
@@ -458,7 +457,7 @@ class Target( VirtualTarget ):
         Goes to `simulation.Simulation.from_source()`.
 
     """
-    def __init__(self, lbda, flux, 
+    def __init__(self, lbda, flux,
                      mag=None, band="bessellb",
                      background="zodi",
                      instrument=None,
@@ -482,7 +481,7 @@ class Target( VirtualTarget ):
         """
         if instrument is None and hasattr(self,"_INSTRUMENT"):
             instrument = self._INSTRUMENT
-        
+
         simulation = Simulation.from_source(lbda, flux, background=background,
                                                 mag=mag, band=band,
                                                 instrument=instrument,

@@ -18,7 +18,7 @@ from .utils import complete_dims
 
 class SaturationWarning(AstropyWarning):
     """ Base class for saturation warnings. """
-    
+
 class Detector():
     """Simulates a detector for a spectrograph.
 
@@ -97,18 +97,18 @@ class Detector():
         meta["pixel_size"] = pixel_size
         meta["gain"] = gain
         meta["nmd"] = nmd
-        
+
         # modelling
         meta["variance_model"] = variance_model
-        
+
         # extra
         meta["max_group"] = max_group
-        meta["min_group"] = min_group        
+        meta["min_group"] = min_group
         meta["saturation"] = saturation
         meta["lbda_range"] = lbda_range
 
         self._meta_in = deepcopy(meta)                  #: Meta-parameters as given
-        self._meta = deepcopy(meta)                     #: current Meta-parameters 
+        self._meta = deepcopy(meta)                     #: current Meta-parameters
 
     @classmethod
     def from_config(cls, config, lbda=10_000., thermaloptics=None):
@@ -136,11 +136,11 @@ class Detector():
             An instance of the Detector class.
         """
         from . import iotools
-        
+
         dict_init = {}
 
         dict_init["shape"] = config.get("shape", [4096, 4096])
-        
+
         #
         # READOUT
         #
@@ -148,10 +148,10 @@ class Detector():
         if "nmd" in config and "readout_mode" in config:
             warnings.warn("readout_mode ignore as nmd found in config")
             _ = config.pop("readout_mode")
-            
+
         elif "nmd" not in config and "readout_mode" not in config:
             warnings.warn("not readout mode found (neither 'readout_mode' nor 'nmd' in config. This will create problem.")
-            
+
         dict_init["nmd"] = config.get("nmd", config.get("readout_mode", None))
         ### max group in readout_mode allowed
         if "max_group" in config:
@@ -159,7 +159,7 @@ class Detector():
 
         if "min_group" in config:
             dict_init["min_group"] = int(config.get("min_group"))     #: maximum number of group per ramp
-            
+
         ## readout_noise aka, ron
         dict_init["ron"] = float(config.get("ron", config.get("readout_noise")) ) #: Read-Out Noise per frame [e-]
 
@@ -180,7 +180,7 @@ class Detector():
         #
         ## pixel size
         dict_init["pixel_size"] = float(config.get("pixel_size"))            #: Pixel size [µm]
-        
+
         ## quantum efficiency | as float or as func
         qe_ = config.get("QE")
         try:
@@ -194,7 +194,7 @@ class Detector():
                                  tab["wavelength"].to(units.AA).value,
                                  tab["qe"],
                                  k=1, ext='zeros') # k=1 to avoid artificial-wiggles.
-                                 
+
         dict_init["qe"] = qe # float or func
 
         ## variance model
@@ -203,7 +203,7 @@ class Detector():
 
         # build the instance given this configuration
         return cls(**dict_init, lbda=lbda, thermaloptics=thermaloptics)
-    
+
     # ============== #
     #   Methods      #
     # ============== #
@@ -222,16 +222,16 @@ class Detector():
         lbda = kwargs.pop("lbda", None)  # removes it from the kwargs
 
         ALLOWED = {"readout_noise": "ron"}
-        
+
         updates = {}
         for k, v in kwargs.items():
             # allow alternative names for parameters.
-            
+
             k = ALLOWED.get(k, k)
             if k not in self.mutable_parameters:
                 warnings.warn(f"Parameter {k!r} is not mutable.")
                 continue
-            
+
             if v is None:        # Skip
                 continue
 
@@ -243,7 +243,7 @@ class Detector():
             if k in ["nframe_per_group", "nframes"]:
                 n, m, d = self.nmd  # NMD = (ngroup, nframe_per_group, ndrops)
                 k, v = 'nmd', (n, v, d)
-                
+
             #setattr(self, k, v)  # Update
             updates[k] = v
 
@@ -256,7 +256,7 @@ class Detector():
             self._meta = self._meta_in | updates
         else:
             self._meta = self._meta | updates
-        
+
     def update_lbda(self, lbda):
         """Update chromatic components.
 
@@ -277,7 +277,7 @@ class Detector():
         (ngroups, nframe, ndrops) = self.nmd
         volume_in_bit = (npixels * nbit_record * ngroups) * u.bit
         return volume_in_bit.to(units).value
-        
+
     def get_qe(self, lbda=None):
         """Get the quantum efficiency.
 
@@ -294,13 +294,13 @@ class Detector():
         # as float
         if not callable(self.qe):
             return self.qe
-            
+
         # as function
         if lbda is None:
             lbda = self.lbda
-            
+
         return self.qe(lbda)
-        
+
     def get_pixel_size(self, unit="micrometer"):
         """Get the pixel size in the specified unit.
 
@@ -344,19 +344,19 @@ class Detector():
             # cached by unit
             if (cached := self._cached_thermal.get(units, None)) is not None:
                 return cached
-        
+
         # which thermaloptics to consider.
         if thermaloptics is None:
             thermaloptics = self.thermaloptics
 
-        # nothing given ? returns 0, i.e. no thermal dark. 
+        # nothing given ? returns 0, i.e. no thermal dark.
         if thermaloptics is None:
             return 0
 
         # select the coefficient to match the request output units.
         if units == "ph/s":
             qe = None
-            
+
         elif units in ["e/s", "e-/s"]:
             qe = self.qe # float or func
         else:
@@ -364,7 +364,7 @@ class Detector():
 
         if lbda_range is None:
             lbda_range = self.lbda_range
-            
+
         # the collective area of pixels in m
         pixel_area = self.get_pixel_size("m")**2 # pixel_size is in micro
 
@@ -375,7 +375,7 @@ class Detector():
         # only take the undispersed one
         signals = signals[ ~np.asarray(thermaloptics.meta["dispersed"]).astype(bool) ]
 
-        
+
         # sum over 1 element if only 1 temperature
         if as_sum:
             signals = np.sum(signals, axis=0)
@@ -383,13 +383,13 @@ class Detector():
         if cached:
             if not hasattr(self, "_cached_thermal") or self._cached_thermal is None:
                 self._cached_thermal = {}
-                
+
             self._cached_thermal[units] = signals
-        
+
         return signals
 
     def get_effective_ron(self, nmd=None, variance_model="default", ron=None, as_variance=False):
-        """ compute the effective impact of the read-out noise (ron) 
+        """ compute the effective impact of the read-out noise (ron)
 
         Parameters
         ----------
@@ -400,7 +400,7 @@ class Detector():
         variance_model : str, optional
             Variance model to use (e.g., 'rauscher07', 'kubik16').
             If "default", `self.variance_model` is used. Default is "default".
-        
+
         Returns
         -------
         ron: float
@@ -413,18 +413,18 @@ class Detector():
 
         if ron == 0: # switched off.
             return 0
-        
+
         # which macc mode to use
         if nmd is None:
             nmd = self.nmd
 
         n, m, d = nmd
 
-        # which variance model to use ?        
+        # which variance model to use ?
         if variance_model == "default":
             variance_model = self.variance_model
 
-        
+
         # compute the effective read-out noise estimator.
         if variance_model.lower() in ["rauscher07", "rauscher10" "rauscher+07"]:
             rauscher_ron_variance = 12 * (n - 1) / (m * n * (n + 1)) * ron**2
@@ -434,14 +434,14 @@ class Detector():
 
         if as_variance:
             return effective_ron_variance
-        
+
         return np.sqrt(effective_ron_variance)
 
     def get_effective_dark(self, cached_thermal=False, incl_thermal=True):
         """ get the total effective dark signal.
-        
-        This is a combination from the actual true detector dark (self.dark), 
-        that induce by the roic glow (self.roic_glow e-/frame) and the thermal dark 
+
+        This is a combination from the actual true detector dark (self.dark),
+        that induce by the roic glow (self.roic_glow e-/frame) and the thermal dark
         from surrounding elements' radiations.
 
         Returns
@@ -450,24 +450,25 @@ class Detector():
             e-/s total dark signal.
         """
         roic_glow_e_per_sec = self.roic_glow / self.tframe # e-/frame => e-/s
-        
+
         dark = self.dark + roic_glow_e_per_sec
         if incl_thermal:
             dark += self.get_thermal_dark(units="e-/s", cached=cached_thermal)
-            
+
         return dark
-    
+
     def estimate_pixel_signal(self, flux, lbda=None,
                                   withdark=False,
                                   variance_model="default",
                                   saturation="default",
-                                  cached_thermal=False):
+                                  cached_thermal=False,
+                                  npix_per_spaxel=1):
         """Estimate measured signal and variance from incident flux.
 
         Parameters
         ----------
         flux : array_like
-            Incident flux in ph/s/px (arbitrary shape, e.g., (nlbda, ny, nx)).
+            Incident flux in ph/s/voxel (arbitrary shape, e.g., (nlbda, ny, nx)).
         lbda : array_like, optional
             Wavelength array in Angstrom. If None, `self.lbda` is used.
             Default is None.
@@ -484,23 +485,26 @@ class Detector():
         Returns
         -------
         tuple of array_like
-            - Pixel signal [ADU].
-            - Variance [ADU²].
+            - Pixel signal [ADU/voxel].
+            - Variance [ADU²/voxel].
         """
         if variance_model == "default":
             variance_model = self.variance_model
 
         if saturation == "default":
             saturation = self.saturation
-            
+
+        flux_pixel = flux/npix_per_spaxel  # ph/s/pixel
+
         # Variance estimators works with input flux in e-/s (not ph/s)
-        qe = complete_dims(self.get_qe(lbda=lbda), -np.ndim(flux))
-        flux_e = flux * qe  # [e-/s]
+        qe = complete_dims(self.get_qe(lbda=lbda), -np.ndim(flux_pixel))
+        flux_e = flux_pixel * qe  # [e-/s]
 
         # Variance estimate in [ADU²]
         ## gain, ron, dark etc. are in there.
         ## thermal dark is computed twice, for the variance and for the signal.
-        variance = self.estimate_variance(flux=flux_e, model=variance_model, incl_thermal=True, cached_thermal=cached_thermal) 
+        variance = self.estimate_variance(flux=flux_e, model=variance_model, incl_thermal=True,
+                                            cached_thermal=cached_thermal)
 
         # actual signal registered, including darks for staturation tests.
         effective_dark = self.get_effective_dark(cached_thermal=cached_thermal, incl_thermal=True)
@@ -525,7 +529,11 @@ class Detector():
         if not withdark:  # Remove dark contribution
             signal -= effective_dark * self.electronpers_to_adu()  # [ADU]
 
-        return signal, variance  # [ADU], [ADU²]
+        # now recompute in ADU/spaxel
+        signal *= npix_per_spaxel
+        variance *= npix_per_spaxel
+
+        return signal, variance  # [ADU/voxel], [ADU²/voxel]
 
     def estimate_variance(self, flux, model=None, incl_thermal=True, cached_thermal=False):
         """Estimate the variance associated with the input flux.
@@ -549,14 +557,14 @@ class Detector():
             model = self.variance_model
 
         effective_dark = self.get_effective_dark(incl_thermal=incl_thermal, cached_thermal=cached_thermal)
-            
+
         variance_input = dict(nmd=self.nmd, tframe=self.tframe,
                               ron=self.ron, dark=effective_dark,
                               gain=self.gain)
-                              
+
         if model.lower() in ["rauscher07", "rauscher10" "rauscher+07"]: # allowing old format
             return self._estimate_variance_rauscher07(flux, **variance_input)
-            
+
         elif model.lower() in ["kubik16", "kubik16"]:
             return self._estimate_variance_kubik16(flux, **variance_input)
         else:
@@ -589,7 +597,7 @@ class Detector():
         This is effective exposure time [s] * gain [ADU/e-].
         """
         return self.integration_time * self.gain
-        
+
     # - Internal
     def _estimate_variance_rauscher07(self, flux, nmd, tframe, ron, dark, gain):
         """Variance from Rauscher+2007 (corrected in Rauscher+2010).
@@ -674,7 +682,7 @@ class Detector():
 
         return var              # [ADU²]
 
-        
+
     # ================ #
     #   Properties     #
     # ================ #
@@ -702,18 +710,18 @@ class Detector():
     def name(self):
         """Name of the detector, if any."""
         return self.meta.get("name", "unknown")
-    
+
     @property
     def shape(self):
         """ shape of the detector """
         return self.meta.get("shape", None)
 
-    
+
     @property
     def variance_model(self):
         """Variance model name."""
         return self.meta.get("variance_model")
-        
+
     @property
     def lbda_range(self):
         """Wavelength range accepted by the detector.
@@ -735,7 +743,7 @@ class Detector():
         The total effective dark current is `self.dark` + `self.get_thermal_dark()`.
         """
         return self.meta.get("dark")
-    
+
     @property
     def roic_glow(self):
         """ Roic glow in e-/frame.
@@ -750,7 +758,7 @@ class Detector():
     def ron(self):
         """Detector Read-Out Noise per frame in e-."""
         return self.meta.get("ron")
-        
+
     @property
     def qe(self):
         """Quantum efficiency (float, array, or function).
@@ -770,7 +778,7 @@ class Detector():
     def saturation(self):
         """Saturation level in ADU."""
         return self.meta.get("saturation")
-        
+
     @property
     def gain(self):
         """Gain in ADU/e-."""
@@ -781,7 +789,7 @@ class Detector():
         """Frame time in seconds."""
         return self.meta.get("tframe")
 
-    # - read-out model and co.        
+    # - read-out model and co.
     @property
     def nmd(self):
         """Read-out mode (n, m, d).
@@ -801,7 +809,7 @@ class Detector():
     def min_group(self):
         """Minimal allowed number of groups per ramp (n_min, m, d)."""
         return self.meta.get("min_group")
-    
+
     @property
     def max_group(self):
         """Maximum allowed number of groups per ramp (n_max, m, d)."""
@@ -812,7 +820,7 @@ class Detector():
         """Total number of individual frames in the ramp."""
         n, m, d = self.nmd
         return (n * (m + d) - d)
-    
+
     @property
     def tgroup(self):
         """Time between two groups, including drops."""
@@ -823,7 +831,7 @@ class Detector():
     def integration_time(self):
         """Effective integration time for flux computations."""
         n, m, d = self.nmd
-        return (n - 1) * (m + d) * self.tframe  # = (n - 1) * tgroup        
+        return (n - 1) * (m + d) * self.tframe  # = (n - 1) * tgroup
 
     @property
     def exposure_time(self):

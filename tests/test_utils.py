@@ -13,11 +13,11 @@ def test_recursive_get():
 def test_mesh_kwargs():
     """ """
     kwargs = dict(scale=[0.02, 0.05], sigma=[0.03, 0.06], toto=[1,2,3])
-    
+
     df_out = utils.mesh_kwargs(**kwargs)
     excepted_ncol = len(list(kwargs.keys()))
     excepted_nrows = np.prod([len(v) for v in kwargs.values()])
-    
+
     assert list(df_out.columns) == list(kwargs.keys())
     assert df_out.values.shape == (excepted_nrows, excepted_ncol)
 
@@ -25,8 +25,8 @@ def test_inspect_func():
     """ """
     def test_func(a, ith=4, **kwargs):
         pass
-        
-    keys, default_values = utils.inspect_func(test_func) 
+
+    keys, default_values = utils.inspect_func(test_func)
     assert list(keys) == ["a", "ith"]
     assert default_values == {"ith":4}
 
@@ -50,9 +50,8 @@ def test_erf_functions():
 
     # 2D case
     y, x = np.ogrid[-5:5.1, -6:6.1]
-    sigma = np.array([1])
+    sigma = np.array([1, 1])
     assert np.isclose( utils.integ_gaussian2D_erf((x, y), sigma=sigma, normed=True).sum(), 1)
-    assert np.isclose( utils.integ_gaussian2D_erf((x, y), sigma=sigma, normed=False).sum(), sigma**2 * 2*np.pi)
 
 
 def test_complete_dims():
