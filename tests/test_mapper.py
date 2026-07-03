@@ -34,36 +34,36 @@ def test_get_pixel_positions(mapper):
     """ """
     slicepos = np.linspace(-1, 1, 5)
     wavelength = np.linspace(5_000, 10_000, 10)
-    
+
     df_in = mesh_kwargs(sliceid=20, slicepos=slicepos, wavelength=wavelength)
     pixels = mapper.get_pixel_positions(df_in)
     assert np.all(pixels>=0), "pixels should be positive"
     assert np.all(pixels<=DETECTOR_MAX_SIZE), "pixels with values larger than 10_000. This is unlikely."
     assert np.all((pixels[0]-pixels[-1])>1), "dynamic range of tested pixels is lower and 1"
-    
+
 def test_project_slice(mapper):
     """ """
 
     # target to be projected
     from slicersim import LazuliTarget
-    
+
     lbda_model = np.linspace(3000, 19_000, 1000)
     flux_model = np.ones( lbda_model.shape )
 
     # build a target
     target = LazuliTarget(lbda_model, flux_model, mag=20)
     _ = target.setup_to_snr(25)
-    
-    # get slicer data of the target. 
-    (cube_fine, _), (cube_medium, _) = target.get_cube(which="both", 
-                                                       psf_profile="airy", as_oversampled=False, 
+
+    # get slicer data of the target.
+    (cube_narrow, _), (cube_wide, _) = target.get_cube(which="both",
+                                                       psf_profile="airy", as_oversampled=False,
                                                        switch_off=["background", "thermal"])
 
     # projection of the cube onto the detector.
     lbda = target.simulation.spectrograph.lbda
-    img_fine = mapper.project_slice(np.arange(1, 59)[::-1], cube_fine, lbda)
-    img_med = mapper.project_slice(np.arange(59, 117)[::-1], cube_medium, lbda)
-    image = np.sum([img_med, img_fine], axis=0)
+    img_narrow = mapper.project_slice(np.arange(1, 59)[::-1], cube_narrow, lbda)
+    img_med = mapper.project_slice(np.arange(59, 117)[::-1], cube_wide, lbda)
+    image = np.sum([img_med, img_narrow], axis=0)
     assert np.mean(image>0)>0.10, "less than 10% of pixels have been illuminated"
 
 def test_get_slice_contours(mapper):
@@ -71,14 +71,14 @@ def test_get_slice_contours(mapper):
     contours = mapper.get_slice_contours(20, out_format='numpy')
     assert np.ndim(contours) == 2
     assert contours.shape[-1] == 2
-    
+
     contours = mapper.get_slice_contours([20, 10], out_format='numpy')
     contours = np.stack(contours)
     assert np.ndim(contours) == 3
     assert contours.shape[-1] == 2
     assert np.all(contours>=0)
     assert np.all(contours<=DETECTOR_MAX_SIZE)
-    
+
     try:
         import shapely
         contours = mapper.get_slice_contours(20, out_format='shapely')

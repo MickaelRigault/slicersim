@@ -2547,6 +2547,7 @@ class OpticsThroughput( object ):
         noptics = self.noptics[which]
         if callable(curve):
             curve = curve(lbda)
+            curve[(curve<0) & (curve>=-1e-3)] = 0 # interpolation error accepted.
 
         elif (ncurve:=len(curve)) != (nlbda:=len(lbda)):
             raise ValueError(f"curve dimension {ncurve} doesn't match input lbda's {nlbda}")

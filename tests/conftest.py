@@ -13,8 +13,8 @@ def pytest_configure(config):
 
 def pytest_unconfigure(config):
     print("running pytest_unconfigure")
-    VirtualTarget._DEFAULT_CONFIG = {"instrument": "lazuli.toml"}
-    VirtualLazuliTarget._INSTRUMENT = "lazuli.toml"
+    VirtualTarget._DEFAULT_CONFIG = {"instrument": "lazuli_cbe.toml"}
+    VirtualLazuliTarget._INSTRUMENT = "lazuli_cbe.toml"
 
 
 @pytest.fixture

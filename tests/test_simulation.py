@@ -79,10 +79,10 @@ def test_update(simu):
 
     # update spectroscopic property
     request_shape  = [20, 40]
-    experted_output_shape = np.asarray(request_shape) * simu.spectrograph._ANAMORPHOSE
+    expected_output_shape = np.asarray(request_shape) * (1, simu.spectrograph._ANAMORPHOSE)
     simu.update(spatial_shape=request_shape)
     cube, cubevar = simu.get_cube()
-    assert np.all(cube.shape[1:] == experted_output_shape), "wrong cube shape after update of spectrp schape"
+    assert np.all(cube.shape[1:] == expected_output_shape), f"wrong cube shape after update of spectre shape {cube.shape[1:]=} != {expected_output_shape=}"
 
 
     # update spectro top-level
@@ -214,8 +214,8 @@ def test_pixel_variance(simu):
     """ """
     simu.update(nramps=1) # make sure this is at 1 ramp.
     pixel_variance = simu.get_pixel_variance()
-    assert np.asarray(pixel_variance <= simu.detector.ron).all()
-    assert np.asarray(pixel_variance >= 0).all()
+    assert np.asarray(pixel_variance <= simu.detector.ron**2).all(), "pixel variance exceeds ron"
+    assert np.asarray(pixel_variance >= 0).all(), "pixel variance is negative"
 
 
 def test_background_spectrum(simu):
@@ -235,7 +235,7 @@ def test_fetch_snr_caching(simu):
     _cached = simu.fetch_snr(30, use_cache=True)
     _not_cached = simu.fetch_snr(30, use_cache=False)
     assert _cached == _not_cached
-    
+
     _cached = simu.fetch_snr(10, use_cache=True)
     _not_cached = simu.fetch_snr(10, use_cache=False)
     assert _cached == _not_cached

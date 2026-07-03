@@ -22,7 +22,7 @@ def test_instanciation(detector):
 def test_qe(detector, lbda_test):
     """ """
     qe = detector.get_qe(lbda_test)
-    
+
     assert qe.shape == lbda_test.shape, "test lbda shape and returned qe shape do not match"
     assert np.all((qe>=0) & (qe<=1)), "not all qe values are between 0 and 1"
 
@@ -36,8 +36,9 @@ def test_thermal_dark(detector):
 
     # testing functionalities
     thermaloptics_test = ThermalOptics(
-        [200, 300], emissivity=[0.1, 0.01], fratio=[[15, 30], [7.5, 5.2]]
-    )
+        [200, 300], emissivity=[0.1, 0.01], fratio=[[15, 30], [7.5, 5.2]],
+        meta={"dispersed": [False, False]} # directly as detector dark
+        )
     thermaldark = detector.get_thermal_dark(
         thermaloptics_test, lbda_range=[10_000, 20_000], as_sum=True
     )

@@ -217,7 +217,7 @@ class VirtualLazuliTarget():
             An instance of the class.
         """
         # create the simulator
-        config = get_config( **(cls._DEFAULT_CONFIG | {"instrument": self._INSTRUMENT } | kwargs) )
+        config = get_config( **(cls._DEFAULT_CONFIG | {"instrument": cls._INSTRUMENT } | kwargs) )
         simulation = Simulation.from_config(config)
         return cls(simulation=simulation)
 
@@ -384,7 +384,7 @@ class VirtualLazuliTarget():
         if which == "both":
             return cubes_narrow, cubes_wide
 
-        elif which == "fine":
+        elif which == "narrow":
             return cubes_narrow
 
         elif which == "wide":
