@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "Simulating Transient in the sky and how to observe them"
 readme = "README.md"
 authors = [
-    {name = "Mickael Rigault", email = "m.rigault@ipnl.in2p3.fr"}
+    {name = "Mickael Rigault", email = "mick.rigault@gmail.com"}
 ]
 license = "Apache-2.0"
 classifiers = [
