@@ -24,11 +24,12 @@ SPECTROGRAPH_FIELD = {"narrow": {'spatial_shape': [58, 58], 'spatial_scale': 0.0
 
 
 
-def lazuli_sn_etc(model, redshift, snr, phase=0,
-                   lbda_range=[4000, 6800], frame='rest',
-                   statistic=np.nanmean,
-                   max_group=None, nmd=None, time_details=False,
-                   **kwargs):
+def lazuli_sn_etc(model, redshift, snr, per_resolution=True,
+                phase=0,
+                lbda_range=[4000, 6800], frame='rest',
+                statistic=np.nanmean,
+                max_group=None, nmd=None, time_details=False,
+                **kwargs):
     """Calculate the exposure time to achieve a specified Signal-to-Noise Ratio (SNR).
 
     This function creates a Supernova with a specified model, configures the
@@ -42,9 +43,11 @@ def lazuli_sn_etc(model, redshift, snr, phase=0,
         - salt: SN Ia - parameters: x1, c
         - twin: SN Ia - parameters: xi1, xi2, xi3, color
     redshift : float
- ta       The redshift of the supernova.
+        The redshift of the supernova.
     snr : float
         The target Signal-to-Noise Ratio to achieve.
+    per_resolution : bool, optional
+        If True, the SNR is calculated per resolution element. Default is True.
     phase : float, optional
         The phase (with respect to manimum light) of the supernova. Default is 0.
     lbda_range : list of float, optional
@@ -86,8 +89,9 @@ def lazuli_sn_etc(model, redshift, snr, phase=0,
     target.change_detector(nmd=nmd, max_group=max_group)
 
     # setup the instrument to the requested signal to noise
-    _ = target.setup_to_snr(snr, lbda_range=lbda_range, frame='rest',
-                                statistic=statistic, inplace=True)
+    _ = target.setup_to_snr(snr, per_resolution=per_resolution,
+                            lbda_range=lbda_range, frame=frame,
+                            statistic=statistic, inplace=True)
 
     # get the exposure time
     exptime = target.get_exposure_time(full=time_details)
