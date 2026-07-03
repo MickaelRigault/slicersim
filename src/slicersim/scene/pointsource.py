@@ -175,7 +175,6 @@ def get_saltmodel(redshift=0.1,
 # ============== #
 _FLAMBDA_units = units.erg / (units.cm ** 2 * units.s * units.AA)
 
-
 def get_blackbody_flux(lbda, temperature, mag,
                        band="sdssr", magsys="ab"):
     """Get the flux of a blackbody source.
@@ -218,7 +217,6 @@ def get_blackbody_flux(lbda, temperature, mag,
     fluxcoef_for_target_mag = 10 ** (-0.4 * (mag - native_mag))
 
     return flux.value * fluxcoef_for_target_mag  # numpy array
-
 
 # explicit here the parameters to enable mutable_parameters parsing
 def get_saltmodel_flux(lbda, phase,
