@@ -144,3 +144,37 @@ def test_calspec():
     _ = bd17.setup_to_snr(20)
     exptime = bd17.get_exposure_time()
     assert exptime > 10, "observing a mag=22 star should take more than 10s"
+
+
+# blackbody
+
+@pytest.fixture
+def lazulibb():
+    """ """
+    return slicersim.LazuliBlackBody(temperature=5777, mag=20)
+
+
+def test_blackbody(lazulibb):
+    """ """
+    from astropy import units, constants
+    # there is no noise included, so spec must be greater or equal to zero
+    lbda, spec, var = lazulibb.get_spectrum(unit="flambda", incl_error=False)
+    assert lbda.shape == spec.shape == var.shape
+    assert np.isfinite(spec).all(), "blackbody spectrum should be finite everywhere"
+    assert (spec >= 0).all(), "all spectrum should be >=0 as no error)"
+
+    # testing blackbody physics
+    def lbda_max_to_temperature(lbda_max):
+        """ Wein's law"""
+        return (constants.h*constants.c / (4.965*constants.k_B * lbda_max)).value
+
+    test_temperatures = [4000, 3000]
+    for test_temp_ in test_temperatures:
+        # change the temperature
+        lazulibb.change_properties(pointsource__temperature=test_temp_)
+        # get the new spectrum
+        lbda, spec, var = lazulibb.get_spectrum("flambda", incl_error=False)
+        # get pick wavelength (in meter)
+        lbda_max_meter = lbda[np.argmax(spec)] * units.Angstrom.to("m")
+        predicted_temp = lbda_max_to_temperature(lbda_max_meter)
+        assert np.isclose(predicted_temp, test_temp_, rtol=1e-1), f"predicted temp {predicted_temp} != {test_temp_}"
