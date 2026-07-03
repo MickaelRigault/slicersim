@@ -98,6 +98,6 @@ autosummary_generate = True
 autoclass_content = "both"
 
 numpydoc_show_class_members = True
-numpydoc_class_members_toctree = True
+numpydoc_class_members_toctree = False
 
 master_doc = "contents"
