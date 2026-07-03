@@ -77,7 +77,7 @@ class VirtualTarget():
             Number of ramps. Default is None.
         """
         if max_group is not None:
-            self.simulation.detector.max_group = max_group
+            self.simulation.update(max_group=max_group)
 
         if nmd is not None:
             self.simulation.update(nmd=nmd)

@@ -65,7 +65,7 @@ class Detector():
     """
     #: Mutable parameters (list)
     mutable_parameters = ['ngroup', "nframe_per_group",
-                          'nmd', 'tframe',
+                          'nmd', 'tframe', "max_group",
                           'ron', 'gain', 'qe', 'dark',
                           'saturation', 'variance_model',
                           "ron_floor", "roic_glow"]
