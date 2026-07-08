@@ -6,22 +6,15 @@
 # slicersim
 Simulation of Slicer observations
 
+***
 
+# reference
+See the dedicated paper: [Rigault et al. (2026)](https://scixplorer.org/abs/2026arXiv260706391R/abstract)
 
 ***
 # Installation
 ```bash
-pip install  slicersim
-```
-or: 
-```bash
-git clone https://github.com/MickaelRigault/slicersim.git
-cd slicersim
-pip install .
-```
-or
-```bash
-pip install git+https://github.com/MickaelRigault/slicersim.git
+pip install slicersim
 ```
 ***
 # Top level ETC
