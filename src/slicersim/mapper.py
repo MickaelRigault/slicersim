@@ -497,6 +497,33 @@ class SlicerMapper():
 
         return np.percentile(slice_contours, [0, 100], axis=1).T.squeeze()
 
+    def inpaint_slice_onto_image(self, sliceid, image, fillvalue=1, oversampling=3, **kwargs):
+        """ """
+        from slicersim.utils import bin_array
+        from shapely import geometry, contains_xy
+        # get the vertices of the slice...
+        verts = self.get_slice_contours(sliceid, **kwargs)
+        # ...and create a shapely Polygon of it.
+        poly = geometry.Polygon(verts)
+
+        # get the boundaries of where the polygon is defined to ignore the rest.
+        xmin, ymin, xmax, ymax = np.asarray(poly.envelope.buffer(1).bounds, dtype="int")
+        xy = np.mgrid[xmin:xmax:1/oversampling, ymin:ymax:1/oversampling]
+        # so these are the image pixels that could be overlapping with the polygon
+        pixels_ = xy.reshape(2, -1)
+
+        # flag which pixel is contain within the polygon
+        flagin = contains_xy(poly, *pixels_)
+        img_in = (flagin.reshape(xy.shape[1:]).T).astype(float) * fillvalue
+
+        # and rebin to the actual non-oversampled shape
+        if oversampling>1:
+            img_in = bin_array(img_in, (oversampling, oversampling), np.mean)
+
+        image[ymin:ymax, xmin:xmax] = img_in
+        return image
+
+
     def get_pixel_positions(self, coordinates):
         """Get detector pixel positions corresponding to slice-field-wavelength coordinates.
 

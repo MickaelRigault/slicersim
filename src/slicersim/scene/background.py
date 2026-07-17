@@ -20,11 +20,11 @@ def get_background_model_func(name):
     """
     if "zodi" in name:
         model_func = zodiacal_spectrum
-        
+
     elif name in ["bb", "blackbody"]:
         from ..thermal import get_source_radiation
         model_func = get_source_radiation
-        
+
     else:
         raise NotImplementedError(f"background: {name} is not implemented")
 
@@ -121,9 +121,71 @@ class Background(SceneElement):
         # no function given, look for one
         if func is None:
             func = get_background_model_func(name)
-        
+
         inputnames, default = inspect_func(func)
         if inputnames[0] not in ["lbda", "wave", "wavelength"]:
             warnings.warn(f"first argument of modeling function should be this wavelength, it is called {inputnames[0]} in the given model. It could mean there is a problem.")
-            
+
         return cls(func, meta=default | config)
+
+    @classmethod
+    def from_spectrum(cls, lbda_, flux_, mag=20, band="bessellb",
+                       meta={}):
+        """Generate a `PointSource` from a spectrum.
+
+        Parameters
+        ----------
+        lbda_ : array_like
+            Wavelength array in Angstrom of the reference spectrum.
+        flux_ : array_like
+            Flux of the reference spectrum.
+        mag : float, optional
+            Default magnitude of the target. Default is 20.
+        band : str, optional
+            Name of the bandpass (must be known by sncosmo). Default is "bessellb".
+        meta : dict, optional
+            Meta information carried by the object. Default is {}.
+
+        Returns
+        -------
+        PointSource
+            An instance of the `PointSource` class.
+        """
+        from sncosmo import Spectrum
+        meta["mag"] = mag
+        meta["band"] = band
+        meta["flux_ref"] = flux_
+        meta["lbda_ref"] = lbda_
+        this = cls(None, meta=meta)
+
+        # internal function
+        def _internal_get_flux(lbda, mag, band):
+            """Internal function to get the flux of the spectrum.
+
+            Parameters
+            ----------
+            lbda : array_like
+                Wavelength array in Angstrom.
+            mag : float
+                Target magnitude.
+            band : str
+                Bandpass name.
+
+            Returns
+            -------
+            array_like
+                The flux of the spectrum.
+            """
+            if mag is None:
+                flux_ratio = 1
+            else:
+                in_mag = Spectrum(meta["lbda_ref"], meta["flux_ref"]
+                                  ).bandmag(band, "ab")
+                flux_ratio = 10 ** (-0.4 * (mag - in_mag))
+
+            flux_ = np.interp(lbda, meta["lbda_ref"], meta["flux_ref"],
+                              left=np.nan, right=np.nan)
+            return flux_ * flux_ratio
+
+        this._model_func = _internal_get_flux
+        return this
