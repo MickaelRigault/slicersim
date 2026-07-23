@@ -433,6 +433,7 @@ class VirtualLazuliTarget():
 
     def get_detector_image(self, mapper, cubes=None, **kwargs):
         """ """
+        import warnings
         warnings.warn("get_detector_image is deprecated. use to_image() instead")
         return self.to_image(mapper, cubes=cubes, **kwargs)
 
