@@ -1,3 +1,4 @@
+import os
 import numpy as np
 
 from .simulation import Simulation
@@ -765,10 +766,35 @@ class LazuliFlat( VirtualLazuliTarget, Target  ):
 
         super().__init__(simulation=simulation)
 
-
-
 #
 from .calibration import Flat3DCalibration
 class Lazuli3DFlat(VirtualLazuliTarget, Flat3DCalibration):
     """ """
-    pass
+    _QTH_TEMPERATURE = 3000
+    @classmethod
+    def from_qth(cls, temperature=None, mag=12, band='sdssr',
+                        **kwargs):
+        """ Initialize the flat as observing the 3D flat QTH lamp
+        This method make use the generic .from_blackbody class method.
+        """
+        if temperature is None:
+            temperature = cls._QTH_TEMPERATURE
+
+        return cls.from_blackbody(temperature=temperature, mag=mag, band=band, **kwargs)
+
+    @classmethod
+    def from_febryperot(cls, fp_throughput="lazuli_fp_transmission.csv",
+                            temperature=None, mag=12, band='sdssr', **kwargs):
+        """ """
+        if type(fp_throughput) is str:
+            if not os.path.isfile(fp_throughput):
+                from .iotools import expand_path
+                fp_throughput = expand_path(fp_throughput)
+
+            import pandas
+            from scipy import interpolate
+            fp_throughput = pandas.read_csv(fp_throughput, index_col=0)
+            fp_throughput = interpolate.interp1d(fp_throughput.index, fp_throughput["transmission"], bounds_error=False)
+
+        return super().from_febryperot(temperature=cls._QTH_TEMPERATURE, fp_throughput=fp_throughput,
+                                        mag=mag, band=band, **kwargs)
