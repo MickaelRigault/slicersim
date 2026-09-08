@@ -24,7 +24,7 @@ def get_background_model_func(name):
     elif name in ["bb", "blackbody"]:
         from ..thermal import get_source_radiation
         model_func = get_source_radiation
-        
+
     else:
         raise NotImplementedError(f"background: {name} is not implemented")
 

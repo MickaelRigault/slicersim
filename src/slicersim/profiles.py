@@ -222,9 +222,22 @@ def get_profilemodel(name, position=(0,0), normalized=True, **kwargs):
         elif name == "Gaussian2D":
             # norm of a 2D symetric gaussian (no ellipticity)
             norm = 2*np.pi * kwargs["x_stddev"] * kwargs["y_stddev"]
-            
+
+        elif name == "Sersic2D":
+            # total flux of a Sersic profile with amplitude at r_eff:
+            # L_tot = 2 pi n Gamma(2n) e^bn / bn^2n * r_eff² * (1 - ellip)
+            # with bn such that Gamma(2n, bn) = Gamma(2n)/2
+            # (see e.g. Graham & Driver 2005)
+            from scipy.special import gamma, gammaincinv
+            n = kwargs.get("n", 4)
+            r_eff = kwargs.get("r_eff", 1)
+            ellip = kwargs.get("ellip", 0)
+            bn = gammaincinv(2 * n, 0.5)
+            norm = (2 * np.pi * n * gamma(2 * n) * np.exp(bn) / bn ** (2 * n)
+                    * r_eff ** 2 * (1 - ellip))
+
         else:
-            raise ValueError(f"Only AiryDisk2D & Gaussian2D norms havs been implemented, not {name=}")
+            raise ValueError(f"Only AiryDisk2D, Gaussian2D & Sersic2D norms have been implemented, not {name=}")
             
         kwargs["amplitude"] = 1/norm
         

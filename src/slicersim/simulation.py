@@ -128,8 +128,10 @@ class Simulation():
             Configuration of the (spatially flat) scene background (e.g.
             "zodi"). Default is "zodi".
         host : str, dict, list, optional
-            Configuration of the (spatially structured) scene background (e.g.
-            "zodi"). Default is None.
+            Configuration of the (spatially structured) scene background,
+            e.g. "host.toml" or {"scene": {"host": {...}}}
+            (see scene.extendedsource.get_host_extendedsource).
+            Default is None.
         snr : float, optional
             If not None, the simulation will try to reach this SNR per
             wavelength element while loading. Default is None.
@@ -794,9 +796,19 @@ class Simulation():
         background_cube = self.spectrograph.generate_background(background, oversampling=oversampling,
                                                                     apply_lsf=apply_lsf)
 
-        # host | empty
-        host_cube = np.zeros( (self.spectrograph.nlbda, *self.spectrograph.get_spectrograph_shape(oversampling=oversampling)) )  # (nlbda, ny, nx)
-        
+        # host (structured background) | empty if not in the scene
+        if self.scene.has_element("host"):
+            host_cube = self.spectrograph.generate_structured_background(host,
+                                                            position=self.scene.host.position,
+                                                            oversampling=oversampling,
+                                                            as_oversampled=as_oversampled,
+                                                            apply_lsf=apply_lsf,
+                                                            **self.scene.host.profile_parameters)
+        else:
+            host_cube = np.zeros( (self.spectrograph.nlbda,
+                                   *self.spectrograph.get_spectrograph_shape(oversampling=None if not as_oversampled else oversampling)) )  # (nlbda, ny, nx)
+
+
         # thermal
         thermal_cube = self.spectrograph.generate_thermal_signal(as_cube=True, oversampling=oversampling, apply_lsf=apply_lsf) # [ph/s]
 
@@ -875,7 +887,7 @@ class Simulation():
         
         # spectra (3, nlbda):
         # * point source spectrum [erg/s/cm²/Å]
-        # * host (not yet implemented)
+        # * host total spectrum [erg/s/cm²/Å]
         # * background spectrum [erg/s/cm²/Å/arcsec²]
         lbda = self.spectrograph.lbda # make sure this is up to date
         _, (pointsource, host, background) = self.scene.get_stacked_spectra(lbda=lbda, fillna=0)
@@ -890,9 +902,13 @@ class Simulation():
                                                             apply_lsf=False, # applied once, at the end
                                                             **kwargs)
 
-        if "host" not in switch_off:      
-            if np.any(host):
-                warnings.warn("Host cube not implemented.")
+        if "host" not in switch_off and self.scene.has_element("host"):
+            cube += self.spectrograph.generate_structured_background(host,
+                                                            position=self.scene.host.position,
+                                                            oversampling=oversampling,
+                                                            as_oversampled=as_oversampled,
+                                                            apply_lsf=False, # applied once, at the end
+                                                            **self.scene.host.profile_parameters)
 
         if "background" not in switch_off:                    
             cube += self.spectrograph.generate_background(background, oversampling=None if not as_oversampled else oversampling,

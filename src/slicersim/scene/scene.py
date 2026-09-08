@@ -13,11 +13,10 @@ class Scene:
     A scene can contain three elements:
     - a pointsource point source (e.g., a supernova or a standard star).
     - a uniform background (e.g., the zodiacal background).
-    - a structured background (e.g., the host galaxy).
+    - a structured background (e.g., the host galaxy, see ExtendedSource).
 
     .. warning::
-        The structured `host` is not implemented, and the scene does not
-        include the thermal background from the telescope.
+        The scene does not include the thermal background from the telescope.
     """
 
     def __init__(self, pointsource=None, background=None, host=None,
@@ -30,8 +29,8 @@ class Scene:
             Pointsource point source. Default is None.
         background : Background, optional
             Uniform background. Default is None.
-        host : SceneElement, optional
-            Structured background (not implemented). Default is None.
+        host : ExtendedSource, optional
+            Structured background (e.g., the host galaxy). Default is None.
         lbda : array_like, optional
             Wavelength array in Angstrom. Default is None.
         meta : dict, optional
@@ -66,7 +65,7 @@ class Scene:
         Scene
             An instance of the Scene class.
         """
-        from . import pointsource, background
+        from . import pointsource, background, extendedsource
 
         config = config.copy()
         pointsource_config = config.pop("pointsource", {})  # rename pointsource ?
@@ -83,10 +82,8 @@ class Scene:
         else:
             background = None
 
-        if host_config:  # initialize host from config
-            # raise NotImplementedError("Host element not implemented.")
-            warnings.warn("Host element not implemented, ignored.")
-            host = None
+        if host_config:  # initialize host (structured background) from config
+            host = extendedsource.ExtendedSource.from_config(host_config)
         else:
             host = None
 

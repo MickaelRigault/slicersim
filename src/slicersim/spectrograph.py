@@ -1312,15 +1312,122 @@ class Spectrograph:
         return bkgd_cube
 
     # Structured background
-    def generate_structured_background(self, *args, apply_lsf=True, **kwargs):
-        """Generate a photon flux cube from a structured background scene.
+    def generate_structured_background(self, spectrum, position=(0, 0),
+                                       index=4., r_eff=1., ellip=0., theta=0.,
+                                       oversampling=None, as_oversampled=False,
+                                       psf_convolve=True, apply_lsf=True):
+        """Generate a photon flux cube from a structured (host) background.
 
-        Raises
-        ------
-        NotImplementedError
-            This method is not yet implemented.
+        The host is modeled as a Sersic profile of arbitrary index carrying
+        the given total spectrum. The profile is normalized such that it
+        integrates to 1 over the (infinite) sky, so the flux falling outside
+        the field of view is naturally lost.
+
+        Parameters
+        ----------
+        spectrum : array_like
+            Total (spatially integrated) host spectrum in erg/s/cm²/Å.
+        position : tuple, optional
+            Profile center position in the MLA (x, y) in spaxels.
+            Default is (0, 0).
+        index : float, optional
+            Sersic index. Default is 4.
+        r_eff : float, optional
+            Effective (half-light) radius in arcsec. Default is 1.
+        ellip : float, optional
+            Ellipticity (1 - b/a) of the profile. Default is 0.
+        theta : float, optional
+            Position angle in radians (counterclockwise from the x-axis).
+            Default is 0.
+        oversampling : int, optional
+            Oversampling factor used to evaluate the profile.
+            If None, 3 is used. Default is None.
+        as_oversampled : bool, optional
+            If True, return the oversampled cube. Default is False.
+        psf_convolve : bool, optional
+            If True, convolve the profile with the total spatial blur
+            (chromatic optical PSF + guiding and instrumental scatter).
+            Default is True.
+        apply_lsf : bool, optional
+            If True, apply the line spread function. Default is True.
+
+        Returns
+        -------
+        array_like
+            Photon flux cube (nlbda, ny, nx) in ph/s/spx.
         """
-        raise NotImplementedError("generate_structured_background() has not been implemented.")
+        from . import profiles
+        if oversampling is None:
+            oversampling = 3
+
+        # ------------------------------------------------ #
+        # spatial profile, worked out in arcsec            #
+        # (see the generic-profile branch of              #
+        #  get_spatial_psf for the conventions)            #
+        # ------------------------------------------------ #
+        scale_yx = np.broadcast_to(self.spx_spatial_scale, (2,))  # (y, x) [arcsec/spx]
+        position_xy = np.asarray(position) * scale_yx[::-1]  # spaxels => arcsec
+
+        profile_func = profiles.get_profilemodel("sersic", position=position_xy,
+                                                 normalized=True,
+                                                 n=index, r_eff=r_eff,
+                                                 ellip=ellip, theta=theta)
+
+        (xx, yy), oversampling = self.get_spaxel_centroids(in_arcsec=True, squeeze=False,
+                                                           oversampling=oversampling)
+        profile_img = profile_func(xx, yy)  # (ny, nx) [1/arcsec²]
+
+        if np.ndim(oversampling) == 1:
+            oversampling_y, oversampling_x = oversampling
+        else:
+            oversampling_y = oversampling_x = oversampling
+
+        # flux fraction captured per (oversampled) spaxel
+        profile_img = profile_img * self.spx_area / (oversampling_y * oversampling_x)
+
+        # ------------------------------------------------ #
+        # convolution with the total spatial blur          #
+        # (chromatic optical PSF + achromatic scatter)     #
+        # ------------------------------------------------ #
+        if psf_convolve:
+            from scipy.ndimage import gaussian_filter
+            # chromatic optical PSF (isotropic) [arcsec]
+            sigma_chromatic = np.atleast_1d(
+                np.squeeze(self.get_psf_sigma_spectral(guiding_sigma=0,
+                                                       in_spaxels=False)))  # (nlbda,)
+            # achromatic scatter (guiding + instrumental) [arcsec]
+            scatter = self.get_additonal_spatial_scatter(incl_instrument=True,
+                                                         in_spaxels=False)
+            if scatter is None:
+                scatter = 0.
+
+            # total blur per wavelength and axis (y, x) [arcsec]
+            sigma_yx = np.sqrt(sigma_chromatic[:, None] ** 2 +
+                               np.broadcast_to(scatter, (2,)) ** 2)  # (nlbda, 2)
+            # in units of the (oversampled) grid pixels
+            sigma_yx = sigma_yx * np.asarray([oversampling_y, oversampling_x]) / scale_yx
+
+            cube = np.stack([gaussian_filter(profile_img, sigma_)
+                             for sigma_ in sigma_yx])  # (nlbda, ny, nx)
+        else:
+            cube = profile_img[None, :, :]
+
+        # ------------------------------------------------ #
+        # spectral part                                    #
+        # ------------------------------------------------ #
+        # erg/s/cm²/Å / erg/ph * cm² * Å = ph/s (total)
+        flux = spectrum * self.flambda2photon  # (nlbda,) [ph/s]
+        cube = np.reshape(flux, (-1, 1, 1)) * cube  # (nlbda, ny, nx) [ph/s/spx]
+
+        if np.any(np.asarray(oversampling) != 1) and not as_oversampled:
+            # in the current structure, oversampled pixels must be *summed*
+            # as the energy is conserved (see get_spatial_psf).
+            cube = self._remove_oversampling(cube, oversampling=oversampling, func=np.nansum)
+
+        if apply_lsf:
+            cube = self.apply_line_spread_function(cube)
+
+        return cube  # (nlbda, ny, nx) [ph/s/spx]
 
     # Themal (pre-dispersor)
     def generate_thermal_signal(self, lbda_bin=None,

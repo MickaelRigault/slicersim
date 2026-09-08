@@ -1,0 +1,13 @@
+[scene.host]
+name = "host"
+source = "elliptical"		# Host spectrum: "elliptical", "flat" (in AB mag)
+	 			# (or provide a (lbda, flux) spectrum from python)
+mag = 20.0			# Total (spatially integrated) AB magnitude
+band = "sdssr"			# Band of the total magnitude (sncosmo name)
+redshift = 0.0			# Redshift of the host (shifts the template)
+profile = "sersic"		# Spatial profile (only sersic implemented)
+index = 4.0			# Sersic index (arbitrary, e.g. 1=disk, 4=de Vaucouleurs)
+r_eff = 1.0			# Effective (half-light) radius [arcsec]
+ellip = 0.0			# Ellipticity (1 - b/a)
+theta = 0.0			# Position angle [rad], counterclockwise from x
+position = [0.0, 0.0]		# Profile center in MLA [spx]
