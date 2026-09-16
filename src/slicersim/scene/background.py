@@ -1,7 +1,9 @@
-import numpy as np
 import warnings
-from .base import SceneElement
+
+import numpy as np
+
 from ..utils import inspect_func
+from .base import SceneElement
 
 
 def get_background_model_func(name):

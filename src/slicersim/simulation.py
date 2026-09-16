@@ -1,11 +1,13 @@
 import warnings
+
 warnings.simplefilter('always', UserWarning)
 
 import numpy as np
 import pandas
+
+from .detector import Detector
 from .scene import Scene
 from .spectrograph import SlicerSpectrograph
-from .detector import Detector
 from .telescope import Telescope
 
 __all__ = ["Simulation"]
@@ -25,7 +27,7 @@ COLORS = {# detector
           "thermal":"#9B2226"
           }
 
-class Simulation():
+class Simulation:
     """Main class to simulate an observation.
 
     This class is the main entry point to the simulation. It contains all the
@@ -662,7 +664,7 @@ class Simulation():
         variance_pixels = nea * pixel_var
 
         # adding spectrum. But very inclear if correct...
-        if spectrum is not None: #
+        if spectrum is not None:
             # test default tests case:
             right_config = self.get_parameter(["spatial_scale", "psf_sigma_spectral"])
             if right_config != {'spatial_scale': 0.04, 'psf_sigma_spectral': 0.03}:
@@ -744,11 +746,11 @@ class Simulation():
             if hasattr(instance, which):            # self.which
                 return getattr(instance, which)
 
-            if which in getattr(instance, "meta"):  # self.meta['which']
-                return getattr(instance, "meta")[which]
+            if which in instance.meta:  # self.meta['which']
+                return instance.meta[which]
 
             if element == "scene": # for scene: self.meta['pointsource']['which']
-                meta_pointsource = getattr(instance, "meta")["pointsource"]
+                meta_pointsource = instance.meta["pointsource"]
                 if meta_pointsource is not None and which in meta_pointsource:
                     return meta_pointsource[which]
 
@@ -1616,7 +1618,6 @@ class Simulation():
                       guess=None,
                       fitter="native",
                       use_cache=True,
-                      #
                       lbda_range=[4000, 6800], frame="rest",
                       statistic=np.nanmean,
                       reset_param=True,
@@ -1848,8 +1849,7 @@ class Simulation():
                 new_value = 1
                 # warnings.warn(f"requested value lower than 0: old value {value} + iterstep {iterstep}")
 
-            if new_value < min_value:
-                new_value = min_value
+            new_value = max(new_value, min_value)
                 # warnings.warn(f"requested value lower than min_value: old value {value} + iterstep {iterstep}")
             if max_value is not None and (new_value > max_value):
                 new_value = max_value
@@ -1858,9 +1858,7 @@ class Simulation():
             new_snr = self.get_band_snr(**snr_prop)
 
             # need to go in the same direction
-            if (new_snr >= target_snr and was_high):
-                new_iterstep = int(iterstep*2)
-            elif (new_snr < target_snr and not was_high):
+            if (new_snr >= target_snr and was_high) or (new_snr < target_snr and not was_high):
                 new_iterstep = int(iterstep*2)
             # need to come back
             else:
@@ -2113,7 +2111,6 @@ class Simulation():
             fig = plt.figure(figsize=(7,5))
 
         ncols = len(obs_lbda_ranges)
-        #
         from matplotlib.gridspec import GridSpec
         gs = GridSpec(nrows=2, ncols=ncols, figure=fig,
                       height_ratios=(ncols,1),
@@ -2150,7 +2147,7 @@ class Simulation():
                      transform=ax_.transAxes, color="k")
 
         [ax_.set_yticks([]) for ax_ in fig.axes]#[axb,axg, axr]]
-        [ax_.set_xticks([]) for ax_ in fig.axes]#
+        [ax_.set_xticks([]) for ax_ in fig.axes]
 
         return fig
 

@@ -1,18 +1,18 @@
 """Access package data files."""
 
 import os
-import numpy as np
 import warnings
-
-from scipy.interpolate import UnivariateSpline
-import astropy.units as u
-from astropy.table import Table
-
 from importlib.resources import files
+
+import astropy.units as u
+import numpy as np
+from astropy.table import Table
+from scipy.interpolate import UnivariateSpline
+
 try:
-    import tomllib                         # Python 3.11+
+    import tomllib  # Python 3.11+
 except ModuleNotFoundError:
-    import tomli as tomllib                # External
+    import tomli as tomllib  # External
 
 
 PACKAGE_PATH = files("slicersim.config")     #: Path to data & config files.

@@ -2,8 +2,11 @@
 
 import numpy as np
 from astropy.modeling import functional_models
-from .utils import integ_gaussian2D_erf
 from scipy import stats
+
+from .utils import integ_gaussian2D_erf
+
+
 # =========== #
 #  Internal   #
 # =========== #
@@ -233,7 +236,7 @@ def get_profilepsf(profile, shape=(10, 10), oversampling=10,
     if normal_scatter is not None and normal_scatter>0:
         # gaussian convolution
         from scipy.ndimage import gaussian_filter
-        scatter_pixels = normal_scatter * oversampling #
+        scatter_pixels = normal_scatter * oversampling
         psf = gaussian_filter(psf, scatter_pixels, axes=(-2,-1))
 
     # centroid in psf image coordinates
