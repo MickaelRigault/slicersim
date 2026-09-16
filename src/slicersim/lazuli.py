@@ -793,9 +793,13 @@ class Lazuli3DFlat(VirtualLazuliTarget, Flat3DCalibration):
                 fp_throughput = expand_path(fp_throughput)
 
             import pandas
+            import warnings
             from scipy import interpolate
             fp_throughput = pandas.read_csv(fp_throughput, index_col=0)
-            fp_throughput = interpolate.interp1d(fp_throughput.index, fp_throughput["transmission"], bounds_error=False)
+            warnings.warn("TMP extraploation patch to be removed.")
+            fp_throughput = interpolate.interp1d(fp_throughput.index, fp_throughput["transmission"], bounds_error=False,
+                                                 fill_value=fp_throughput["transmission"].iloc[0]
+            )
 
         return super().from_febryperot(temperature=cls._QTH_TEMPERATURE, fp_throughput=fp_throughput,
                                         mag=mag, band=band, **kwargs)
