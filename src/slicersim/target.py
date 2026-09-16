@@ -2,7 +2,8 @@ import numpy as np
 
 from .simulation import Simulation
 
-class VirtualTarget():
+
+class VirtualTarget:
     """A virtual class to build Lazuli Target (see child classes).
 
     This class provides a generic interface to the `slicersim.Simulation`
@@ -64,14 +65,13 @@ class VirtualTarget():
 
     def to_image(self, mapper, sliceid, image=None, **kwargs):
         """ """
-        cube, var = self.get_cube(**kwargs)
+        cube, *_ = self.get_cube(**kwargs)
 
         this_image = mapper.project_slice(sliceid, cube, lbda=self.simulation.spectrograph.lbda)
         if image is not None:
             this_image += image
 
         return this_image
-
 
     # =============== #
     #   Methods       #
@@ -400,8 +400,8 @@ class Supernova( VirtualTarget ):
         **kwargs
             Goes to `scene.get_sn_scene()`.
         """
-        from .scene import get_sn_scene
         from .iotools import get_config
+        from .scene import get_sn_scene
         if instrument is None and hasattr(self,"_INSTRUMENT"):
             instrument = self._INSTRUMENT
 

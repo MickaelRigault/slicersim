@@ -1,13 +1,19 @@
 import os
+
 import numpy as np
 
-from .simulation import Simulation
-from .target import Supernova, CalSpec, Target
 from .iotools import get_config
+from .simulation import Simulation
+from .target import CalSpec, Supernova, Target
 
-__all__ = ["lazuli_etc", "lazuli_sn_etc",
-            "LazuliSupernova", "LazuliTarget", "LazuliCalSpec",
-            "LazuliBlackBody"]
+__all__ = [
+    "LazuliBlackBody",
+    "LazuliCalSpec",
+    "LazuliSupernova",
+    "LazuliTarget",
+    "lazuli_etc",
+    "lazuli_sn_etc",
+]
 
 
 SPECTROGRAPH_FIELD = {"narrow": {'spatial_shape': [58, 58], 'spatial_scale': 0.04,
@@ -174,7 +180,7 @@ def lazuli_etc(lbda, flux, snr, per_resolution=True,
 
     return exptime, target
 
-class VirtualLazuliTarget():
+class VirtualLazuliTarget:
     """A virtual class to build Lazuli Target (see child classes).
 
     This class provides a generic interface to the `slicersim.Simulation`
@@ -767,8 +773,9 @@ class LazuliFlat( VirtualLazuliTarget, Target  ):
 
         super().__init__(simulation=simulation)
 
-#
 from .calibration import Flat3DCalibration
+
+
 class Lazuli3DFlat(VirtualLazuliTarget, Flat3DCalibration):
     """ """
     _QTH_TEMPERATURE = 3000
@@ -792,8 +799,9 @@ class Lazuli3DFlat(VirtualLazuliTarget, Flat3DCalibration):
                 from .iotools import expand_path
                 fp_throughput = expand_path(fp_throughput)
 
-            import pandas
             import warnings
+
+            import pandas
             from scipy import interpolate
             fp_throughput = pandas.read_csv(fp_throughput, index_col=0)
             warnings.warn("TMP extraploation patch to be removed.")

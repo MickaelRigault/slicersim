@@ -11,10 +11,9 @@ Unit (slicer or micro-lens array).
 __version__ = '1.1.1'
 
 # Top level simulations
-from .simulation import * # noqa: F403
+# quick access useful for simulation
+from .iotools import get_config  # noqa: F401
 
 # Top level target (uses simulation)
-from .lazuli import * # noqa: F403
-
-# quick access useful for simulation
-from .iotools import get_config # noqa: F401
+from .lazuli import *
+from .simulation import *

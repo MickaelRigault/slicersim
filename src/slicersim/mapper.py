@@ -1,12 +1,12 @@
 import numpy as np
 import pandas
-from scipy.interpolate import LinearNDInterpolator
 from astropy import units as u
+from scipy.interpolate import LinearNDInterpolator
 
 from .utils import mesh_kwargs, unbin_array
 
 
-class SlicerMapper():
+class SlicerMapper:
     _LBDA_UNITS = "angstrom"
     _XY_UNITS = "mm"
     def __init__(self, data,
@@ -429,7 +429,7 @@ class SlicerMapper():
         ValueError
             If units or out_format parameters are invalid.
         """
-        from shapely import geometry # new dependecy
+        from shapely import geometry  # new dependecy
 
         if not combined and len(np.atleast_1d(sliceid))>1:
             return [self.get_slice_contours(sliceid_,
@@ -499,8 +499,9 @@ class SlicerMapper():
 
     def inpaint_slice_onto_image(self, sliceid, image, fillvalue=1, oversampling=3, **kwargs):
         """ """
+        from shapely import contains_xy, geometry
+
         from slicersim.utils import bin_array
-        from shapely import geometry, contains_xy
         # get the vertices of the slice...
         verts = self.get_slice_contours(sliceid, **kwargs)
         # ...and create a shapely Polygon of it.
@@ -706,8 +707,8 @@ class SlicerMapper():
             The figure object.
         """
         import matplotlib.pyplot as plt
-        from matplotlib.patches import Polygon
         from matplotlib import colors
+        from matplotlib.patches import Polygon
 
         sliceid = np.atleast_1d(sliceid)
 
@@ -780,8 +781,8 @@ class SlicerMapper():
             The figure object.
         """
         import matplotlib.pyplot as plt
-        from matplotlib.patches import Polygon
         from matplotlib import colors
+        from matplotlib.patches import Polygon
 
         sliceid = np.atleast_1d(sliceid)
 

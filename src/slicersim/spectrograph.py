@@ -10,7 +10,7 @@ import pandas
 from . import iotools
 from .profiles import build_pixels
 from .thermal import ThermalOptics
-from .utils import recursive_get# , bin_array
+from .utils import recursive_get  # , bin_array
 
 
 # ================ #
@@ -568,7 +568,6 @@ class Spectrograph:
         -------
         None
         """
-        #
         if isinstance(throughput, pandas.DataFrame):
             throughput = throughput.iloc[:, 0] # convert as serie
 
@@ -601,7 +600,7 @@ class Spectrograph:
         """
         lbda = self.lbda.copy() # in AA
         if units is not None:
-            lbda *= getattr(units, "AA").to(units)
+            lbda *= units.AA.to(units)
 
         if oversample is not None:
             nlbda = len(lbda)
@@ -1875,7 +1874,6 @@ class Spectrograph:
     @property
     def _hspaxels(self):
         """Spaxel properties {shape: (N,M), spx_scale: float [in arcsec]}."""
-        #
         return self._spaxels
 
     @property
@@ -1978,7 +1976,6 @@ class Spectrograph:
     @property
     def skyarea(self):
         """Full sky area (nspaxel * spaxel area)."""
-        pass
 
     @property
     def psf_sigma_spectral(self):
@@ -2209,7 +2206,7 @@ class MLASpectrograph(Spectrograph):
 #                  #
 # ================ #
 
-class OpticsThroughput( object ):
+class OpticsThroughput:
     """Throughput of the optical elements.
 
     This class handles the throughput of the different optical elements

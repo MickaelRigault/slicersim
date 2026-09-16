@@ -1,12 +1,13 @@
 """
 Computation of thermal signal (solid angles, black body spectrum).
 """
-from scipy.integrate import quad_vec
-from astropy import constants
-import numpy as np
+import warnings
 from copy import deepcopy
 
-import warnings
+import numpy as np
+from astropy import constants
+from scipy.integrate import quad_vec
+
 
 def get_source_radiation(lbda, temperature, emissivity=1, angular_coefficient=1):
     """ Calculate the blackbody photon flux for a given wavelength and temperature and emissivity
@@ -92,7 +93,7 @@ def fratio_to_solidangle(fratio, geometry="circular"):
     return coefs / (fratio_y*fratio_x)
 
 
-class ThermalOptics():
+class ThermalOptics:
     """Class to compute the thermal radiation of optical elements.
 
     Parameters
@@ -316,7 +317,7 @@ class ThermalOptics():
             
         return self._thermal
 
-class ThermalRadiation():
+class ThermalRadiation:
     """A class to simulate the thermal radiation of telescope and instrument components.
 
     This class calculates the thermal radiation signal based on the black body radiation
@@ -434,7 +435,7 @@ class ThermalRadiation():
             The blackbody photon (or e- if qe!=1) flux integrated in given band in [{photon,e-}/s/sr/m²]
         """
         # 1d-boundaries: let's use exact method.
-        if np.ndim(lbda_bin) == 1: # 
+        if np.ndim(lbda_bin) == 1:
             int_flux = self._get_flux1d(self.temperature, *lbda_bin, qe=qe)
             
         elif np.ndim(lbda_bin) == 2:

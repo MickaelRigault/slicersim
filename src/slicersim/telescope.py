@@ -12,12 +12,15 @@ Mirror module, to simulate:
 __author__ = "Mickael Rigault <m.rigault@ip2i.in2p3.fr>"
 
 import warnings
+from copy import deepcopy
+
 import numpy as np
 from astropy import units
-from copy import deepcopy
+
 from .thermal import ThermalOptics
 
-class Telescope():
+
+class Telescope:
     """Telescope class."""
 
     mutable_parameters = ['temperature', 'emissivity',

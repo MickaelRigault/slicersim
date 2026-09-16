@@ -1,9 +1,10 @@
 import os
+
 import numpy as np
 import pandas
 
 
-class CalSpecSource():
+class CalSpecSource:
     """
     A class to handle the retrieval and processing of CalSpec data.
 

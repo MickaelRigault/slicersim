@@ -197,8 +197,8 @@ def get_blackbody_flux(lbda, temperature, mag,
     array_like
         The blackbody flux in erg/s/cm^2/A.
     """
-    from sncosmo import Spectrum
     from astropy.modeling.models import BlackBody
+    from sncosmo import Spectrum
 
     if not hasattr(lbda, 'unit'):  # assumed Angstrom
         lbda = units.Quantity(lbda, units.AA)

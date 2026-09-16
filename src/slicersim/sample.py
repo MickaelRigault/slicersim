@@ -2,6 +2,7 @@ import numpy as np
 import pandas
 from astropy import units as u
 
+
 def broadcast_mapping(value, ntargets):
     """Broadcast a value to a given number of targets.
 
@@ -67,7 +68,7 @@ def build_exptime_estimator(snr, per_resolution=True,
 
     return make_smoothing_spline(*stats.sort_values("redshift")[["redshift", "exptime"]].values.T)
 
-class Sample( object ):
+class Sample:
     """A collection of targets for simulation with a slicer spectrograph.
 
     This class manages multiple targets and provides methods to setup spectrograph

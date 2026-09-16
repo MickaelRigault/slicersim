@@ -7,9 +7,9 @@ and Multiple Accumulated Sampling (MACC) readout modes.
 __author__ = "Mickael Rigault <m.rigault@ip2i.in2p3.fr>, Yannick Copin <y.copin@ip2i.in2p3.fr>"
 
 import warnings
-import numpy as np
 from copy import deepcopy
 
+import numpy as np
 from astropy import units
 from astropy.utils.exceptions import AstropyWarning
 
@@ -19,7 +19,7 @@ from .utils import complete_dims
 class SaturationWarning(AstropyWarning):
     """ Base class for saturation warnings. """
 
-class Detector():
+class Detector:
     """Simulates a detector for a spectrograph.
 
     This class handles signal and variance estimation from input flux and provides

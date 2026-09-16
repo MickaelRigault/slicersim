@@ -1,6 +1,7 @@
 """Functions to manage PSF profiles at the lenses/slicer and at the detector."""
 
 import warnings
+
 import numpy as np
 
 
@@ -209,7 +210,7 @@ def get_2dnorm_nea(sigma, xx="-7:7:15j", yy="-7:7:15j", mean=(0,0),
     array_like
         NEA integrated over xx and yy.
     """
-    from .profiles import get_gaussian2d    
+    from .profiles import get_gaussian2d
     return get_2d_nea( get_gaussian2d, xx=xx, yy=yy, norm_by_step=True,
                        sigma=sigma, mean=mean)
     

@@ -2,6 +2,7 @@ import warnings
 
 from ..utils import inspect_func
 
+
 class SceneElement:
     """Base class for scene elements."""
     
