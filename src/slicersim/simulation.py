@@ -224,9 +224,41 @@ class Simulation():
 
         if snr is not None:
             # fetch the config respecting the target SNR
-            new_config, snr, integration_time = this.fetch_snr(snr, lbda_range=lbda_range, frame=frame)
+            new_config, snr, _ = this.fetch_snr(snr, lbda_range=lbda_range, frame=frame)
             this.update(**new_config)
 
+        return this
+
+    @classmethod
+    def from_scene_and_instconfig(cls, scene, config, slicer=True):
+        """Load the simulation setting the scene and instrument configuration.
+
+        Parameters
+        ----------
+        scene : slicersim.Scene or dict
+            The scene to observe. Can be a Scene object or a scene configuration dict.
+        config : dict
+            Configuration dictionary containing configurations for telescope, spectrograph,
+            detector and extraction parameters.
+        slicer : bool, optional
+            If True, use a slicer spectrograph. Default is True.
+
+        Returns
+        -------
+        Simulation
+            A Simulation instance with the given scene and configuration.
+        """
+        if type(config) is str:
+            from .iotools import get_config
+            config = get_config(config)
+
+        this = cls.from_config(config, slicer)
+
+        # scene can either be a Scene object or the config of
+        if type(scene) is dict:
+            scene = Scene.from_config(scene, lbda=this.spectrograph.lbda)
+
+        this.scene = scene
         return this
 
     @classmethod
@@ -245,7 +277,6 @@ class Simulation():
         Returns
         -------
         Simulation
-
         """
 
         # First initialize spectrograph to set wavelengths, then other elements
@@ -261,10 +292,6 @@ class Simulation():
             from .spectrograph import MLASpectrograph
             spectrograph = MLASpectrograph.from_config(config["spectrograph"], telescope=telescope)
 
-        # Initialize the scene from config (wavelength from spectrograph)
-        scene = Scene.from_config(config["scene"], lbda=spectrograph.lbda)
-
-
         # Initialize the detector from config
         detector = Detector.from_config(config["detector"],
                                         lbda=spectrograph.lbda,
@@ -272,6 +299,12 @@ class Simulation():
 
         # Initialize extraction parameters from config
         extraction = config["extraction"]
+
+        # Initialize the scene from config (wavelength from spectrograph)
+        if "scene" in config:
+            scene = Scene.from_config(config["scene"], lbda=spectrograph.lbda)
+        else:
+            scene = None
 
         return cls(scene=scene,
                    telescope=telescope,
@@ -716,7 +749,7 @@ class Simulation():
 
             if element == "scene": # for scene: self.meta['pointsource']['which']
                 meta_pointsource = getattr(instance, "meta")["pointsource"]
-                if which in meta_pointsource:
+                if meta_pointsource is not None and which in meta_pointsource:
                     return meta_pointsource[which]
 
         return {which: default} if as_dict else default

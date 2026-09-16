@@ -53,9 +53,25 @@ class VirtualTarget():
             instrument = cls._INSTRUMENT
 
         # create the simulator
-        config = get_config( **(cls._DEFAULT_CONFIG | {"instrument": instrument} | kwargs) )
+        config = get_config( **(cls._DEFAULT_CONFIG | {"instrument": instrument, "scene": scene} | kwargs) )
         simulation = Simulation.from_config( config )
         return cls(simulation=simulation)
+
+    @classmethod
+    def from_simulation(cls, simulation):
+        """ """
+        return cls(simulation=simulation)
+
+    def to_image(self, mapper, sliceid, image=None, **kwargs):
+        """ """
+        cube, var = self.get_cube(**kwargs)
+
+        this_image = mapper.project_slice(sliceid, cube, lbda=self.simulation.spectrograph.lbda)
+        if image is not None:
+            this_image += image
+
+        return this_image
+
 
     # =============== #
     #   Methods       #
@@ -263,6 +279,37 @@ class VirtualTarget():
         # change the unit
         coefs = self.simulation.convert_units(units_in="adu", units_out=unit)
         return lbda, flux*coefs, variance*coefs**2
+
+    def get_band_snr(self, lbda_range, frame="obs", per_resolution=True,
+                    statistic=np.nanmean, **kwargs):
+        """Get the SNR for a given wavelength range.
+
+        Parameters
+        ----------
+        lbda_range : tuple, optional
+            The wavelength range to calculate the SNR for.
+        frame : str, optional
+            The frame of the wavelength range. Default is "obs".
+        per_resolution : bool, optional
+            Whether to calculate the SNR per resolution element. Default is True.
+        statistic : function, optional
+            Numpy function to apply on test domain. Default is `np.nanmean`.
+        **kwargs
+            Additional keyword arguments to pass to the `simulation.get_spectrum` method.
+
+        Returns
+        -------
+        float
+            The SNR for the given wavelength range.
+        """
+        snr = self.simulation.get_band_snr(lbda_range, frame=frame,
+                                           statistic=statistic, **kwargs)
+        if per_resolution:
+            # not *= to allow broadcasting change.
+            snr = snr*np.sqrt(self.simulation.spectrograph.dispersion_resolution)
+
+        return snr
+
 
     def get_cube(self):
         """ returns the current cubes.
@@ -487,3 +534,8 @@ class Target( VirtualTarget ):
                                                 instrument=instrument,
                                                 **kwargs)
         super().__init__(simulation=simulation)
+
+    @classmethod
+    def from_simulation(cls, simulation):
+        """ """
+        return super().__init__(simulation=simulation)

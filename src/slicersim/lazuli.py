@@ -1,3 +1,4 @@
+import os
 import numpy as np
 
 from .simulation import Simulation
@@ -254,7 +255,6 @@ class VirtualLazuliTarget():
 
         return self.simulation.update_from_config(config)
 
-
     def change_spectrograph(self, field=None, spatial_shape=None, spatial_scale=None):
         """Change the spectrograph configuration.
 
@@ -361,33 +361,47 @@ class VirtualLazuliTarget():
 
         # let's see which configuration you have
         current_field, current_config = self.get_spectrograph_field()
-        original_position = self.simulation.get_parameter("position")
         if current_field not in ["narrow", "wide"]:
             raise ValueError(f"field is neither narrow nor wide ({current_field}). Only which='current' available. {which=}")
 
+        # check if  point source exists
+        # Work will be needed here for the host.
+        if self.simulation.scene.has_element("pointsource"):
+            original_position = self.simulation.get_parameter("position")
+        else:
+            original_position = None
+
+        if self.simulation.scene.has_element("host"):
+            raise NotImplementedError("simulation with 'host' component is not yet supported")
+
         # => you want the other one, or both.
         #    First, let's get the position in each field.
-        pos_narrow, pos_med = self._get_field_positions()
+        if original_position is not None:
+            pos_narrow, pos_wide = self._get_field_positions()
 
         # let's loop over fields, update the position
         # to that of interest
         if which in ["both", "narrow"]:
             self.change_spectrograph("narrow")
-            self.simulation.update(position = pos_narrow)
+            if original_position is not None:
+                self.simulation.update(position = pos_narrow)
+
             cubes_narrow = self.simulation.get_cube(**kwargs)
         else:
             cubes_narrow = None
 
         if which in ["both", "wide"]:
             self.change_spectrograph("wide")
-            self.simulation.update(position = pos_med)
+            if original_position is not None:
+                self.simulation.update(position = pos_wide)
             cubes_wide = self.simulation.get_cube(**kwargs)
         else:
             cubes_wide = None
 
         # revert back to original config (could be )
         self.change_spectrograph(field=current_field, **current_config)
-        self.simulation.update(position = original_position)
+        if original_position is not None:
+            self.simulation.update(position = original_position)
 
         if which == "both":
             return cubes_narrow, cubes_wide
@@ -398,7 +412,7 @@ class VirtualLazuliTarget():
         elif which == "wide":
             return cubes_wide
 
-    def get_detector_image(self, mapper, cubes=None, **kwargs):
+    def to_image(self, mapper, cubes=None, **kwargs):
         """ """
         # Generate cube
         if cubes is None:
@@ -416,6 +430,12 @@ class VirtualLazuliTarget():
         img_med = mapper.project_slice(np.arange(nslices_narrow+1, nslices_narrow+1+nslices_wide)[::-1], cube_wide, lbda)
         img_ = np.sum([img_med, img_narrow], axis=0)
         return img_
+
+    def get_detector_image(self, mapper, cubes=None, **kwargs):
+        """ """
+        import warnings
+        warnings.warn("get_detector_image is deprecated. use to_image() instead")
+        return self.to_image(mapper, cubes=cubes, **kwargs)
 
     def _get_field_positions(self, position=None, field=None):
         """ get the 'position' parameters for each of the two fields (narrow and wide).
@@ -746,3 +766,40 @@ class LazuliFlat( VirtualLazuliTarget, Target  ):
         simulation = Simulation.from_config(config, **kwargs)
 
         super().__init__(simulation=simulation)
+
+#
+from .calibration import Flat3DCalibration
+class Lazuli3DFlat(VirtualLazuliTarget, Flat3DCalibration):
+    """ """
+    _QTH_TEMPERATURE = 3000
+    @classmethod
+    def from_qth(cls, temperature=None, mag=12, band='sdssr',
+                        **kwargs):
+        """ Initialize the flat as observing the 3D flat QTH lamp
+        This method make use the generic .from_blackbody class method.
+        """
+        if temperature is None:
+            temperature = cls._QTH_TEMPERATURE
+
+        return cls.from_blackbody(temperature=temperature, mag=mag, band=band, **kwargs)
+
+    @classmethod
+    def from_febryperot(cls, fp_throughput="lazuli_fp_transmission.csv",
+                            temperature=None, mag=12, band='sdssr', **kwargs):
+        """ """
+        if type(fp_throughput) is str:
+            if not os.path.isfile(fp_throughput):
+                from .iotools import expand_path
+                fp_throughput = expand_path(fp_throughput)
+
+            import pandas
+            import warnings
+            from scipy import interpolate
+            fp_throughput = pandas.read_csv(fp_throughput, index_col=0)
+            warnings.warn("TMP extraploation patch to be removed.")
+            fp_throughput = interpolate.interp1d(fp_throughput.index, fp_throughput["transmission"], bounds_error=False,
+                                                 fill_value=fp_throughput["transmission"].iloc[0]
+            )
+
+        return super().from_febryperot(temperature=cls._QTH_TEMPERATURE, fp_throughput=fp_throughput,
+                                        mag=mag, band=band, **kwargs)
