@@ -356,7 +356,27 @@ class Simulation:
         self.scene._pointsource = pointsource
 
     def change_spectrograph_resolution(self, rmin, spotsize=2):
-        """ """
+        """Change the spectrograph's spectral resolution.
+
+        This updates the spectrograph dispersion configuration
+        (`dispersion_scale`, `dispersion_resolution` and `spotsize`) so
+        that the resulting resolving power matches the requested `rmin`,
+        given a reference configuration of resolution 2 for rmin=100.
+
+        Parameters
+        ----------
+        rmin : float
+            Requested minimal resolving power.
+        spotsize : float, optional
+            Spot size (in pixels) used to compute the dispersion scale.
+            Default is 2.
+
+        Returns
+        -------
+        None
+            Updates the simulation in place (see :meth:`update`).
+        """
+
         reference_rmin = 100
         reference_resolution = 2
         dispersion_scale = 1.3 * rmin/reference_rmin * spotsize/reference_resolution
@@ -366,7 +386,22 @@ class Simulation:
         return self.update(**config)
 
     def update_from_config(self, config):
-        """ """
+        """Update the simulation from a configuration dictionary.
+
+        Parameters
+        ----------
+        config : dict
+            Dictionary of configurations, keyed by element name ("scene",
+            "telescope", "spectrograph", "detector", "extraction"). Each
+            value is passed as keyword arguments to the corresponding
+            element's `update` method (or merged into `extraction`).
+
+        Returns
+        -------
+        None
+
+        """
+
         for key, thisconfig in config.items():
             if key == "scene":
                 self.scene.update(**thisconfig)
@@ -422,7 +457,7 @@ class Simulation:
 
             # explicit mentions, skip test for within these objects
             # Spectrograph, special traitement of throughput__noptics to allow throughput__noptics__bla
-            if k.startswith("spectrograph.") or k.startswith("throughput.noptics"):
+            if k.startswith(("spectrograph.", "throughput.noptics")):
                 updates_spectrograph[k.replace("spectrograph.", "")] = v
                 continue
 
@@ -730,7 +765,7 @@ class Simulation:
                 instance = getattr(self, source)
                 return getattr(instance, value)
             except: # noqa: E722
-                pass # failed
+                warnings.warn(f"failed to parse {which=}")
 
         # Otherwise, look at individual elements
         elements = ["scene", "spectrograph", "detector"]
@@ -836,12 +871,13 @@ class Simulation:
             Dictionary of cubes or stacked array of cubes.
 
         """
-        lbda, (pointsource, host, background) = self.scene.get_stacked_spectra(fillna=0)
-
         # by default spectrograph. give flux in ph/s.
 
+        lbda = self.spectrograph.lbda
+
         # pointsource
-        pointsource_cube = self.spectrograph.generate_pointsource(pointsource,
+        pointsource_spec = self.scene.pointsource.get_spectrum(lbda)[1]
+        pointsource_cube = self.spectrograph.generate_pointsource(pointsource_spec,
                                                             position=self.scene.pointsource_position,
                                                             psf_profile=psf_profile,
                                                             oversampling=oversampling,
@@ -849,14 +885,18 @@ class Simulation:
                                                             apply_lsf=apply_lsf,
                                                             **kwargs)
         # background
-        background_cube = self.spectrograph.generate_background(background, oversampling=oversampling,
-                                                                    apply_lsf=apply_lsf)
+        background_spec = self.scene.background.get_spectrum(lbda)[1]
+        background_cube = self.spectrograph.generate_background(background_spec,
+                                                            oversampling=oversampling,
+                                                            apply_lsf=apply_lsf)
 
         # host | empty
         host_cube = np.zeros( (self.spectrograph.nlbda, *self.spectrograph.get_spectrograph_shape(oversampling=oversampling)) )  # (nlbda, ny, nx)
 
         # thermal
-        thermal_cube = self.spectrograph.generate_thermal_signal(as_cube=True, oversampling=oversampling, apply_lsf=apply_lsf) # [ph/s]
+        thermal_cube = self.spectrograph.generate_thermal_signal(as_cube=True,
+                                                            oversampling=oversampling,
+                                                            apply_lsf=apply_lsf) # [ph/s]
 
         # changing the unit.
         if unit.lower() in ["ph", "photons", "photon"]:
@@ -871,7 +911,6 @@ class Simulation:
 
         if not per_ramp:
             coef *= self.get_parameter("nramps")
-
 
         pointsource_cube *= coef
         background_cube *= coef
@@ -936,11 +975,11 @@ class Simulation:
         # * host (not yet implemented)
         # * background spectrum [erg/s/cm²/Å/arcsec²]
         lbda = self.spectrograph.lbda # make sure this is up to date
-        _, (pointsource, host, background) = self.scene.get_stacked_spectra(lbda=lbda, fillna=0)
 
         # Fill the cube with scene elements in photons/s/spx
         if "pointsource" not in switch_off and self.scene.has_element("pointsource"):
-            cube += self.spectrograph.generate_pointsource(pointsource,
+            pointsource_spec = self.scene.pointsource.get_spectrum(lbda)[1]
+            cube += self.spectrograph.generate_pointsource(pointsource_spec,
                                                             position=self.scene.pointsource_position,
                                                             psf_profile=psf_profile,
                                                             oversampling=oversampling,
@@ -949,12 +988,14 @@ class Simulation:
                                                             **kwargs)
 
         if "host" not in switch_off:
-            if np.any(host):
+            if self.scene.host is not None:
                 warnings.warn("Host cube not implemented.")
 
         if "background" not in switch_off:
-            cube += self.spectrograph.generate_background(background, oversampling=None if not as_oversampled else oversampling,
-                                                              apply_lsf=False)
+            background_spec = self.scene.background.get_spectrum(lbda)[1]
+            cube += self.spectrograph.generate_background(background_spec,
+                                                          oversampling=None if not as_oversampled else oversampling,
+                                                          apply_lsf=False)
 
         if "thermal" not in switch_off:
             cube += self.spectrograph.generate_thermal_signal(as_cube=True, oversampling=None if not as_oversampled else oversampling,
@@ -1295,7 +1336,7 @@ class Simulation:
 
         """
         # (lbda, nx, ny) [ADU]
-        sig_cube, var_cube = self.get_cube(switch_off=switch_off,
+        _, var_cube = self.get_cube(switch_off=switch_off,
                                                per_ramp=True, # see later.
                                                psf_profile=psf_profile,
                                                apply_lsf=apply_lsf, cached=cached)
@@ -1519,7 +1560,26 @@ class Simulation:
         return estimates # dict
 
     def get_data_volume(self, units="GB", per_ramp=False, **kwargs):
-        """ """
+        """Get the total data volume of the simulation.
+
+        Parameters
+        ----------
+        units : str, optional
+            Units of the data volume (e.g. "GB", "MB"). Default is "GB".
+        per_ramp : bool, optional
+            If True, return the data volume per ramp instead of the total
+            data volume (i.e., not multiplied by the number of ramps).
+            Default is False.
+        **kwargs
+            Goes to :meth:`detector.get_data_volume`.
+
+        Returns
+        -------
+        float
+            Data volume in the requested units.
+
+        """
+
         data_volume_per_ramp = self.detector.get_data_volume(units=units, **kwargs)
         if per_ramp:
             return data_volume_per_ramp
@@ -1836,7 +1896,8 @@ class Simulation:
 
         # internal function that perform the fit steps
         def change(value, current_snr, iterstep):
-            """ """
+            """Update value in the given direction to approach target SNR."""
+
             if current_snr >= target_snr: # going down.
                 was_high = True
                 coefs = -1
@@ -1918,7 +1979,24 @@ class Simulation:
     #  Plotting  #
     # ---------- #
     def show_config(self, axes=None, lbda_units=None, colors=["#194D80", "#A8B7C7"] ):
-        """ """
+        """Show configuration (resolving power and throughput).
+
+        Parameters
+        ----------
+        axes : tuple of matplotlib.Axes, optional
+            (axr, axt) axes for resolving power and throughput. Default is
+            None.
+        lbda_units : str, optional
+            Units to convert wavelength to. Default is None.
+        colors : list, optional
+            Colors used for the plot. Default is ["#194D80", "#A8B7C7"].
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+            Figure.
+        """
+
         if axes is None:
             import matplotlib.pyplot as plt
             fig, (axr, axt) = plt.subplots(nrows=2, gridspec_kw={"hspace": 0.05, "top":0.95})
@@ -2013,7 +2091,7 @@ class Simulation:
             ax.annotate(f"WARNING: {npx} px saturated",
                         (0.05, 0.05), xycoords='axes fraction', c='r')
 
-        return ax
+        return fig
 
     def show_cube(self, in_photons=True, switch_off=[], spec_prop={},
                       psf_profile="default", cached=False, **kwargs): # pragma: no cover
@@ -2123,7 +2201,7 @@ class Simulation:
             prop_slice["oversampling"] = oversampling
             prop_slice["as_oversampled"] = True
 
-        flux, variance = self.get_slice(obs_lbda_ranges, frame="obs",
+        flux, _ = self.get_slice(obs_lbda_ranges, frame="obs",
                                          incl_error=incl_error, psf_profile=psf_profile,
                                         **prop_slice)
         flux_rest,_ = self.get_slice(rest_lbda_range, frame="rest",
