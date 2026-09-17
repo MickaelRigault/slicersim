@@ -189,6 +189,9 @@ class VirtualTarget:
         if inplace:
             self.simulation.update(**config)
 
+        if per_resolution:
+            reached_snr = reached_snr * np.sqrt(self.simulation.spectrograph.dispersion_resolution)
+
         return config, reached_snr
 
     # GETTER

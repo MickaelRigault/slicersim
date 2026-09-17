@@ -73,7 +73,12 @@ include = ["*.py"]
 
 [tool.ruff.lint]
 # Skip unused variable rules (`F841`).
-extend-ignore = ["F841", "E402"]
+extend-ignore = ["F841", "E402",
+                "C408", # unneccessary dict call.
+                "B006", # Do not use mutable data structures for argument defaults
+                "SIM102", # use single ifs
+                "RUF012", # Mutable default value for class attribute"
+                ]
 
 [tool.pytest.ini_options]
 addopts = [
