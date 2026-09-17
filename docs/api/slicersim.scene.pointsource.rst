@@ -11,6 +11,7 @@ slicersim.scene.pointsource
    .. autosummary::
    
       get_blackbody_flux
+      get_powerlaw_flux
       get_saltmodel
       get_saltmodel_flux
       get_snia_pointsource

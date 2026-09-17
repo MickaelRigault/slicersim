@@ -178,3 +178,20 @@ def test_blackbody(lazulibb):
         lbda_max_meter = lbda[np.argmax(spec)] * units.Angstrom.to("m")
         predicted_temp = lbda_max_to_temperature(lbda_max_meter)
         assert np.isclose(predicted_temp, test_temp_, rtol=1e-1), f"predicted temp {predicted_temp} != {test_temp_}"
+
+
+# powerlaw
+
+def test_powerlaw():
+    """ """
+    pl = slicersim.LazuliPowerLaw(alpha=-1, mag=20)
+    lbda, spec, var = pl.get_spectrum(unit="flambda", incl_error=False)
+    assert lbda.shape == spec.shape == var.shape
+    assert np.isfinite(spec).all() and (spec > 0).all()
+
+    # F_lambda ~ lbda**alpha -> log-log slope equals alpha
+    for alpha in [-1, 0, 2]:
+        pl.change_properties(pointsource__alpha=alpha)
+        lbda, spec, _ = pl.get_spectrum("flambda", incl_error=False)
+        slope = np.polyfit(np.log(lbda), np.log(spec), 1)[0]
+        assert np.isclose(slope, alpha, atol=0.05), f"fitted slope {slope} != {alpha}"

@@ -30,6 +30,10 @@ slicersim.lazuli
 
       .. autoclass:: slicersim.lazuli.LazuliFlat
          :members:
+   .. dropdown:: LazuliPowerLaw
+
+      .. autoclass:: slicersim.lazuli.LazuliPowerLaw
+         :members:
    .. dropdown:: LazuliSupernova
 
       .. autoclass:: slicersim.lazuli.LazuliSupernova
