@@ -81,6 +81,52 @@ class Detector:
                      ron_floor=0,
                      shape=[4096, 4096],
                      meta={} ):
+        """Initialize the Detector.
+
+        Parameters
+        ----------
+        tframe : float
+            Frame time in seconds.
+        dark : float
+            Dark current in electrons per second per pixel.
+        ron : float
+            Read-out noise per frame in electrons (RMS).
+        qe : float or callable
+            Quantum efficiency, either as a constant value or a function of
+            wavelength (in Angstroms).
+        pixel_size : float
+            Physical size of each pixel in micrometers.
+        gain : float, optional
+            Detector gain in ADU per electron. Default is 1.
+        saturation : int, optional
+            Saturation level in ADU. Default is 65635.
+        roic_glow : float, optional
+            ROIC glow contribution in electrons per read. Default is 0.
+        nmd : tuple of int, optional
+            MACC readout parameters ``(ngroups, nframes_per_group, ndrops)``.
+            Default is ``(64, 8, 0)``.
+        lbda_range : array_like or None, optional
+            Wavelength range accepted by the detector in Angstroms ``[lmin, lmax]``.
+            Default is None (no restriction).
+        min_group : int, optional
+            Minimum number of groups per ramp. Default is 2.
+        max_group : int, optional
+            Maximum number of groups per ramp. Default is 64.
+        lbda : float, optional
+            Reference wavelength in Angstroms used for QE evaluation.
+            Default is 10000.
+        variance_model : str, optional
+            Variance model used for noise estimation. Default is ``"rauscher07"``.
+        thermaloptics : object or None, optional
+            Object providing thermal background emission from the optics.
+            Default is None.
+        ron_floor : float, optional
+            Floor value for read-out noise in electrons. Default is 0.
+        shape : list of int, optional
+            Detector shape in pixels ``[ny, nx]``. Default is ``[4096, 4096]``.
+        meta : dict, optional
+            Additional metadata. Default is an empty dict.
+        """
         # from other components
         self._lbda = lbda
         self._thermaloptics = thermaloptics

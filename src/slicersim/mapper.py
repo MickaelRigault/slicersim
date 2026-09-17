@@ -7,6 +7,22 @@ from .utils import mesh_kwargs, unbin_array
 
 
 class SlicerMapper:
+    """Maps between detector pixel coordinates and the IFS slicer focal-plane coordinates.
+
+    The mapping is derived from spot calibration data that relates each slicer
+    slice, field position, and wavelength to a physical ``(x, y)`` position on
+    the detector.  Linear interpolators built from this data are used to project
+    scene cubes onto the detector and to de-project detector images back to the
+    sky plane.
+
+    Attributes
+    ----------
+    _LBDA_UNITS : str
+        Units of the wavelength axis (``"angstrom"``).
+    _XY_UNITS : str
+        Units of the spatial axes (``"mm"``).
+    """
+
     _LBDA_UNITS = "angstrom"
     _XY_UNITS = "mm"
     def __init__(self, data,
