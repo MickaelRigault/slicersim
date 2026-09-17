@@ -72,7 +72,15 @@ class Telescope:
         return cls(surface=surface, optics=optics, meta=config) # core information stored in meta
                        
     def __str__(self):
+        """Return a human-readable summary of the telescope configuration.
 
+        Returns
+        -------
+        str
+            String describing the primary mirror collecting area, and, if
+            thermal emission is modelled, the temperature and emissivity of
+            each optical element.
+        """
         s = f"Primary Mirror: {self.surface:.0f} m²"
         if self.nelements > 1:
             s += f": {self.nelements} mirrors (emissivity in %):"

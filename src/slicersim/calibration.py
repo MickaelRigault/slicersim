@@ -5,15 +5,40 @@ from .target import VirtualTarget
 
 
 class VirtualFlat(VirtualTarget):
+    """Abstract base class for flat-field calibration targets.
+
+    Subclasses must implement :meth:`get_spectrum` and :meth:`setup_to_snr`
+    for their specific flat-field geometry.
+    """
 
     def get_spectrum(self, *args, **kwargs):
+        """Not implemented for the generic VirtualFlat class.
+
+        Raises
+        ------
+        NotImplementedError
+            Always raised; subclasses must override this method.
+        """
         raise NotImplementedError("This functionality is not implemented for the generic VirtualFlat class")
 
     def setup_to_snr(self, *args, **kwargs):
+        """Not implemented for the generic VirtualFlat class.
+
+        Raises
+        ------
+        NotImplementedError
+            Always raised; subclasses must override this method.
+        """
         raise NotImplementedError("This functionality is not implemented for the generic VirtualFlat class")
 
 
 class Flat3DCalibration(VirtualFlat):
+    """3D flat-field calibration target built from a spatially uniform background source.
+
+    Wraps a :class:`~slicersim.simulation.Simulation` whose scene contains only a
+    background component (no point source, no host), allowing the full IFU spatial
+    field to be illuminated uniformly for wavelength-dependent flat-field calibration.
+    """
 
     @classmethod
     def from_spectrum(cls, lbda, flux, instrument=None, **kwargs):

@@ -154,8 +154,22 @@ def get_saltmodel(redshift=0.1,
     model.set_source_peakabsmag(eff_mbmax,
                                 "bessellb", "AB", cosmo=cosmo)
 
-    def get_flux(wave, time):  # make sure get_flux exists.
+    def get_flux(wave, time):
+        """Return the model flux, filling zeros outside the model wavelength range.
 
+        Parameters
+        ----------
+        wave : array_like
+            Wavelengths in Angstroms at which to evaluate the flux.
+        time : float
+            Rest-frame phase in days relative to peak brightness.
+
+        Returns
+        -------
+        numpy.ndarray
+            Flux array in erg/s/cm²/Å, with zeros where ``wave`` falls
+            outside the model's valid wavelength range.
+        """
         wmin, wmax = model.minwave(), model.maxwave()
         wave = np.atleast_1d(wave)
         sel = (wave > wmin) & (wave < wmax)
