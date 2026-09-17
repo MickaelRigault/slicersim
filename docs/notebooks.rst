@@ -41,7 +41,22 @@ A collection of notebooks demonstrating how to use ``slicersim``.
       :link: notebooks/advanced_scene_tutorial.ipynb
 
       Learn how to build your own "Scene".
-      
+
+   .. grid-item-card:: Beginner: Comparing Multiple Targets
+      :link: notebooks/beginner_sample_multiple_targets.ipynb
+
+      Use ``Sample`` to study exposure time and data volume across a population of targets.
+
+   .. grid-item-card:: Advanced: MACC Readout Modes
+      :link: notebooks/advanced_macc_readout_modes.ipynb
+
+      Understand how MACC parameters control noise and exposure time on the Lazuli detector.
+
+   .. grid-item-card:: Advanced: Standard Stars & CalSpec
+      :link: notebooks/advanced_calspec_and_stdstars.ipynb
+
+      Simulate observations of HST CalSpec standard stars for flux calibration planning.
+
 .. toctree::
    :hidden:
 
@@ -49,8 +64,11 @@ A collection of notebooks demonstrating how to use ``slicersim``.
    notebooks/beginner_ETC_lazulitarget.ipynb
    notebooks/beginner_LazuliTargets.ipynb
    notebooks/beginner_variancesource.ipynb
+   notebooks/beginner_sample_multiple_targets.ipynb
    notebooks/advanced_change_detector_and_spectrograph.ipynb
    notebooks/advanced_access_qe_spectral_resolution_etc.ipynb
    notebooks/advanced_change_resolution_dispersion.ipynb
-   notebooks/advanced_dispersion_resolution_and_spotsize.ipynb   
+   notebooks/advanced_dispersion_resolution_and_spotsize.ipynb
    notebooks/advanced_scene_tutorial.ipynb
+   notebooks/advanced_macc_readout_modes.ipynb
+   notebooks/advanced_calspec_and_stdstars.ipynb
