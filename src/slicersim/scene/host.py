@@ -82,11 +82,67 @@ class Host(SceneElement):
         subject to change.
     """
     @classmethod
-    def from_sersic_and_spectrum(cls, lbda, flux, mag, band,
+    def from_sersic_and_spectrum(cls, lbda, flux, mag, band, redshift=0,
                                  r_eff=0.1, n=1.0, ellip=0.0, theta=0.0,
                                  pixel_scale=0.1, shape=(10, 10), position=None,
-                                oversample=4, **kwargs):
-        """ """
+                                oversample=4, meta={},
+                                **kwargs):
+        """Build a `Host` from a Sersic surface-brightness profile and a reference spectrum.
+
+        The host's spectral shape is taken from a reference spectrum
+        (`lbda`, `flux`), rescaled to match `mag` in `band`, and its spatial
+        shape is a Sersic profile rendered onto a pixel grid (see
+        `get_sersic_profile`). The resulting model function returns a
+        datacube, i.e. the spectrum modulated by the spatial profile at
+        every wavelength.
+
+        Parameters
+        ----------
+        lbda : array_like
+            Wavelength array of the reference spectrum, in Angstrom
+            (rest-frame, i.e. before applying `redshift`).
+        flux : array_like
+            Flux of the reference spectrum, sampled at `lbda`.
+        mag : float or None
+            Target magnitude of the host in `band`. If None, the reference
+            spectrum is used as-is (no rescaling).
+        band : str
+            Bandpass name (must be known by sncosmo) used to normalize `mag`.
+        redshift : float, optional
+            Redshift applied to the reference spectrum wavelength axis.
+            Default is 0.
+        r_eff : float, optional
+            Effective (half-light) radius of the Sersic profile, in arcsec.
+            Default is 0.1.
+        n : float, optional
+            Sersic index (1 = exponential disk, 4 = de Vaucouleurs).
+            Default is 1.0.
+        ellip : float, optional
+            Ellipticity of the Sersic profile, 1 - b/a. Default is 0.0.
+        theta : float, optional
+            Position angle of the Sersic profile, in degrees (astropy math
+            convention: from +x axis, counterclockwise). Default is 0.0.
+        pixel_scale : float, optional
+            Arcsec per pixel of the output grid. Default is 0.1.
+        shape : (int, int), optional
+            Output cube spatial shape as (nx, ny). Default is (10, 10).
+        position : (float, float), optional
+            Centroid offset (dx, dy) in pixels relative to the geometric
+            center of `shape`. Default is None, i.e. (0, 0).
+        oversample : int, optional
+            Oversampling factor per axis used to render the Sersic profile.
+            Default is 4.
+        meta : dict, optional
+            Extra metadata to store on the instance. Default is {}.
+        **kwargs
+            Additional metadata merged into `meta`.
+
+        Returns
+        -------
+        Host
+            An instance of the `Host` class.
+        """
+        from sncosmo import Spectrum
         # flux input
         meta["mag"] = mag
         meta["band"] = band
@@ -109,30 +165,48 @@ class Host(SceneElement):
         def _internal_get_flux(lbda, mag, band, r_eff=1., n=1.0, ellip=0.0, theta=0.0,
                             pixel_scale=0.1, shape=(10, 10), position=None,
                             oversample=4):
-            """Internal function to get the flux of the spectrum.
+            """Internal model function: spectrum modulated by the Sersic profile.
 
             Parameters
             ----------
             lbda : array_like
                 Wavelength array in Angstrom.
-            mag : float
-                Target magnitude.
+            mag : float or None
+                Target magnitude. If None, the reference spectrum is used
+                as-is (no rescaling).
             band : str
                 Bandpass name.
+            r_eff : float, optional
+                Effective (half-light) radius, in arcsec. Default is 1.
+            n : float, optional
+                Sersic index. Default is 1.0.
+            ellip : float, optional
+                Ellipticity, 1 - b/a. Default is 0.0.
+            theta : float, optional
+                Position angle, in degrees. Default is 0.0.
+            pixel_scale : float, optional
+                Arcsec per pixel of the output grid. Default is 0.1.
+            shape : (int, int), optional
+                Output cube spatial shape as (nx, ny). Default is (10, 10).
+            position : (float, float), optional
+                Centroid offset (dx, dy) in pixels. Default is None.
+            oversample : int, optional
+                Oversampling factor per axis. Default is 4.
 
             Returns
             -------
-            array_like
-                The flux of the spectrum.
+            numpy.ndarray
+                3D datacube of shape (len(lbda), ny, nx): the flux at each
+                wavelength scaled by the (flux-normalized) Sersic profile.
             """
             if mag is None:
                 flux_ratio = 1
             else:
-                in_mag = Spectrum(meta["lbda_ref"], meta["flux_ref"]
+                in_mag = Spectrum(meta["lbda_ref"]*(1+redshift), meta["flux_ref"]
                                   ).bandmag(band, "ab")
                 flux_ratio = 10 ** (-0.4 * (mag - in_mag))
 
-            flux_ = np.interp(lbda, meta["lbda_ref"], meta["flux_ref"],
+            flux_ = np.interp(lbda, meta["lbda_ref"]*(1+redshift), meta["flux_ref"],
                               left=np.nan, right=np.nan)
             flux_ *= flux_ratio
 

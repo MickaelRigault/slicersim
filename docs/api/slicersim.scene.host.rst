@@ -1,10 +1,16 @@
-
+﻿
 
 slicersim.scene.host
 ====================
 
 .. automodule:: slicersim.scene.host
 
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      get_sersic_profile
    
 
    
