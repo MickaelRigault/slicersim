@@ -11,6 +11,7 @@ slicersim
    :toctree: .
    :recursive:
 
+   calibration
    detector
    extra
    iotools

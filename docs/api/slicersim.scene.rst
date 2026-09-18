@@ -1,4 +1,4 @@
-﻿
+
 
 slicersim.scene
 ===============
@@ -17,4 +17,5 @@ slicersim.scene
    host
    pointsource
    scene
+   tools
 

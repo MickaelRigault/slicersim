@@ -328,7 +328,6 @@ def get_twins_embedding_flux(lbda, phase, redshift=0.05,
 
     return np.interp(lbda, wl_obs, flux_obs, left=np.nan, right=np.nan)
 
-
 # ============= #
 #               #
 #  PointSource  #

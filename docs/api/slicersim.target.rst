@@ -5,12 +5,12 @@ slicersim.target
 
 .. automodule:: slicersim.target
 
+   
 
-
-
+   
    .. rubric:: Classes
 
-
+   
    .. dropdown:: CalSpec
 
       .. autoclass:: slicersim.target.CalSpec
@@ -27,3 +27,6 @@ slicersim.target
 
       .. autoclass:: slicersim.target.VirtualTarget
          :members:
+   
+
+   
