@@ -167,7 +167,8 @@ def read_config(filename, verbose=False):
         fname = "lazuli_cbe.toml"
 
     if extension.lower() == ".toml":
-        config = tomllib.load(open(fname, "rb"))
+        with open(fname, "rb") as f:
+            config = tomllib.load(f)
     else:
         raise NotImplementedError(
             f"Unknown configuration extension {extension!r}.")

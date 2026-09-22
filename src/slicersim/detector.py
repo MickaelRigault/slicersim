@@ -472,7 +472,7 @@ class Detector:
 
 
         # compute the effective read-out noise estimator.
-        if variance_model.lower() in ["rauscher07", "rauscher10" "rauscher+07"]:
+        if variance_model.lower() in ["rauscher07", "rauscher10", "rauscher+07"]:
             rauscher_ron_variance = 12 * (n - 1) / (m * n * (n + 1)) * ron**2
             effective_ron_variance = rauscher_ron_variance + self.meta["ron_floor"]**2
         else:
@@ -608,7 +608,7 @@ class Detector:
                               ron=self.ron, dark=effective_dark,
                               gain=self.gain)
 
-        if model.lower() in ["rauscher07", "rauscher10" "rauscher+07"]: # allowing old format
+        if model.lower() in ["rauscher07", "rauscher10", "rauscher+07"]: # allowing old format
             return self._estimate_variance_rauscher07(flux, **variance_input)
 
         elif model.lower() in ["kubik16", "kubik16"]:

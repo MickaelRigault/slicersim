@@ -1,5 +1,6 @@
 import numpy as np
 import pandas
+from itertools import pairwise
 from astropy import units as u
 from scipy.interpolate import LinearNDInterpolator
 
@@ -730,7 +731,7 @@ class SlicerMapper:
 
         if ax is not None:
             if len(np.atleast_1d(ax)) == 1:
-                ax, axsc = ax, None
+                ax, axsc = np.atleast_1d(ax)[0], None
             else:
                 ax, axsc = ax
             fig = ax.figure
@@ -804,7 +805,7 @@ class SlicerMapper:
 
         if ax is not None:
             if len(np.atleast_1d(ax)) == 1:
-                ax, axsc = ax, None
+                ax, axsc = np.atleast_1d(ax)[0], None
             else:
                 ax, axsc = ax
 
@@ -817,7 +818,7 @@ class SlicerMapper:
         cmap = plt.get_cmap(cmap)
         lbda_bins = np.linspace(norm.vmin, norm.vmax, nlbda)
 
-        for lbda_min_, lbda_max_ in zip(lbda_bins[:-1], lbda_bins[1:]):
+        for lbda_min_, lbda_max_ in pairwise(lbda_bins):
             lbda_mean = np.mean([lbda_min_, lbda_max_])
             xys = self.get_slice_contours(sliceid, lbda_range=[lbda_min_, lbda_max_],
                                                 units="pixels",

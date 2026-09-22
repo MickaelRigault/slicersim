@@ -78,6 +78,8 @@ extend-ignore = ["F841", "E402",
                 "B006", # Do not use mutable data structures for argument defaults
                 "SIM102", # use single ifs
                 "RUF012", # Mutable default value for class attribute"
+                "I001", # Import block is un-sorted or un-formatted
+                "RUF059", # Unpacked variable `pixelarea` is never used | that is for me to explicitely see all that is returned
                 ]
 
 [tool.pytest.ini_options]

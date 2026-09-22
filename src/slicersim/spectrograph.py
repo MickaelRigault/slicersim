@@ -467,7 +467,7 @@ class Spectrograph:
             # not allowed to change.
 
             # change PSF
-            elif k in self.meta["psf"]["spatial"].keys():
+            elif k in self.meta["psf"]["spatial"]:
                 psf_updates[k.replace("psf_", "")] = v
 
             # spaxels
@@ -2102,7 +2102,7 @@ class MLASpectrograph(Spectrograph):
         # do xdispersion stuffs
         xdisp_updates = {}
         for k, v in kwargs.items():
-            if k in self.meta["psf"]["detector"].keys():
+            if k in self.meta["psf"]["detector"]:
                 xdisp_updates[k.replace("xdisp_", "")] = v
                 _ = kwargs.pop(k)  # remove them
 
@@ -2448,7 +2448,7 @@ class OpticsThroughput:
     # -------- #
     def update_curve(self, name, curve, ext='zeros'):
         """ """
-        if name not in self._curves.keys():
+        if name not in self._curves:
             raise ValueError(f"unknown curve: {name=}.")
 
         elements = iotools.chromatic_interpolator(curve.index, curve.values, ext=ext)

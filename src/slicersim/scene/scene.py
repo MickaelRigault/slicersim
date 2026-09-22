@@ -269,8 +269,9 @@ class Scene:
 
         if ax is None:
             import matplotlib.pyplot as plt
-
             fig, ax = plt.subplots()
+        else:
+            fig = ax.figure
 
         flux = self.background  # background spectrum [erg/s/cm²/Å/arcsec²]
         if in_log:
@@ -288,7 +289,7 @@ class Scene:
             title=f"Background spectrum ({model_name})",
         )
 
-        return ax
+        return fig
 
     def plot_pointsource(self, ax=None, in_log=True, **kwargs):
         """Plot the pointsource spectrum.
@@ -311,8 +312,9 @@ class Scene:
 
         if ax is None:
             import matplotlib.pyplot as plt
-
             fig, ax = plt.subplots()
+        else:
+            fig = ax.figure
 
         flux = self.pointsource  # point-source spectrum [erg/s/cm²/Å]
         if in_log:
@@ -333,7 +335,7 @@ class Scene:
         ax.plot(self.lbda / 1e4, flux, **{**default, **kwargs})
         ax.set(xlabel="Wavelength [µm]", ylabel=ylabel, title=title)
 
-        return ax
+        return fig
 
     # =============== #
     #  Properties     #
