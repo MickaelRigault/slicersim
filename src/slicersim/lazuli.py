@@ -633,8 +633,6 @@ class LazuliCalSpec( VirtualLazuliTarget, CalSpec  ):
         Goes to `simulation.Simulation.from_source()`.
 
     """
-    from .extra.calspec import calspecsource
-    _SOURCES = calspecsource
     def __init__(self, name, background="zodi",
                  **kwargs):
         """Initialize the LazuliCalSpec.

@@ -430,7 +430,7 @@ class CalSpec( VirtualTarget ):
         Goes to `simulation.Simulation.from_source()`.
 
     """
-    from .extra.calspec import calspecsource
+    from .scene.sources.calspec import calspecsource
     _SOURCES = calspecsource
 
     def __init__(self, name,
