@@ -70,7 +70,7 @@ class Flat3DCalibration(VirtualFlat):
                         lbda_range=[3_000, 20_000], lbda_bin=2000,
                         **kwargs):
         """ """
-        from .scene.pointsource import get_blackbody_flux
+        from .scene.sources.blackbody import get_blackbody_flux
         lbda_ = np.linspace(*lbda_range, lbda_bin)
         flux_ = get_blackbody_flux(lbda_, temperature, mag=mag, band=band, magsys=magsys)
         return cls.from_spectrum(lbda_, flux_, instrument=instrument, **kwargs)
@@ -82,7 +82,7 @@ class Flat3DCalibration(VirtualFlat):
                         lbda_range=[3_000, 20_000], lbda_bin=2000,
                         **kwargs):
         """ """
-        from .scene.pointsource import get_blackbody_flux
+        from .scene.sources.blackbody import get_blackbody_flux
         # source is a backbody
         lbda_ = np.linspace(*lbda_range, lbda_bin)
         flux_bb = get_blackbody_flux(lbda_, temperature, mag=mag, band=band, magsys=magsys)
