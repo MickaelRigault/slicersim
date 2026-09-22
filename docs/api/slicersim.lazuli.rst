@@ -1,4 +1,4 @@
-﻿
+
 
 slicersim.lazuli
 ================
@@ -18,6 +18,10 @@ slicersim.lazuli
    .. rubric:: Classes
 
    
+   .. dropdown:: Lazuli3DFlat
+
+      .. autoclass:: slicersim.lazuli.Lazuli3DFlat
+         :members:
    .. dropdown:: LazuliBlackBody
 
       .. autoclass:: slicersim.lazuli.LazuliBlackBody

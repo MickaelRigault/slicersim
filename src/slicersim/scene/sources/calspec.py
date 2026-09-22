@@ -1,3 +1,10 @@
+""" This module handles CalSpec spectrophotometric standard stars.
+
+`CalSpecSource` fetches the HST CalSpec reference atlas from the STScI
+archive and exposes the tabulated spectra of the standard stars, which are
+used as flux calibration references for the simulated observations.
+"""
+
 import os
 
 import numpy as np

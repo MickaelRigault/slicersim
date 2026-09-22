@@ -57,6 +57,11 @@ A collection of notebooks demonstrating how to use ``slicersim``.
 
       Simulate observations of HST CalSpec standard stars for flux calibration planning.
 
+   .. grid-item-card:: Advanced: Host Galaxy
+      :link: notebooks/advanced_host_galaxy.ipynb
+
+      Build a host galaxy structured background and change its shape and orientation.
+
 .. toctree::
    :hidden:
 
@@ -72,3 +77,4 @@ A collection of notebooks demonstrating how to use ``slicersim``.
    notebooks/advanced_scene_tutorial.ipynb
    notebooks/advanced_macc_readout_modes.ipynb
    notebooks/advanced_calspec_and_stdstars.ipynb
+   notebooks/advanced_host_galaxy.ipynb

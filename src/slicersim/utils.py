@@ -24,18 +24,18 @@ def recursive_get(dict_, key, default=None):
     any
         The value of the key if found, otherwise the default value.
     """
-    if key in dict_.keys():
+    if key in dict_:
         return dict_.get(key)
-        
-    for key_, items in dict_.items():
+
+    for items in dict_.values():
         if type(items) is dict:
             out = recursive_get(items, key)
             if out is not None:
                 return out
-                
+
     return default
 
-def mesh_kwargs(**kwargs): 
+def mesh_kwargs(**kwargs):
     """
     Create a dataframe with all parameter combinations.
 
@@ -86,7 +86,7 @@ def inspect_func( func ):
         kwargs_ = dict(zip(all_params[::-1], inspect_full.defaults[::-1]))
     else:
         kwargs_ = {}
-    
+
     return all_params, kwargs_
 
 
@@ -295,27 +295,27 @@ def integ_gaussian2D_erf(xy_edges, sigma, mu=(0, 0), normed=True):
     sigma = np.asarray(sigma)
     if sigma.ndim == 2 and sigma.shape[0]>1:
         sigma = sigma[:, None, :]
-    
+
     mu = np.broadcast_to(mu, sigma.shape)
     muy = mu[..., 0][..., None]
     mux = mu[..., 1][..., None]
-    
+
     # allows for asymetric sigma
     sqrt2sig = 1.4142135623730951 * sigma
     if sqrt2sig.shape[-1] == 1:
         sqrt2sig_y = sqrt2sig_x = sqrt2sig
-        
+
     elif sqrt2sig.shape[-1] == 2:
         sqrt2sig_y = sqrt2sig[..., 0][..., None] # no dim reduction
         sqrt2sig_x = sqrt2sig[..., 1][..., None] # no dim reduction
 
- 
-    
+
+
     tmpx = erf((x_edges - mux) / sqrt2sig_x)  # sig.shape + (1, nx+1)
     tmpy = erf((y_edges - muy) / sqrt2sig_y)  # sig.shape + (ny+1, 1)
-    
+
     f = (np.diff(tmpx, axis=-1) * np.diff(tmpy, axis=-2) / 4)
-        
+
     if not normed:
         f *= 2 * np.pi * sigma**2
 
@@ -365,4 +365,3 @@ def complete_dims(arr, xdims, squeeze=True):
         nsarr = np.squeeze(nsarr, axis=tuple(range(naxes)))
 
     return nsarr
-

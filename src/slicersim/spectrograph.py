@@ -467,7 +467,7 @@ class Spectrograph:
             # not allowed to change.
 
             # change PSF
-            elif k in self.meta["psf"]["spatial"].keys():
+            elif k in self.meta["psf"]["spatial"]:
                 psf_updates[k.replace("psf_", "")] = v
 
             # spaxels
@@ -663,7 +663,41 @@ class Spectrograph:
         return self.lbda / np.diff(self.lbda_edges) / self.get_dispersion_resolution()
 
     def get_dispersion_resolution(self, which=None):
-        """ """
+        """Get the effective dispersion resolution, in pixels.
+
+        Parameters
+        ----------
+        which : str, optional
+            Which axis to return.
+            - None: the resolution as stored.
+            - "wavelength", "lsf", "wave", "lbda" or "y": the spectral axis.
+            - "spatial", "psf" or "x": the spatial axis.
+            Default is None.
+
+        Returns
+        -------
+        float or dict
+            The dispersion resolution in pixels. If `which` is None, the value
+            as stored, which may be a float, a 2-element array or a dict with
+            the "wavelength" and "spatial" entries. Otherwise, the resolution
+            of the requested axis.
+
+        Raises
+        ------
+        ValueError
+            If the stored dispersion resolution can be parsed neither as a
+            scalar nor as a 2-element array, or if `which` is not one of the
+            accepted names.
+
+        Notes
+        -----
+        2 pixels is optimal: below that the PSF is unresolved, above it the
+        PSF is oversampled and adds unnecessary pixel noise.
+
+        When the stored resolution is a 2-element array and `which` is given,
+        the full ``{"wavelength", "spatial"}`` dict is returned instead of the
+        requested axis alone.
+        """
         dispersion_resolution = self.dispersion_resolution
         if which is None:
             return dispersion_resolution
@@ -1306,7 +1340,33 @@ class Spectrograph:
     #    generate   #
     # ------------- #
     def get_array_as_cube(self, array, oversampling=None):
-        """ """
+        """Broadcast an array into a spectrograph-shaped cube.
+
+        Parameters
+        ----------
+        array : float or array_like
+            Value(s) filling the cube. Accepted shapes are a scalar (uniform
+            cube), ``(nlbda, )`` (a spectrum, spatially uniform) or the
+            spatial shape ``(ny, nx)`` (an image, uniform in wavelength).
+        oversampling : int, optional
+            Spatial oversampling factor of the output cube. Default is None,
+            i.e. the native spaxel shape.
+
+        Returns
+        -------
+        numpy.ndarray
+            Cube of shape ``(nlbda, ny, nx)``.
+
+        Raises
+        ------
+        ValueError
+            If `array` has more than 3 dimensions, or if its shape matches
+            neither ``(nlbda, )`` nor the spatial shape of the spectrograph.
+
+        See Also
+        --------
+        get_spectrograph_shape : The spatial shape the cube is built on.
+        """
         spatial_shape = self.get_spectrograph_shape(oversampling=oversampling)
 
         array = np.asarray(array)
@@ -1436,7 +1496,27 @@ class Spectrograph:
 
     # Themal (pre-dispersor)
     def _get_optics_dispersed_signal(self, lbda_bin):
-        """
+        """Thermal signal of the optical surfaces sitting before the disperser.
+
+        Only the surfaces flagged as "dispersed" in the optics metadata
+        contribute here: their thermal emission goes through the disperser and
+        is therefore spread along the spectral axis, unlike the emission of the
+        surfaces located after it.
+
+        Parameters
+        ----------
+        lbda_bin : array_like
+            (nlbda, 2) list of spectral domains in Angstrom.
+
+        Returns
+        -------
+        numpy.ndarray
+            Signal summed over the dispersed surfaces, in ph/s/spx/Δλ,
+            of shape (nlbda, ).
+
+        See Also
+        --------
+        generate_thermal_signal : Public entry point using this contribution.
         """
         all_surface_radiations = self.optics.get_signal(lbda_bin,
                                                         area=self.telescope.surface,
@@ -1446,7 +1526,22 @@ class Spectrograph:
         return np.sum(dispersed_radiations, axis=0)
 
     def _get_telescope_dispersed_signal(self, lbda_bin):
-        """
+        """Thermal signal of the telescope mirrors, seen through the disperser.
+
+        Parameters
+        ----------
+        lbda_bin : array_like
+            (nlbda, 2) list of spectral domains in Angstrom.
+
+        Returns
+        -------
+        numpy.ndarray
+            Signal summed over all telescope mirrors, in ph/s/spx/Δλ,
+            of shape (nlbda, ).
+
+        See Also
+        --------
+        generate_thermal_signal : Public entry point using this contribution.
         """
         return self.telescope.get_thermal_signal(lbda_bin,
                                                  solid_angle=self.omega,  # Spx solid angle [sr]
@@ -2102,7 +2197,7 @@ class MLASpectrograph(Spectrograph):
         # do xdispersion stuffs
         xdisp_updates = {}
         for k, v in kwargs.items():
-            if k in self.meta["psf"]["detector"].keys():
+            if k in self.meta["psf"]["detector"]:
                 xdisp_updates[k.replace("xdisp_", "")] = v
                 _ = kwargs.pop(k)  # remove them
 
@@ -2447,8 +2542,32 @@ class OpticsThroughput:
     #  Methods #
     # -------- #
     def update_curve(self, name, curve, ext='zeros'):
-        """ """
-        if name not in self._curves.keys():
+        """Replace the throughput curve of one optical element.
+
+        Parameters
+        ----------
+        name : str
+            Name of the optical element whose curve is replaced. It must
+            already be known (see `names`).
+        curve : pandas.Series
+            New throughput curve, indexed by wavelength in Angstrom.
+        ext : str, optional
+            How to extrapolate outside the tabulated wavelength range
+            ('extrapolate', 'zeros', 'raise' or 'const', see
+            `~slicersim.iotools.chromatic_interpolator`). Default is 'zeros'.
+
+        Raises
+        ------
+        ValueError
+            If `name` is not one of the known curves.
+
+        Notes
+        -----
+        This replaces the curve of an existing element, it cannot add a new
+        one. The number of optics associated to `name` is left untouched, use
+        `update` to change it.
+        """
+        if name not in self._curves:
             raise ValueError(f"unknown curve: {name=}.")
 
         elements = iotools.chromatic_interpolator(curve.index, curve.values, ext=ext)

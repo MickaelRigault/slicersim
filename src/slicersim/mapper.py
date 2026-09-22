@@ -1,5 +1,17 @@
+""" This module handles the mapping between the slicer and the detector.
+
+The geometry of an image slicer is not analytic: which detector pixel a given
+(slice, position along the slice, wavelength) triplet lands on is known from
+spot-diagram calibration data. `SlicerMapper` turns that data into
+interpolators and exposes them as the two operations the simulation needs:
+projecting a simulated scene cube onto a detector image, and de-projecting a
+detector image back onto the sky plane. It also describes the geometry of the
+individual slices (contours, extent, footprint on the detector).
+"""
+
 import numpy as np
 import pandas
+from itertools import pairwise
 from astropy import units as u
 from scipy.interpolate import LinearNDInterpolator
 
@@ -514,7 +526,44 @@ class SlicerMapper:
         return np.percentile(slice_contours, [0, 100], axis=1).T.squeeze()
 
     def inpaint_slice_onto_image(self, sliceid, image, fillvalue=1, oversampling=3, **kwargs):
-        """ """
+        """Paint the footprint of a slice onto a detector image.
+
+        The slice contour is turned into a polygon and every pixel whose
+        centre falls inside it is set to `fillvalue`. The test is run on an
+        oversampled grid and rebinned, so that the pixels straddling the edge
+        of the slice end up with the fraction of their area it covers.
+
+        Parameters
+        ----------
+        sliceid : int
+            Identifier of the slice to paint.
+        image : numpy.ndarray
+            2D detector image, modified in place.
+        fillvalue : float, optional
+            Value given to the pixels fully covered by the slice.
+            Default is 1.
+        oversampling : int, optional
+            Oversampling factor per axis, used to estimate the partial
+            coverage of the edge pixels. Default is 3.
+        **kwargs
+            Goes to `get_slice_contours`.
+
+        Returns
+        -------
+        numpy.ndarray
+            The input `image`, with the slice footprint painted in.
+
+        See Also
+        --------
+        get_slice_contours : The slice contour this paints.
+
+        Notes
+        -----
+        `image` is modified in place, the returned array is the input object
+        and not a copy. Only the bounding box of the slice is touched, but it
+        is overwritten rather than added to, so painting slices whose bounding
+        boxes overlap will erase the earlier ones.
+        """
         from shapely import contains_xy, geometry
 
         from slicersim.utils import bin_array
@@ -730,7 +779,7 @@ class SlicerMapper:
 
         if ax is not None:
             if len(np.atleast_1d(ax)) == 1:
-                ax, axsc = ax, None
+                ax, axsc = np.atleast_1d(ax)[0], None
             else:
                 ax, axsc = ax
             fig = ax.figure
@@ -804,7 +853,7 @@ class SlicerMapper:
 
         if ax is not None:
             if len(np.atleast_1d(ax)) == 1:
-                ax, axsc = ax, None
+                ax, axsc = np.atleast_1d(ax)[0], None
             else:
                 ax, axsc = ax
 
@@ -817,7 +866,7 @@ class SlicerMapper:
         cmap = plt.get_cmap(cmap)
         lbda_bins = np.linspace(norm.vmin, norm.vmax, nlbda)
 
-        for lbda_min_, lbda_max_ in zip(lbda_bins[:-1], lbda_bins[1:]):
+        for lbda_min_, lbda_max_ in pairwise(lbda_bins):
             lbda_mean = np.mean([lbda_min_, lbda_max_])
             xys = self.get_slice_contours(sliceid, lbda_range=[lbda_min_, lbda_max_],
                                                 units="pixels",

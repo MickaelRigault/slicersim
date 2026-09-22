@@ -317,7 +317,29 @@ class Detector:
     #  GETTER  #
     # ======= #
     def get_data_volume(self, units="GB", nbit_record=16):
-        """ """
+        """Get the data volume produced by a single ramp.
+
+        Only the recorded groups contribute: within a group the ``m`` frames
+        are co-added on board and the ``d`` dropped frames are never read out,
+        so the volume scales with the number of groups ``n`` of the MACC mode.
+
+        Parameters
+        ----------
+        units : str, optional
+            Unit of the returned volume. Must be a known astropy data unit
+            (e.g., "bit", "byte", "MB", "GB"). Default is "GB".
+        nbit_record : int, optional
+            Number of bits recorded per pixel and per group. Default is 16.
+
+        Returns
+        -------
+        float
+            The data volume of one ramp, in the requested unit.
+
+        See Also
+        --------
+        slicersim.target.VirtualTarget.get_data_volume : Volume for a full exposure.
+        """
         from astropy import units as u
         npixels = np.prod(self.shape)
         (ngroups, nframe, ndrops) = self.nmd
@@ -472,7 +494,7 @@ class Detector:
 
 
         # compute the effective read-out noise estimator.
-        if variance_model.lower() in ["rauscher07", "rauscher10" "rauscher+07"]:
+        if variance_model.lower() in ["rauscher07", "rauscher10", "rauscher+07"]:
             rauscher_ron_variance = 12 * (n - 1) / (m * n * (n + 1)) * ron**2
             effective_ron_variance = rauscher_ron_variance + self.meta["ron_floor"]**2
         else:
@@ -608,7 +630,7 @@ class Detector:
                               ron=self.ron, dark=effective_dark,
                               gain=self.gain)
 
-        if model.lower() in ["rauscher07", "rauscher10" "rauscher+07"]: # allowing old format
+        if model.lower() in ["rauscher07", "rauscher10", "rauscher+07"]: # allowing old format
             return self._estimate_variance_rauscher07(flux, **variance_input)
 
         elif model.lower() in ["kubik16", "kubik16"]:

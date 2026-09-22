@@ -1,4 +1,4 @@
-﻿
+
 
 slicersim.scene
 ===============
@@ -13,8 +13,8 @@ slicersim.scene
 
    background
    base
-   extra
    host
    pointsource
    scene
+   sources
 
