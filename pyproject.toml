@@ -69,6 +69,7 @@ version = {attr = "slicersim.__version__"}
 
 
 [tool.ruff]
+exclude = ["tests", "docs"]
 include = ["*.py"]
 
 [tool.ruff.lint]
