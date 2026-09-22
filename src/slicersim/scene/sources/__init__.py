@@ -7,6 +7,7 @@ Each module implements one family of sources:
 - `~slicersim.scene.sources.supernovae`: type Ia supernova models
   (SALT and Twins-Embedding).
 - `~slicersim.scene.sources.blackbody`: blackbody continuum sources.
+- `~slicersim.scene.sources.calspec`: HST CalSpec spectrophotometric standards.
 - `~slicersim.scene.sources.utils`: helper tools shared by the source models.
 
 A model function always takes the wavelength array ``lbda`` (in Angstrom) as

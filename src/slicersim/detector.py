@@ -317,7 +317,29 @@ class Detector:
     #  GETTER  #
     # ======= #
     def get_data_volume(self, units="GB", nbit_record=16):
-        """ """
+        """Get the data volume produced by a single ramp.
+
+        Only the recorded groups contribute: within a group the ``m`` frames
+        are co-added on board and the ``d`` dropped frames are never read out,
+        so the volume scales with the number of groups ``n`` of the MACC mode.
+
+        Parameters
+        ----------
+        units : str, optional
+            Unit of the returned volume. Must be a known astropy data unit
+            (e.g., "bit", "byte", "MB", "GB"). Default is "GB".
+        nbit_record : int, optional
+            Number of bits recorded per pixel and per group. Default is 16.
+
+        Returns
+        -------
+        float
+            The data volume of one ramp, in the requested unit.
+
+        See Also
+        --------
+        slicersim.target.VirtualTarget.get_data_volume : Volume for a full exposure.
+        """
         from astropy import units as u
         npixels = np.prod(self.shape)
         (ngroups, nframe, ndrops) = self.nmd

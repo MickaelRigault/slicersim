@@ -1,3 +1,18 @@
+""" This module handles the targets, the observation-level view of a simulation.
+
+A target wraps a `~slicersim.simulation.Simulation` and exposes what one
+actually asks of an observation: exposure time and signal-to-noise
+calculations, reconfiguration of the detector and of the spectrograph, and
+access to the simulated spectra and cubes.
+
+`VirtualTarget` holds that generic interface and is not meant to be used
+directly. The concrete targets differ only by the scene they build:
+`Supernova` for SN Ia models, `CalSpec` for HST CalSpec standard stars, and
+`Target` for an arbitrary input spectrum. Instrument-specific flavours are
+defined in `~slicersim.lazuli`, and calibration exposures in
+`~slicersim.calibration`.
+"""
+
 import numpy as np
 
 from .simulation import Simulation
@@ -60,11 +75,46 @@ class VirtualTarget:
 
     @classmethod
     def from_simulation(cls, simulation):
-        """ """
+        """Load the instance from an already-built simulation.
+
+        Parameters
+        ----------
+        simulation : slicersim.simulation.Simulation
+            The simulation the target wraps.
+
+        Returns
+        -------
+        VirtualTarget
+            An instance of the class.
+
+        See Also
+        --------
+        from_scene : Build the simulation from a scene configuration.
+        """
         return cls(simulation=simulation)
 
     def to_image(self, mapper, sliceid, image=None, **kwargs):
-        """ """
+        """Project the simulated cube onto a detector image.
+
+        Parameters
+        ----------
+        mapper : slicersim.mapper.SlicerMapper
+            Mapper describing where each slice falls on the detector.
+        sliceid : int or array_like
+            Identifier(s) of the slice(s) the cube is projected onto.
+        image : numpy.ndarray, optional
+            Existing detector image this projection is added to. If None,
+            only the contribution of this target is returned.
+            Default is None.
+        **kwargs
+            Goes to `get_cube`.
+
+        Returns
+        -------
+        numpy.ndarray
+            2D detector image. When `image` is given, the sum of `image` and
+            of the projected cube; `image` itself is left unchanged.
+        """
         cube, *_ = self.get_cube(**kwargs)
 
         this_image = mapper.project_slice(sliceid, cube, lbda=self.simulation.spectrograph.lbda)
@@ -324,7 +374,26 @@ class VirtualTarget:
         return self.simulation.get_cube()
 
     def get_detector_image(self, mapper, cubes=None, **kwargs):
-        """ """
+        """Not implemented for the generic VirtualTarget class.
+
+        Parameters
+        ----------
+        mapper : slicersim.mapper.SlicerMapper
+            Mapper describing where each slice falls on the detector.
+        cubes : tuple, optional
+            Pre-computed cubes to project, to avoid regenerating them.
+            Default is None.
+        **kwargs
+            Goes to the subclass implementation.
+
+        Raises
+        ------
+        NotImplementedError
+            Always raised; the projection depends on how the instrument lays
+            its fields out on the detector, so instrument-specific subclasses
+            must override this method. See e.g.
+            `~slicersim.lazuli.VirtualLazuliTarget`.
+        """
         raise NotImplementedError("This functionality is not implemented for the generic Target class. See e.g., LazuliTarget")
 
     def get_variance_contribution(self):
@@ -540,5 +609,28 @@ class Target( VirtualTarget ):
 
     @classmethod
     def from_simulation(cls, simulation):
-        """ """
+        """Load the instance from an already-built simulation.
+
+        .. warning::
+            This override is currently broken and always raises `TypeError`:
+            `super().__init__` is called from a classmethod, so `simulation`
+            is bound to ``self`` and no instance is ever built. It shadows the
+            working `VirtualTarget.from_simulation` for `Target` and its
+            subclasses.
+
+        Parameters
+        ----------
+        simulation : slicersim.simulation.Simulation
+            The simulation the target wraps.
+
+        Returns
+        -------
+        Target
+            An instance of the class, once the implementation is fixed.
+
+        Raises
+        ------
+        TypeError
+            Always, see the warning above.
+        """
         return super().__init__(simulation=simulation)
