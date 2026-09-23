@@ -61,6 +61,11 @@ def source_to_modelfunc(source):
     elif source == "blackbody":
         from .blackbody import get_blackbody_flux
         model_func = get_blackbody_flux
+
+    elif source == "kilonova":
+        from .kilonova import get_kilonova_flux
+        model_func = get_kilonova_flux
+
     else:
         raise NotImplementedError(f"no model_func defined for source: {source}")
 

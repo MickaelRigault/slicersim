@@ -453,9 +453,6 @@ class Supernova( VirtualTarget ):
     ----------
     model : str, optional
         The supernova model to use. Default is "salt".
-    slicer : bool, optional
-        Should the spectrograph assume slicer (True) or MLA (False).
-        Default is True.
     **kwargs
         Goes to `scene.get_sn_scene()`.
 
@@ -470,15 +467,53 @@ class Supernova( VirtualTarget ):
         instrument: str, None, optional
             configuration of the instrument if any. (see self._INSTRUMENT for default)
         **kwargs
-            Goes to `scene.get_sn_scene()`.
+            Goes to `scene.get_scene()`.
         """
         from .iotools import get_config
-        from .scene import get_sn_scene
+        from .scene import get_scene
         if instrument is None and hasattr(self,"_INSTRUMENT"):
             instrument = self._INSTRUMENT
 
 
-        scene = get_sn_scene(model=model, **kwargs)
+        scene = get_scene(model=f"snia-{model}", **kwargs)
+        config = get_config( **( self._DEFAULT_CONFIG | {"scene": scene, "instrument": instrument}) )
+
+        simulation = Simulation.from_config(config)
+
+        super().__init__(simulation=simulation)
+
+# Supernova
+class Supernova( VirtualTarget ):
+    """Lazuli class for Kilonova.
+
+    Parameters
+    ----------
+    model : str, optional
+        The Kilonova model to use. Default is "bulla23".
+
+    **kwargs
+        Goes to `scene.get_scene()`.
+
+    """
+    def __init__(self, instrument=None, model="bulla23", **kwargs):
+        """Initialize the LazuliSN.
+
+        Parameters
+        ----------
+        model : str, optional
+            The supernova model to use. Default is "salt".
+        instrument: str, None, optional
+            configuration of the instrument if any. (see self._INSTRUMENT for default)
+        **kwargs
+            Goes to `scene.get_sn_scene()`.
+        """
+        from .iotools import get_config
+        from .scene import get_scene
+        if instrument is None and hasattr(self,"_INSTRUMENT"):
+            instrument = self._INSTRUMENT
+
+
+        scene = get_scene(model=f"kilonova-{model}", **kwargs)
         config = get_config( **( self._DEFAULT_CONFIG | {"scene": scene, "instrument": instrument}) )
 
         simulation = Simulation.from_config(config)

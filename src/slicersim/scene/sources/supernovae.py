@@ -141,7 +141,6 @@ def get_saltmodel(redshift=0.1,
     model.get_flux = get_flux  # Monkey patching
     return model
 
-
 # explicit here the parameters to enable mutable_parameters parsing
 def get_saltmodel_flux(lbda, phase,
                        abmag=None,  # extra
