@@ -15,6 +15,10 @@ slicersim.target
 
       .. autoclass:: slicersim.target.CalSpec
          :members:
+   .. dropdown:: Kilonova
+
+      .. autoclass:: slicersim.target.Kilonova
+         :members:
    .. dropdown:: Supernova
 
       .. autoclass:: slicersim.target.Supernova

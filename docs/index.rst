@@ -16,7 +16,7 @@ Create the target of interest. Setup the configuration you
 want. Obtained simulated spectrum.
 
 Create the target of interest
-----------------------
+-----------------------------
 
 .. tab-set::
     :sync-group: category
@@ -30,6 +30,16 @@ Create the target of interest
 
 	    # load a Type Ia Supernovae
 	    target = slicersim.LazuliSupernova(redshift=1.0, c=0.2, phase=1.5)
+
+    .. tab-item:: Kilonova
+        :sync: kn
+
+        .. code-block:: python
+
+	    import slicersim
+
+	    # load a kilonova (POSSIS Bulla 2023 model) seen at 30 degrees
+	    target = slicersim.LazuliKilonova(redshift=0.05, phase=1.4, theta=30)
 
     .. tab-item:: CalSpec
         :sync: star
@@ -58,7 +68,7 @@ Create the target of interest
 
 
 Set observing conditions
-----------------------
+------------------------
 
 .. tab-set::
 

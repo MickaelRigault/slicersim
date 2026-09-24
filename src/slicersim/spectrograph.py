@@ -1319,7 +1319,7 @@ class Spectrograph:
         Parameters
         ----------
         fluxes : array_like
-            Flux cube (nlbda, ny, nx).
+            Flux spectrum (nlbda) or cube (nlbda, ny, nx).
         **kwargs
             Additional arguments passed to `scipy.ndimage.gaussian_filter1d`.
 

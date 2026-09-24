@@ -12,6 +12,10 @@ slicersim.lazuli
    
       lazuli_etc
       lazuli_sn_etc
+
+   
+   .. autofunction:: slicersim.lazuli.lazuli_etc
+   .. autofunction:: slicersim.lazuli.lazuli_sn_etc
    
 
    
@@ -33,6 +37,10 @@ slicersim.lazuli
    .. dropdown:: LazuliFlat
 
       .. autoclass:: slicersim.lazuli.LazuliFlat
+         :members:
+   .. dropdown:: LazuliKilonova
+
+      .. autoclass:: slicersim.lazuli.LazuliKilonova
          :members:
    .. dropdown:: LazuliSupernova
 

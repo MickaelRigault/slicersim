@@ -12,6 +12,10 @@ slicersim.sample
    
       broadcast_mapping
       build_exptime_estimator
+
+   
+   .. autofunction:: slicersim.sample.broadcast_mapping
+   .. autofunction:: slicersim.sample.build_exptime_estimator
    
 
    

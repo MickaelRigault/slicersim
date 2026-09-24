@@ -7,7 +7,7 @@ access to the simulated spectra and cubes.
 
 `VirtualTarget` holds that generic interface and is not meant to be used
 directly. The concrete targets differ only by the scene they build:
-`Supernova` for SN Ia models, `CalSpec` for HST CalSpec standard stars, and
+`Supernova` for SN Ia models, `Kilonova` for kilonova models, `CalSpec` for HST CalSpec standard stars, and
 `Target` for an arbitrary input spectrum. Instrument-specific flavours are
 defined in `~slicersim.lazuli`, and calibration exposures in
 `~slicersim.calibration`.
@@ -16,6 +16,8 @@ defined in `~slicersim.lazuli`, and calibration exposures in
 import numpy as np
 
 from .simulation import Simulation
+from .iotools import get_config
+from .scene import get_scene
 
 
 class VirtualTarget:
@@ -44,6 +46,18 @@ class VirtualTarget:
         # set it.
         self._simulation = simulation
 
+
+    @classmethod
+    def _source_to_simulation_(cls, source, instrument=None, **kwargs):
+        """ Internal method to get the simulation associated to this Target (uses class attributes)"""
+        if instrument is None and hasattr(cls,"_INSTRUMENT"):
+            instrument = cls._INSTRUMENT
+
+        scene = get_scene(source=source, **kwargs)
+        config = get_config( **( cls._DEFAULT_CONFIG | {"scene": scene, "instrument": instrument}) )
+
+        return Simulation.from_config(config)
+
     @classmethod
     def from_scene(cls, scene=None, instrument=None, **kwargs):
         """Load the instance from a scene configuration.
@@ -51,20 +65,25 @@ class VirtualTarget:
         Parameters
         ----------
         scene : dict, optional
-            Scene configuration with the given format:
-            `scene = {scene: {pointsource:{}, # PSF
-                             background: {}, # spatially flat
-                             host: {} }} # structured background`
+            Scene configuration with the given format (see
+            `slicersim.scene.get_scene`)::
+
+                scene = {"scene": {"pointsource": {},  # PSF
+                                   "background": {},   # spatially flat
+                                   "host": {}}}        # structured background
+
             Default is None.
+        instrument : str or dict, optional
+            Configuration of the instrument, if any. If None, the class
+            ``_INSTRUMENT`` is used when defined. Default is None.
         **kwargs
             Goes to `iotools.get_config()` and updates the configuration.
 
         Returns
-        ------
-        VirtualLazuliTarget
+        -------
+        VirtualTarget
             An instance of the class.
         """
-        from .iotools import get_config
         if instrument is None and hasattr(cls,"_INSTRUMENT"):
             instrument = cls._INSTRUMENT
 
@@ -282,6 +301,8 @@ class VirtualTarget:
         Returns
         -------
         dict
+            Readout configuration:
+
             - nmd: (ngroup, nframe_per_group, ndrop)
             - nramps: number of ramps (1-ramp = 1-nmd)
         """
@@ -303,11 +324,13 @@ class VirtualTarget:
         unit : str, optional
             The unit to convert the spectrum flux and variance to.
             Available units are:
+
             - adu [total]
             - flambda [erg/s/a/cm2]
             - fphoton [ph/s]
             - rate [adu/s]
             - framerate [adu/frame]
+
             Default is "adu".
         incl_error : bool, optional
             If True, the returned flux is scattered from the true_flux given the
@@ -435,7 +458,7 @@ class VirtualTarget:
     def pointsource_properties(self):
         """Get mutable properties of the pointsource."""
         return [param_ for param_ in self.simulation.scene.mutable_parameters
-                    if param_.startswith("pointsource__")]
+                    if param_.startswith("pointsource.")]
 
     @property
     def simulation(self):
@@ -445,118 +468,7 @@ class VirtualTarget:
 # ============ #
 #  Specifics   #
 # ============ #
-# Supernova
-class Supernova( VirtualTarget ):
-    """Lazuli class for Supernovae.
-
-    Parameters
-    ----------
-    model : str, optional
-        The supernova model to use. Default is "salt".
-    slicer : bool, optional
-        Should the spectrograph assume slicer (True) or MLA (False).
-        Default is True.
-    **kwargs
-        Goes to `scene.get_sn_scene()`.
-
-    """
-    def __init__(self, instrument=None, model="salt", **kwargs):
-        """Initialize the LazuliSN.
-
-        Parameters
-        ----------
-        model : str, optional
-            The supernova model to use. Default is "salt".
-        instrument: str, None, optional
-            configuration of the instrument if any. (see self._INSTRUMENT for default)
-        **kwargs
-            Goes to `scene.get_sn_scene()`.
-        """
-        from .iotools import get_config
-        from .scene import get_sn_scene
-        if instrument is None and hasattr(self,"_INSTRUMENT"):
-            instrument = self._INSTRUMENT
-
-
-        scene = get_sn_scene(model=model, **kwargs)
-        config = get_config( **( self._DEFAULT_CONFIG | {"scene": scene, "instrument": instrument}) )
-
-        simulation = Simulation.from_config(config)
-
-        super().__init__(simulation=simulation)
-
-# CalSpec Stars
-class CalSpec( VirtualTarget ):
-    """Lazuli class for CalSpec stars.
-
-    Parameters
-    ----------
-    name : str
-        Name of the CalSpec star.
-    background : str, optional
-        Background to use. Default is "zodi".
-    **kwargs
-        Goes to `simulation.Simulation.from_source()`.
-
-    """
-    from .scene.sources.calspec import calspecsource
-    _SOURCES = calspecsource
-
-    def __init__(self, name,
-                     instrument=None,
-                     background="zodi",
-                 **kwargs):
-        """Initialize the LazuliCalSpec.
-
-        Parameters
-        ----------
-        name : str
-            Name of the CalSpec star.
-        instrument: str, None, optional
-            configuration of the instrument if any. (see self._INSTRUMENT for default)
-        background : str, optional
-            Background to use. Default is "zodi".
-        **kwargs
-            Goes to `simulation.Simulation.from_source()`.
-        """
-        if instrument is None and hasattr(self,"_INSTRUMENT"):
-            instrument = self._INSTRUMENT
-
-        lbda, flux, _ = self._SOURCES.get_spectrum(name)
-        simulation = Simulation.from_source(lbda, flux, background=background,
-                                            instrument=instrument,
-                                            **kwargs)
-        super().__init__(simulation=simulation)
-
-    @classmethod
-    def from_name(cls, name, **kwargs):
-        """Build a `LazuliCalSpec` from the name of the star.
-
-        Parameters
-        ----------
-        name : str
-            Name of the CalSpec star.
-        **kwargs
-            Goes to `simulation.Simulation.from_source()`.
-
-        Returns
-        -------
-        LazuliCalSpec
-            An instance of the class.
-
-        """
-        # this is actually a wrapper of the init
-        return cls(name, **kwargs)
-
-    # ============== #
-    #   Properties   #
-    # ============== #
-    @property
-    def source_names(self):
-        """List of available CalSpec sources."""
-        return self._SOURCES.source.index.values.astype(str)
-
-# Generic object
+# # Generic object
 class Target( VirtualTarget ):
     """Lazuli class for generic targets.
 
@@ -578,8 +490,6 @@ class Target( VirtualTarget ):
     """
     def __init__(self, lbda, flux,
                      mag=None, band="bessellb",
-                     background="zodi",
-                     instrument=None,
                      **kwargs):
         """Initialize the LazuliTarget.
 
@@ -598,13 +508,9 @@ class Target( VirtualTarget ):
         **kwargs
             Goes to `simulation.Simulation.from_source()`.
         """
-        if instrument is None and hasattr(self,"_INSTRUMENT"):
-            instrument = self._INSTRUMENT
-
-        simulation = Simulation.from_source(lbda, flux, background=background,
-                                                mag=mag, band=band,
-                                                instrument=instrument,
-                                                **kwargs)
+        simulation = self._source_to_simulation_(source=[lbda, flux],
+                                                 mag=mag, band=band,
+                                                 **kwargs)
         super().__init__(simulation=simulation)
 
     @classmethod
@@ -634,3 +540,183 @@ class Target( VirtualTarget ):
             Always, see the warning above.
         """
         return super().__init__(simulation=simulation)
+
+# Supernova
+class Supernova( VirtualTarget ):
+    """Target class for Supernovae.
+
+    Parameters
+    ----------
+    instrument : str, optional
+        Configuration of the instrument, if any. If None, the class
+        ``_INSTRUMENT`` is used when defined. Default is None.
+    model : str, optional
+        The supernova model to use. Default is "salt".
+    **kwargs
+        Goes to `scene.get_scene()`.
+
+    See Also
+    --------
+    slicersim.lazuli.LazuliSupernova : The Lazuli flavour of this target.
+    """
+    def __init__(self, model="salt", **kwargs):
+        """Initialize the Supernova.
+
+        Parameters
+        ----------
+        model : str, optional
+            The supernova model to use (it is passed to `scene.get_scene` as
+            ``source="snia-{model}"``):
+
+            - "salt": SALT2-extended (parameters: x1, c, MBmax)
+            - any sncosmo salt source name (e.g. "salt3")
+            - "twin": Twins-Embedding
+
+            Default is "salt".
+
+        **kwargs
+            - instrument: specify the instrument details.
+            Rest goes to `scene.get_scene()`, i.e. to the point source
+            configuration (e.g. redshift, phase, position, x1, c).
+        """
+        simulation = self._source_to_simulation_(source=f"snia-{model}", **kwargs)
+        super().__init__(simulation=simulation)
+
+# Kilonova
+class Kilonova( VirtualTarget ):
+    """Target class for Kilonovae.
+
+    The kilonova spectrum is computed from POSSIS radiative transfer models
+    (Bulla 2019, 2023) for a given viewing angle, see
+    `~slicersim.scene.sources.kilonova.get_kilonova_flux`.
+
+    Parameters
+    ----------
+    model : str, optional
+        The kilonova model to use. Default is "bulla23".
+    **kwargs
+        Goes to `scene.get_scene()`.
+
+    See Also
+    --------
+    slicersim.lazuli.LazuliKilonova : The Lazuli flavour of this target.
+    """
+    def __init__(self, model="bulla23", **kwargs):
+        """Initialize the Kilonova.
+
+        Parameters
+        ----------
+        model : str, optional
+            The kilonova model to use (it is passed to `scene.get_scene` as
+            ``source="kilonova-{model}"``):
+
+            - "bulla23": POSSIS grid from Bulla (2023) [default]
+            - "bulla19": POSSIS model from Bulla (2019)
+        **kwargs
+            - instrument: specify the instrument details.
+            Goes to `scene.get_scene()`, i.e. to the point source
+            configuration. Main parameters are (see
+            `~slicersim.scene.sources.kilonova.get_kilonova_flux`):
+
+            - redshift: redshift of the kilonova (default 0.2)
+            - phase: days since merger (default 1.4)
+            - theta: viewing angle in degrees (default 0, i.e. pole-on)
+            - magabs: peak absolute magnitude in `band` (default -15.8)
+            - magobs: peak observed magnitude in `band` (overrides `magabs`)
+            - band: bandpass for the normalization (default "sdssr")
+            - position: position in the IFU in spaxels (default [1, 0.5])
+        """
+        simulation = self._source_to_simulation_(source=f"kilonova-{model}", **kwargs)
+        super().__init__(simulation=simulation)
+
+# Kilonova
+class BlackBody( VirtualTarget ):
+    """Target class for BlackBody.
+
+    Parameters
+    ----------
+    temperature : str, optional
+        The blackbody temperature (in Kelvin)
+    **kwargs
+        Goes to `scene.get_scene()`.
+        - mag
+        - band
+        - magsys
+
+    See Also
+    --------
+    slicersim.lazuli.LazuliBlackBody : The Lazuli flavour of this target.
+    """
+    def __init__(self, temperature, **kwargs):
+        """Initialize the Kilonova.
+
+        Parameters
+        ----------
+        temperature : str, optional
+            The blackbody temperature (in Kelvin)
+        **kwargs
+            Goes to `scene.get_scene()`.
+            - mag: magnitude
+            - band: band where the magnitude is computed (e.g. "sdssr")
+            - magsys: "ab"
+            - position: position in the IFU in spaxels (default [1, 0.5])
+        """
+        simulation = self._source_to_simulation_(source=f"blackbody-{temperature}", **kwargs)
+        super().__init__(simulation=simulation)
+
+# CalSpec Stars
+class CalSpec( VirtualTarget ):
+    """Lazuli class for CalSpec stars.
+
+    Parameters
+    ----------
+    name : str
+        Name of the CalSpec star.
+    **kwargs
+        Goes to `simulation.Simulation.from_source()`.
+    """
+    from .scene.sources.calspec import calspecsource
+    _SOURCES = calspecsource
+
+    def __init__(self, name, **kwargs):
+        """Initialize the LazuliCalSpec.
+
+        Parameters
+        ----------
+        name : str
+            Name of the CalSpec star.
+        background : str, optional
+            Background to use. Default is "zodi".
+        **kwargs
+            Goes to `simulation.Simulation.from_source()`.
+        """
+        simulation = self._source_to_simulation_(source=f"calspec-{name}", **kwargs)
+        super().__init__(simulation=simulation)
+
+    @classmethod
+    def from_name(cls, name, **kwargs):
+        """Build a `LazuliCalSpec` from the name of the star.
+
+        Parameters
+        ----------
+        name : str
+            Name of the CalSpec star.
+        **kwargs
+            Goes to `simulation.Simulation.from_source()`.
+
+        Returns
+        -------
+        LazuliCalSpec
+            An instance of the class.
+
+        """
+        # this is actually a wrapper of the init
+        return cls(name, **kwargs)
+
+    # ============== #
+    #   Properties   #
+    # ============== #
+    @property
+    def source_names(self):
+        """List of available CalSpec sources."""
+        return self._SOURCES.source.index.values.astype(str)

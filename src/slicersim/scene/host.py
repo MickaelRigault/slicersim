@@ -82,7 +82,7 @@ class Host(SceneElement):
         subject to change.
     """
     @classmethod
-    def from_sersic_and_spectrum(cls, lbda, flux, mag, band, redshift=0,
+    def from_sersic_and_spectrum(cls, lbda, flux, mag=None, band="sdssr", redshift=0,
                                  r_eff=0.1, n=1.0, ellip=0.0, theta=0.0,
                                  pixel_scale=0.1, shape=(10, 10), position=None,
                                 oversample=4, meta={},

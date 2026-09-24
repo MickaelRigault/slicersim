@@ -11,6 +11,9 @@ slicersim.scene.host
    .. autosummary::
    
       get_sersic_profile
+
+   
+   .. autofunction:: slicersim.scene.host.get_sersic_profile
    
 
    

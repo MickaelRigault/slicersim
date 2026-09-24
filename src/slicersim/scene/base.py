@@ -1,3 +1,10 @@
+""" Scene: base module.
+
+`SceneElement` is the base class of every scene component (point source,
+background, host). It wraps a ``model_func(lbda, ...)`` returning a spectrum,
+and exposes the parameters of that function as mutable parameters, stored in
+the element ``meta``.
+"""
 import warnings
 
 from ..utils import inspect_func

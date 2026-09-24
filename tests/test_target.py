@@ -178,3 +178,28 @@ def test_blackbody(lazulibb):
         lbda_max_meter = lbda[np.argmax(spec)] * units.Angstrom.to("m")
         predicted_temp = lbda_max_to_temperature(lbda_max_meter)
         assert np.isclose(predicted_temp, test_temp_, rtol=1e-1), f"predicted temp {predicted_temp} != {test_temp_}"
+
+
+def test_kilonova():
+    """ """
+    from slicersim.scene import get_scene
+    # model parsing
+    scene = get_scene("kilonova", redshift=0.05)
+    assert scene["scene"]["pointsource"]["source"] == "bulla23"
+    assert scene["scene"]["pointsource"]["redshift"] == 0.05
+    assert get_scene("kilonova-bulla19")["scene"]["pointsource"]["source"] == "bulla19"
+    # model names containing "-" are kept
+    assert get_scene("snia-salt2-extended")["scene"]["pointsource"]["source"] == "salt2-extended"
+
+    kn = slicersim.LazuliKilonova(redshift=0.1, theta=30)
+    assert kn.get_spectrograph_field()[0] == "narrow"
+    assert "pointsource.theta" in kn.pointsource_properties
+
+    lbda, spec, var = kn.get_spectrum(unit="flambda", incl_error=False)
+    assert lbda.shape == spec.shape == var.shape
+    assert (spec[np.isfinite(spec)] >= 0).all(), "all spectrum should be >=0 as no error)"
+
+    # viewing angle changes the spectrum
+    kn.simulation.update(theta=80)
+    _, spec_edge, _ = kn.get_spectrum(unit="flambda", incl_error=False)
+    assert not np.allclose(spec, spec_edge, atol=0, equal_nan=True)

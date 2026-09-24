@@ -6,6 +6,8 @@ Each module implements one family of sources:
 
 - `~slicersim.scene.sources.supernovae`: type Ia supernova models
   (SALT and Twins-Embedding).
+- `~slicersim.scene.sources.kilonova`: kilonova models (POSSIS, Bulla 2019
+  and 2023) with a viewing angle dependency.
 - `~slicersim.scene.sources.blackbody`: blackbody continuum sources.
 - `~slicersim.scene.sources.calspec`: HST CalSpec spectrophotometric standards.
 - `~slicersim.scene.sources.utils`: helper tools shared by the source models.
@@ -24,9 +26,11 @@ def source_to_modelfunc(source):
     ----------
     source : str
         Name of the source model.
+
         - "salt" (or any name containing "salt", e.g. "salt2-extended")
         - "twins-embedding"
         - "blackbody"
+        - "bulla19" or "bulla23" (kilonova POSSIS models)
 
     Returns
     -------
@@ -44,11 +48,14 @@ def source_to_modelfunc(source):
     slicersim.scene.sources.supernovae.get_saltmodel_flux : SALT model flux.
     slicersim.scene.sources.supernovae.get_twins_embedding_flux : Twins-Embedding model flux.
     slicersim.scene.sources.blackbody.get_blackbody_flux : Blackbody flux.
+    slicersim.scene.sources.kilonova.get_kilonova_flux : Kilonova flux.
 
     Examples
     --------
     >>> model_func = source_to_modelfunc("salt2-extended")
     >>> flux = model_func(np.linspace(4000, 9000, 100), phase=0)
+    >>> model_func = source_to_modelfunc("bulla23")
+    >>> flux = model_func(np.linspace(4000, 9000, 100), phase=1.4, source="bulla23")
     """
     if "salt" in source:
         from .supernovae import get_saltmodel_flux
@@ -58,9 +65,14 @@ def source_to_modelfunc(source):
         from .supernovae import get_twins_embedding_flux
         model_func = get_twins_embedding_flux
 
-    elif source == "blackbody":
+    elif "blackbody" in source:
         from .blackbody import get_blackbody_flux
         model_func = get_blackbody_flux
+
+    elif "bulla23" in source or "bulla19" in source:
+        from .kilonova import get_kilonova_flux
+        model_func = get_kilonova_flux
+
     else:
         raise NotImplementedError(f"no model_func defined for source: {source}")
 

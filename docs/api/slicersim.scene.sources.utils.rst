@@ -11,6 +11,9 @@ slicersim.scene.sources.utils
    .. autosummary::
    
       obsmag_to_redshift
+
+   
+   .. autofunction:: slicersim.scene.sources.utils.obsmag_to_redshift
    
 
    
