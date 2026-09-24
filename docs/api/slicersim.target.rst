@@ -1,4 +1,4 @@
-
+﻿
 
 slicersim.target
 ================
@@ -11,6 +11,10 @@ slicersim.target
    .. rubric:: Classes
 
    
+   .. dropdown:: BlackBody
+
+      .. autoclass:: slicersim.target.BlackBody
+         :members:
    .. dropdown:: CalSpec
 
       .. autoclass:: slicersim.target.CalSpec

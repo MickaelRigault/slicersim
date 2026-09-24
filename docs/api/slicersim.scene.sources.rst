@@ -1,4 +1,4 @@
-
+﻿
 
 slicersim.scene.sources
 =======================
@@ -25,6 +25,7 @@ slicersim.scene.sources
    blackbody
    calspec
    kilonova
+   stars
    supernovae
    utils
 
