@@ -1,6 +1,8 @@
 """ structured background """
+import warnings
 import numpy as np
 from astropy.modeling.models import Sersic2D
+from astropy.cosmology import Planck18 as cosmology
 
 from .base import SceneElement
 
@@ -82,10 +84,40 @@ class Host(SceneElement):
         subject to change.
     """
     @classmethod
+    def from_config(cls, config):
+        """ """
+        # do not affect the input config
+        config = deepcopy(config)
+
+        # build it.
+        refmodel = config.pop("refmodel", "blackbody-5000")
+        mag = config.pop("mag", 20)
+
+        # use kpc scale
+        r_kpc = config.pop("r_kpc", None)
+        if r_kpc is not None:
+            redshift = float(config.pop("redshift", None))
+            if redshift is None:
+                warnings.warn("r_kpc is given but redshift is not. r_kpc is ignored.")
+            elif "r_eff" in config:
+                warnings.warn("r_kpc+redshift and r_eff are both given. r_eff is ignored.")
+
+            config["r_eff"] = r_kpc / cosmology.arcsec_per_kpc_comoving(redshift).value
+
+        # use known spectrum.
+        if "blackbody" in refmodel:
+            from .sources.blackbody import get_blackbody_flux
+            temperature = float( refmodel.split("-")[1] )
+            lbda = np.linspace(3000, 20_000, 1000)
+            flux = get_blackbody_flux(lbda, temperature=temperature, mag=mag)
+
+        return cls.from_sersic_and_spectrum(lbda, flux, mag=mag, **config)
+
+    @classmethod
     def from_sersic_and_spectrum(cls, lbda, flux, mag=None, band="sdssr", redshift=0,
                                  r_eff=0.1, n=1.0, ellip=0.0, theta=0.0,
                                  pixel_scale=0.1, shape=(10, 10), position=None,
-                                oversample=4, meta={},
+                                oversample=4,
                                 **kwargs):
         """Build a `Host` from a Sersic surface-brightness profile and a reference spectrum.
 
@@ -143,6 +175,7 @@ class Host(SceneElement):
             An instance of the `Host` class.
         """
         from sncosmo import Spectrum
+        meta = {}
         # flux input
         meta["mag"] = mag
         meta["band"] = band
