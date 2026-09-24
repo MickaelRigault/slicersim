@@ -11,11 +11,9 @@ slicersim.scene.sources.blackbody
    .. autosummary::
    
       get_blackbody_flux
-      get_blackbody_pointsource
 
    
    .. autofunction:: slicersim.scene.sources.blackbody.get_blackbody_flux
-   .. autofunction:: slicersim.scene.sources.blackbody.get_blackbody_pointsource
    
 
    

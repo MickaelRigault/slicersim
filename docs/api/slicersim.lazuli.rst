@@ -1,4 +1,4 @@
-
+﻿
 
 slicersim.lazuli
 ================
@@ -41,6 +41,10 @@ slicersim.lazuli
    .. dropdown:: LazuliKilonova
 
       .. autoclass:: slicersim.lazuli.LazuliKilonova
+         :members:
+   .. dropdown:: LazuliPowerLaw
+
+      .. autoclass:: slicersim.lazuli.LazuliPowerLaw
          :members:
    .. dropdown:: LazuliSupernova
 

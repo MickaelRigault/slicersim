@@ -1,4 +1,4 @@
-
+﻿
 
 slicersim.target
 ================
@@ -22,6 +22,10 @@ slicersim.target
    .. dropdown:: Kilonova
 
       .. autoclass:: slicersim.target.Kilonova
+         :members:
+   .. dropdown:: PowerLaw
+
+      .. autoclass:: slicersim.target.PowerLaw
          :members:
    .. dropdown:: Supernova
 

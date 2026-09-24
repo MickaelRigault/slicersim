@@ -664,6 +664,35 @@ class BlackBody( VirtualTarget ):
         simulation = self._source_to_simulation_(source=f"blackbody-{temperature}", **kwargs)
         super().__init__(simulation=simulation)
 
+# PowerLaw
+class PowerLaw( VirtualTarget ):
+    """Lazuli class for PowerLaw generic objects.
+
+    Parameters
+    ----------
+    name : str
+        Name of the CalSpec star.
+    **kwargs
+        Goes to `simulation.Simulation.from_source()`.
+    """
+    from .scene.sources.calspec import calspecsource
+    _SOURCES = calspecsource
+
+    def __init__(self, alpha=None, **kwargs):
+        """Initialize the LazuliCalSpec.
+
+        Parameters
+        ----------
+        name : str
+            Name of the CalSpec star.
+        background : str, optional
+            Background to use. Default is "zodi".
+        **kwargs
+            Goes to `simulation.Simulation.from_source()`.
+        """
+        simulation = self._source_to_simulation_(source=f"powerlaw-{alpha}", **kwargs)
+        super().__init__(simulation=simulation)
+
 # CalSpec Stars
 class CalSpec( VirtualTarget ):
     """Lazuli class for CalSpec stars.

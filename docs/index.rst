@@ -41,6 +41,16 @@ Create the target of interest
 	    # load a kilonova (POSSIS Bulla 2023 model) seen at 30 degrees
 	    target = slicersim.LazuliKilonova(redshift=0.05, phase=1.4, theta=30)
 
+    .. tab-item:: BlackBody
+        :sync: bb
+
+        .. code-block:: python
+
+            import slicersim
+
+            # load a Blackbody spectrum with a temperature of 5000K and a magnitude of 20 in the SDSS r-band
+            target = slicersim.LazuliBlackBody(temperature=5_000, mag=20, band="sdssr")
+
     .. tab-item:: CalSpec
         :sync: star
 

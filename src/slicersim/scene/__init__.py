@@ -30,6 +30,7 @@ def get_scene(source, background="zodi", host={}, **kwargs):
           (see `sources.kilonova.get_kilonova_pointsource`).
         - calspec: any HST CalSpec name (e.g. bd_17 , gd_71, p177d, etc.). No default.
         - blackbody: any temperature in Kelvin (e.g. blackbody-6000 [default], blackbody-10000, etc.)
+        - powerlaw: alpha coefficient (e.g. blackbody--2 (-2), blackbody-0.5 (0.5), etc.)
 
         Hence "snia" is equivalent to "snia-salt" and "kilonova" to
         "kilonova-bulla23".
@@ -86,11 +87,23 @@ def get_scene(source, background="zodi", host={}, **kwargs):
             pointsource = get_calspec_pointsource(source=source, **kwargs)
 
         elif "blackbody" in source:
-            from .sources.blackbody import get_blackbody_pointsource
+            from .sources.blackbody import get_blackbody_flux
             temperature = _parse_source_(source)
             if temperature is not None:
                 temperature = float(temperature)
-            pointsource = get_blackbody_pointsource(temperature=temperature, **kwargs)
+
+            pointsource = {"name": "blackbody",
+                           "model_func": get_blackbody_flux,
+                           "temperature": temperature} | kwargs
+
+        elif "powerlaw" in source:
+            from .sources.generic import get_powerlaw_flux
+            alpha = _parse_source_(source)
+            if alpha is not None:
+                alpha = float(alpha)
+            pointsource = {"name": "powerlaw",
+                           "model_func": get_powerlaw_flux,
+                           "alpha": alpha} | kwargs
 
         else:
             raise NotImplementedError(f"Unknown source name: {source!r}.'snia', 'kilonova', 'calspec', 'blackbody' implemented.")

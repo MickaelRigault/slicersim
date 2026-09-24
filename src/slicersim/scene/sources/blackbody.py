@@ -6,38 +6,6 @@ from sncosmo import Spectrum
 
 _FLAMBDA_units = units.erg / (units.cm ** 2 * units.s * units.AA)
 
-def  get_blackbody_pointsource(temperature=6000, mag=20,
-                                band="sdssr", magsys="ab",
-                                position=[1, 0.5],
-                                **kwargs):
-    """Initialize the LazuliBlackBody.
-
-    Parameters
-    ----------
-    temperature : float, optional
-        Temperature of the blackbody in Kelvin. Default is 6000.
-    mag : float, optional
-        Target magnitude in the given band. Default is 20.
-    band : str, optional
-        Name of the bandpass (from sncosmo). Default is "sdssr".
-    magsys : str, optional
-        Name of the magnitude system (see sncosmo). Default is "ab".
-    position : list, optional
-        Position in the MLA in spaxels. Default is [1, 0.5].
-    background : str or dict, optional
-        Background to use. Default is "zodi".
-    **kwargs
-        Goes to `simulation.Simulation.from_config()`.
-    """
-    # build the scene config | background (str or dict) is merged in by get_config
-    return {"name": "blackbody",
-            "source": "blackbody",
-            "temperature": temperature,
-            "mag": mag,
-            "band": band,
-            "magsys": magsys,
-            "position": position} | kwargs
-
 def get_blackbody_flux(lbda, temperature, mag,
                        band="sdssr", magsys="ab"):
     """Get the flux of a blackbody source.

@@ -20,12 +20,13 @@ import numpy as np
 
 from .iotools import get_config
 from .simulation import Simulation
-from .target import BlackBody, CalSpec, Kilonova, Supernova, Target
+from .target import BlackBody, CalSpec, Kilonova, PowerLaw, Supernova, Target
 
 __all__ = [
     "LazuliBlackBody",
     "LazuliCalSpec",
     "LazuliKilonova",
+    "LazuliPowerLaw",
     "LazuliSupernova",
     "LazuliTarget",
     # exposure time calculators shortcuts
@@ -606,6 +607,10 @@ class LazuliCalSpec( VirtualLazuliTarget, CalSpec  ):
 class LazuliBlackBody( VirtualLazuliTarget, BlackBody ):
     pass
 
+
+# Blackbody point source
+class LazuliPowerLaw( VirtualLazuliTarget, PowerLaw ):
+    pass
 
 
 # Generic object
