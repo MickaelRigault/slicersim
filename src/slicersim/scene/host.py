@@ -110,6 +110,12 @@ class Host(SceneElement):
             temperature = float( refmodel.split("-")[1] )
             lbda = np.linspace(3000, 20_000, 1000)
             flux = get_blackbody_flux(lbda, temperature=temperature, mag=mag)
+        elif "brown-" in refmodel:
+            galname = refmodel.split("-")[1]
+            from astropy.io import fits
+            from wcc_etc.io import get_any_astro_name
+            galdata = fits.getdata( get_any_astro_name(galname) )
+            lbda, flux = galdata["wavelength"],galdata["flux"]
 
         return cls.from_sersic_and_spectrum(lbda, flux, mag=mag, **config)
 
