@@ -3,7 +3,7 @@ import warnings
 from .pointsource import PointSource  # noqa: F401
 from .scene import Scene  # noqa: F401
 
-def get_scene(source="snia", background="zodi", host={}, **kwargs):
+def get_scene(source, background="zodi", host={}, **kwargs):
     """ Get a scene configuration.
 
     This function generates a dictionary that defines a scene containing a
@@ -13,8 +13,12 @@ def get_scene(source="snia", background="zodi", host={}, **kwargs):
     Parameters
     ----------
     source : str, optional
-        The name of the source model to use. Can be "snia" or any other
-        source name. Defaults to "snia".
+        The name of the source model to use. You can specify the source version to use using "-".
+        For instance, snia-salt means "source='salt' for a supernova".
+        or kilonova-bulla23.
+        Here are sources:
+            - snia: salt [default], twin # hence snia-salt is the default.
+            - kilonova: bulla23 [default], bulla19
     background : str, optional
         The name of the background model to use. Defaults to "zodi".
     host : dict, optional
@@ -28,15 +32,22 @@ def get_scene(source="snia", background="zodi", host={}, **kwargs):
         A dictionary defining the scene, with keys for the point source,
         background, and host.
     """
+    def _parse_source_(source):
+        """ """
+        _, *source = source.split("-")
+        if len(source) == 0:
+           return None
+
+        return source[0]
+
     if "snia" in source:
         from .sources.supernovae import get_snia_pointsource
-        # pointsource
-        pointsource = get_snia_pointsource(model=source.replace("snia-",""), **kwargs)
+        # default is SALT.
+        pointsource = get_snia_pointsource(source=_parse_source_(source), **kwargs)
 
-    elif source == "kilonova":
+    elif "kilonova" in source:
         from .sources.kilonova import get_kilonova_pointsource
-        # pointsource
-        pointsource = get_kilonova_pointsource(model=source.replace("kilonova-",""), **kwargs)
+        pointsource = get_kilonova_pointsource(source=_parse_source_(source), **kwargs)
 
     else:
         raise NotImplementedError(f"Unknown source {source!r}. Only 'snia' and 'kilonova' implemented.")
@@ -45,7 +56,7 @@ def get_scene(source="snia", background="zodi", host={}, **kwargs):
     if background == "zodi":
         background = {'name': 'zodi', 'model': 'Aldering01.BB5800', 'scale': 2.0}
 
-    return {"scene":{"pointsource": pointsource,
+    return {"scene": {"pointsource": pointsource,
                         "background": background,
                         "host": host
                     }}

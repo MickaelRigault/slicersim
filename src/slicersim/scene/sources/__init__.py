@@ -58,11 +58,11 @@ def source_to_modelfunc(source):
         from .supernovae import get_twins_embedding_flux
         model_func = get_twins_embedding_flux
 
-    elif source == "blackbody":
+    elif "blackbody" in source:
         from .blackbody import get_blackbody_flux
         model_func = get_blackbody_flux
 
-    elif source == "kilonova":
+    elif "bulla23" in source or "bulla19" in source:
         from .kilonova import get_kilonova_flux
         model_func = get_kilonova_flux
 

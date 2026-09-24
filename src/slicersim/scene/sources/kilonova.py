@@ -1,3 +1,5 @@
+import os
+import warnings
 import numpy as np
 import sncosmo
 from scipy.interpolate import RectBivariateSpline as Spline2d
@@ -6,7 +8,25 @@ from astropy.cosmology import Planck18 as cosmology
 # stored on S3 for slicersim, but also available on github:
 # => https://github.com/mbulla/kilonova_models
 # This is just one case
-bull19_url = "https://slicersim-data-104767970225-eu-west-3-an.s3.eu-west-3.amazonaws.com/nsns_nph1.0e%2B06_mejdyn0.020_mejwind0.130_phi30.txt"
+bulla19_url = "https://slicersim-data-104767970225-eu-west-3-an.s3.eu-west-3.amazonaws.com/nsns_nph1.0e%2B06_mejdyn0.020_mejwind0.130_phi30.txt"
+bulla23_url = "https://slicersim-data-104767970225-eu-west-3-an.s3.eu-west-3.amazonaws.com/bulla23_knmodel.fits"
+
+# Top level method
+
+def get_kilonova_pointsource(source=None, **kwargs):
+    """ """
+    # This is basically a place holder for more complexity in the future.
+    if source is None:
+        source = "bulla23" # default
+    generic = { 'name': 'kilonova',
+                'redshift': 0.2,
+                'phase': 1.4, # peak mag
+                'position': [1, 0.5],
+                "source": source
+            }
+
+    return generic | kwargs
+
 
 class AngularTimeSeriesSource(sncosmo.Source):
     r""" A single-component spectral time series model.
@@ -68,6 +88,12 @@ class AngularTimeSeriesSource(sncosmo.Source):
         self._phase = phase
         self._wave = wave
         self._cos_theta = cos_theta
+        # cleaning bad flux definition.
+        flux = flux.copy()
+        flux[flux < 0] = 0
+        flux /= flux.max()
+        flux[flux == 0] = 1e-10
+
         self._flux_array = flux
         self._parameters = np.array([1., 0.])
         self._current_theta = 0.
@@ -79,8 +105,7 @@ class AngularTimeSeriesSource(sncosmo.Source):
         logflux_ = np.zeros(self._flux_array.shape[:2])
 
         for k in range(len(self._phase)):
-            adding = 1e-10 # Here we add 1e-10 to avoid problems with null values
-            f_tmp = Spline2d(self._wave, self._cos_theta, np.log(self._flux_array[k]+adding),
+            f_tmp = Spline2d(self._wave, self._cos_theta, np.log(self._flux_array[k]),
                              kx=1, ky=1)
             logflux_[k] = f_tmp(self._wave, np.cos(self._parameters[1]*np.pi/180)).T
 
@@ -151,7 +176,7 @@ def read_possis_file(filename):
     # use hand made reader.
     if filename.startswith("https"):
         import requests
-        kn_possis = requests.get(kilonova_url)
+        kn_possis = requests.get(filename)
         lines = kn_possis.text.splitlines()
     else:
         f = open(filename)
@@ -196,7 +221,14 @@ def get_kilonova_flux(lbda, phase=0,
                        source="bulla19", cosmo=cosmology):
     """ """
     # source could be a filename or a shortcut.
-    filename = bull19_url if source == "bulla19" else source
+    if os.path.isfile(source):
+        filename = source
+    elif type(source) == str and "bulla19" in source:
+        filename = bulla19_url
+    elif type(source) == str and "bulla23" in source:
+        filename = bulla23_url
+    else:
+        raise ValueError(f"Unknown source {source!r}. Must be a filename or 'bulla19' or 'bulla23'.")
 
     # sncosmo model
     model = get_kilonova_model(filename)

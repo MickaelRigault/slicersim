@@ -1,6 +1,7 @@
 """ Scene: pointsource module """
 
 import numpy as np
+from copy import deepcopy
 from .base import SceneElement
 from .sources import source_to_modelfunc
 
@@ -51,26 +52,30 @@ class PointSource(SceneElement):
         PointSource
             An instance of the `PointSource` class.
         """
+        # do not affect the input config
+        config = deepcopy(config)
+
         position = config.get("position", (0, 0))
         model_func = config.get("model_func", None)
         # look for one
-        if model_func is None:
-            if "source" in config:
-                source_ = config["source"]
-                if type(source_) in [str, np.str_]:
-                    model_func = source_to_modelfunc(config["source"])
-                else:  # assume it's a spectrum
-                    mag = config.get("mag", None)
-                    band = config.get("band", "bessellb")
-                    lbda_, flux_ = source_
-                    return cls.from_spectrum(lbda_, flux_,
-                                             mag=mag, band=band,
-                                             position=position, meta=config.copy())
+        if model_func is None and "source" in config:
+            source_ = config["source"]
+            if type(source_) in [str, np.str_]:
+                model_func = source_to_modelfunc(config["source"])
             else:
-                raise ValueError("neither 'model_func' nor 'source' in the config. One is needed.")
+                # assume it's a spectrum
+                mag = config.get("mag", None)
+                band = config.get("band", "bessellb")
+                lbda_, flux_ = source_
+                return cls.from_spectrum(lbda_, flux_,
+                                            mag=mag, band=band,
+                                            position=position,
+                                            meta=config)
+        else:
+            raise ValueError("neither 'model_func' nor 'source' in the config. One is needed.")
 
         return cls(model_func=model_func, position=position,
-                   meta=config.copy())
+                   meta=config)
 
     @classmethod
     def from_spectrum(cls, lbda_, flux_, mag=20, band="bessellb",

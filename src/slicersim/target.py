@@ -474,8 +474,7 @@ class Supernova( VirtualTarget ):
         if instrument is None and hasattr(self,"_INSTRUMENT"):
             instrument = self._INSTRUMENT
 
-
-        scene = get_scene(model=f"snia-{model}", **kwargs)
+        scene = get_scene(source=f"snia-{model}", **kwargs)
         config = get_config( **( self._DEFAULT_CONFIG | {"scene": scene, "instrument": instrument}) )
 
         simulation = Simulation.from_config(config)
@@ -483,7 +482,7 @@ class Supernova( VirtualTarget ):
         super().__init__(simulation=simulation)
 
 # Supernova
-class Supernova( VirtualTarget ):
+class Kilonova( VirtualTarget ):
     """Lazuli class for Kilonova.
 
     Parameters
@@ -512,8 +511,7 @@ class Supernova( VirtualTarget ):
         if instrument is None and hasattr(self,"_INSTRUMENT"):
             instrument = self._INSTRUMENT
 
-
-        scene = get_scene(model=f"kilonova-{model}", **kwargs)
+        scene = get_scene(source=f"kilonova-{model}", **kwargs)
         config = get_config( **( self._DEFAULT_CONFIG | {"scene": scene, "instrument": instrument}) )
 
         simulation = Simulation.from_config(config)
