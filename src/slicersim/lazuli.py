@@ -20,7 +20,7 @@ import numpy as np
 
 from .iotools import get_config
 from .simulation import Simulation
-from .target import CalSpec, Kilonova, Supernova, Target
+from .target import BlackBody, CalSpec, Kilonova, Supernova, Target
 
 __all__ = [
     "LazuliBlackBody",
@@ -28,6 +28,7 @@ __all__ = [
     "LazuliKilonova",
     "LazuliSupernova",
     "LazuliTarget",
+    # exposure time calculators shortcuts
     "lazuli_etc",
     "lazuli_sn_etc",
 ]
@@ -212,23 +213,6 @@ class VirtualLazuliTarget:
 
     """
     _INSTRUMENT = 'lazuli_cbe.toml'
-
-    def __init__(self, simulation=None, field="narrow"):
-        """Initialize the VirtualLazuliTarget.
-
-        Parameters
-        ----------
-        simulation : slicersim.Simulation, optional
-            The simulation object. Default is None.
-        field : str, optional
-            Lazuli field the spectrograph is configured for, "narrow" or
-            "wide". If None, the spectrograph is left as the simulation
-            defines it. Default is "narrow".
-        """
-        # set it.
-        self._simulation = simulation
-        if field is not None:
-            self.change_spectrograph(field)
 
     @classmethod
     def from_scene(cls, scene=None, **kwargs):
@@ -608,276 +592,25 @@ class VirtualLazuliTarget:
 # ============ #
 # Supernovae
 class LazuliSupernova( VirtualLazuliTarget, Supernova ):
-    """Lazuli class for Supernovae.
-
-    Parameters
-    ----------
-    model : str, optional
-        The supernova model to use. Default is "salt".
-    **kwargs
-        Goes to `scene.get_scene()`.
-
-    See Also
-    --------
-    LazuliKilonova : The same, for kilonovae.
-    """
-    def __init__(self, model="salt", **kwargs):
-        """Initialize the LazuliSupernova.
-
-        Parameters
-        ----------
-        model : str, optional
-            The supernova model to use (see `scene.get_scene`, it is passed
-            as ``source="snia-{model}"``):
-
-            - "salt": SALT2-extended (parameters: x1, c, MBmax)
-            - any sncosmo salt source name (e.g. "salt3")
-            - "twin": Twins-Embedding
-
-            Default is "salt".
-        **kwargs
-            Goes to `scene.get_scene()`, i.e. to the point source
-            configuration (e.g. redshift, phase, position, x1, c).
-        """
-        from .scene import get_scene
-        scene = get_scene(source=f"snia-{model}", **kwargs)
-        config = get_config( **( self._DEFAULT_CONFIG | {"instrument": self._INSTRUMENT} | {"scene": scene}) )
-        simulation = Simulation.from_config(config)
-
-        super().__init__(simulation=simulation)
+    pass
 
 # Kilonovae
 class LazuliKilonova( VirtualLazuliTarget, Kilonova ):
-    """Lazuli class for Kilonovae.
-
-    The kilonova spectrum is computed from POSSIS radiative transfer
-    models (Bulla 2019, 2023; see `scene.sources.kilonova`), for a given
-    viewing angle `theta`, and normalized either to a peak absolute magnitude
-    (`magabs`) or to a peak observed magnitude (`magobs`).
-
-    Parameters
-    ----------
-    model : str, optional
-        The kilonova model to use:
-
-        - "bulla23": POSSIS grid from Bulla (2023) [default]
-        - "bulla19": POSSIS model from Bulla (2019)
-    **kwargs
-        Goes to `scene.get_scene()`.
-
-    See Also
-    --------
-    LazuliSupernova : The same, for supernovae.
-    slicersim.scene.sources.kilonova.get_kilonova_flux : The spectral model.
-
-    Examples
-    --------
-    >>> import slicersim
-    >>> target = slicersim.LazuliKilonova(redshift=0.1, phase=1.4, theta=30)
-    >>> _ = target.setup_to_snr(10, lbda_range=[6000, 9000], frame="obs")
-    >>> lbda, flux, variance = target.get_spectrum(unit="flambda")
-    """
-    def __init__(self, model="bulla23", **kwargs):
-        """Initialize the LazuliKilonova.
-
-        Parameters
-        ----------
-        model : str, optional
-            The kilonova model to use (it is passed to `scene.get_scene`
-            as ``source="kilonova-{model}"``):
-
-            - "bulla23": POSSIS grid from Bulla (2023) [default]
-            - "bulla19": POSSIS model from Bulla (2019)
-        **kwargs
-            Goes to `scene.get_scene()`, i.e. to the point source
-            configuration. Main parameters are (see
-            `scene.sources.kilonova.get_kilonova_flux`):
-
-            - redshift: redshift of the kilonova (default 0.2)
-            - phase: days since merger (default 1.4)
-            - theta: viewing angle in degrees (default 0, i.e. pole-on)
-            - magabs: peak absolute magnitude in `band` (default -15.8)
-            - magobs: peak observed magnitude in `band` (overrides `magabs`)
-            - band: bandpass for the normalization (default "sdssr")
-            - position: position in the IFU in spaxels (default [1, 0.5])
-        """
-        from .scene import get_scene
-        scene = get_scene(source=f"kilonova-{model}", **kwargs)
-        config = get_config( **( self._DEFAULT_CONFIG | {"instrument": self._INSTRUMENT} | {"scene": scene}) )
-        simulation = Simulation.from_config(config)
-
-        super().__init__(simulation=simulation)
-
-# Blackbody point source
-class LazuliBlackBody( VirtualLazuliTarget, Target ):
-    """Lazuli class for blackbody point sources.
-
-    The blackbody spectrum is generated by `scene.sources.blackbody.get_blackbody_flux`
-    (based on `astropy.modeling.models.BlackBody`) and normalized to the requested
-    magnitude in the given band.
-
-    Parameters
-    ----------
-    temperature : float, optional
-        Temperature of the blackbody in Kelvin. Default is 6000.
-    mag : float, optional
-        Target magnitude in the given band. Default is 20.
-    band : str, optional
-        Name of the bandpass (from sncosmo). Default is "sdssr".
-    magsys : str, optional
-        Name of the magnitude system (see sncosmo). Default is "ab".
-    position : list, optional
-        Position in the MLA in spaxels. Default is [1, 0.5].
-    background : str or dict, optional
-        Background to use. Default is "zodi".
-    **kwargs
-        Goes to `simulation.Simulation.from_config()`.
-
-    """
-    def __init__(self, temperature=6000, mag=20,
-                     band="sdssr", magsys="ab",
-                     position=[1, 0.5], background="zodi",
-                     **kwargs):
-        """Initialize the LazuliBlackBody.
-
-        Parameters
-        ----------
-        temperature : float, optional
-            Temperature of the blackbody in Kelvin. Default is 6000.
-        mag : float, optional
-            Target magnitude in the given band. Default is 20.
-        band : str, optional
-            Name of the bandpass (from sncosmo). Default is "sdssr".
-        magsys : str, optional
-            Name of the magnitude system (see sncosmo). Default is "ab".
-        position : list, optional
-            Position in the MLA in spaxels. Default is [1, 0.5].
-        background : str or dict, optional
-            Background to use. Default is "zodi".
-        **kwargs
-            Goes to `simulation.Simulation.from_config()`.
-        """
-        # build the scene config | background (str or dict) is merged in by get_config
-        scene = {"scene": {"pointsource": {"name": "blackbody",
-                                           "source": "blackbody",
-                                           "temperature": temperature,
-                                           "mag": mag,
-                                           "band": band,
-                                           "magsys": magsys,
-                                           "position": position},
-                           "host": None,
-                          }}
-
-        config = get_config(scene=[scene, background], instrument=self._INSTRUMENT)
-        simulation = Simulation.from_config(config, **kwargs)
-
-        super().__init__(simulation=simulation)
+    pass
 
 # CalSpec Stars
 class LazuliCalSpec( VirtualLazuliTarget, CalSpec  ):
-    """Lazuli class for CalSpec stars.
+    pass
 
-    Parameters
-    ----------
-    name : str
-        Name of the CalSpec star.
-    background : str, optional
-        Background to use. Default is "zodi".
-    **kwargs
-        Goes to `simulation.Simulation.from_source()`.
+# Blackbody point source
+class LazuliBlackBody( VirtualLazuliTarget, BlackBody ):
+    pass
 
-    """
-    def __init__(self, name, background="zodi",
-                 **kwargs):
-        """Initialize the LazuliCalSpec.
 
-        Parameters
-        ----------
-        name : str
-            Name of the CalSpec star.
-        background : str, optional
-            Background to use. Default is "zodi".
-        **kwargs
-            Goes to `simulation.Simulation.from_source()`.
-        """
-        lbda, flux, _ = self._SOURCES.get_spectrum(name)
-        simulation = Simulation.from_source(lbda, flux, background=background,
-                                            instrument=self._INSTRUMENT,
-                                            **kwargs)
-        super().__init__(simulation=simulation)
-
-    @classmethod
-    def from_name(cls, name, **kwargs):
-        """Build a `LazuliCalSpec` from the name of the star.
-
-        Parameters
-        ----------
-        name : str
-            Name of the CalSpec star.
-        **kwargs
-            Goes to `simulation.Simulation.from_source()`.
-
-        Returns
-        -------
-        LazuliCalSpec
-            An instance of the class.
-
-        """
-        # this is actually a wrapper of the init
-        return cls(name, **kwargs)
-
-    # ============== #
-    #   Properties   #
-    # ============== #
-    @property
-    def source_names(self):
-        """List of available CalSpec sources."""
-        return self._SOURCES.source.index.values.astype(str)
 
 # Generic object
 class LazuliTarget( VirtualLazuliTarget, Target  ):
-    """Lazuli class for generic targets.
-
-    Parameters
-    ----------
-    lbda : array_like
-        Wavelength array.
-    flux : array_like
-        Flux array.
-    mag : float, optional
-        Magnitude of the target. Default is None.
-    band : str, optional
-        Photometric band for the magnitude. Default is "bessellb".
-    background : str, optional
-        Background to use. Default is "zodi".
-    **kwargs
-        Goes to `simulation.Simulation.from_source()`.
-
-    """
-    def __init__(self, lbda, flux, mag=None, band="bessellb",
-                     background="zodi",
-                 **kwargs):
-        """Initialize the LazuliTarget.
-
-        Parameters
-        ----------
-        lbda : array_like
-            Wavelength array.
-        flux : array_like
-            Flux array.
-        mag : float, optional
-            Magnitude of the target. Default is None.
-        band : str, optional
-            Photometric band for the magnitude. Default is "bessellb".
-        background : str, optional
-            Background to use. Default is "zodi".
-        **kwargs
-            Goes to `simulation.Simulation.from_source()`.
-        """
-        simulation = Simulation.from_source(lbda, flux, background=background,
-                                                mag=mag, band=band,
-                                                **kwargs)
-        super().__init__(simulation=simulation)
+    pass
 
 # Generic object
 class LazuliFlat( VirtualLazuliTarget, Target  ):

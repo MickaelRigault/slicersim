@@ -28,6 +28,8 @@ def get_scene(source, background="zodi", host={}, **kwargs):
           (see `sources.supernovae.get_snia_pointsource`).
         - kilonova: bulla23 [default], bulla19
           (see `sources.kilonova.get_kilonova_pointsource`).
+        - calspec: any HST CalSpec name (e.g. bd_17 , gd_71, p177d, etc.). No default.
+        - blackbody: any temperature in Kelvin (e.g. blackbody-6000 [default], blackbody-10000, etc.)
 
         Hence "snia" is equivalent to "snia-salt" and "kilonova" to
         "kilonova-bulla23".
@@ -67,15 +69,35 @@ def get_scene(source, background="zodi", host={}, **kwargs):
 
         return source[0]
 
-    if "snia" in source:
-        from .sources.supernovae import get_snia_pointsource
-        # default is SALT.
-        pointsource = get_snia_pointsource(source=_parse_source_(source), **kwargs)
+    # Name short cuts
+    if type(source) == str:
+        if "snia" in source:
+            from .sources.supernovae import get_snia_pointsource
+            # default is SALT.
+            pointsource = get_snia_pointsource(source=_parse_source_(source), **kwargs)
 
-    elif "kilonova" in source:
-        from .sources.kilonova import get_kilonova_pointsource
-        pointsource = get_kilonova_pointsource(source=_parse_source_(source), **kwargs)
+        elif "kilonova" in source:
+            from .sources.kilonova import get_kilonova_pointsource
+            pointsource = get_kilonova_pointsource(source=_parse_source_(source), **kwargs)
 
+        elif "calspec" in source:
+            from .sources.stars import get_calspec_pointsource
+            source = _parse_source_(source) # get_calspec_pointsource need a non-None entry
+            pointsource = get_calspec_pointsource(source=source, **kwargs)
+
+        elif "blackbody" in source:
+            from .sources.blackbody import get_blackbody_pointsource
+            temperature = _parse_source_(source)
+            if temperature is not None:
+                temperature = float(temperature)
+            pointsource = get_blackbody_pointsource(temperature=temperature, **kwargs)
+
+        else:
+            raise NotImplementedError(f"Unknown source name: {source!r}.'snia', 'kilonova', 'calspec', 'blackbody' implemented.")
+
+    elif type(source) in (tuple, list):
+        lbda, flux = source
+        pointsource = {"source": [lbda, flux]} | kwargs
     else:
         raise NotImplementedError(f"Unknown source {source!r}. Only 'snia' and 'kilonova' implemented.")
 

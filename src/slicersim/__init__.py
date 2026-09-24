@@ -5,7 +5,7 @@ It serves as Lazuli Space Observatory slicer's simulator.
 It provides tools to create realistic datacubes, including various noise sources
 and instrument effects.
 """
-__version__ = '1.3.1'
+__version__ = '1.3.3'
 
 # Top level simulations
 # quick access useful for simulation

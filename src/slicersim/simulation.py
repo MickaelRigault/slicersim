@@ -1008,7 +1008,6 @@ class Simulation:
         if apply_lsf:
             cube = self.spectrograph.apply_line_spread_function(cube)
 
-
         # cached requested and non existed (see top). Hence let's store it.
         if cached:
             self._cube_cached = cube
@@ -1350,20 +1349,21 @@ class Simulation:
                       self.spectrograph.spx_spatial_scale)    # [arcsec/spx]
             # radius is used to limit where PSF and variance are considered, see pointsource_variance()
 
-        spec_variance = self.spectrograph.pointsource_variance(
-            var_cube, position=self.scene.pointsource_position, radius=radius,
-            psf_profile=psf_profile)
+        spec_variance = self.spectrograph.pointsource_variance(var_cube,
+                                                position=self.scene.pointsource_position, radius=radius,
+                                                psf_profile=psf_profile)
 
         # Assume the spectrum is perfectly extracted
         if "pointsource" not in switch_off:
             # the input spectrum *is not* derived from the cube.
             lbda = self.spectrograph.lbda
-            _, pointsource_phflux = self.scene.get_element_spectrum('pointsource', lbda=lbda) * self.spectrograph.flambda2photon
-            spec_signal = pointsource_phflux * self.detector.photonflux_to_adu(lbda)
+            _, pointsource_flambda = self.scene.get_element_spectrum('pointsource', lbda=lbda)
             if apply_lsf:
                 # apply LSF on *true* spectrum.
-                spec_signal = self.spectrograph.apply_line_spread_function(spec_signal)
+                pointsource_flambda = self.spectrograph.apply_line_spread_function(pointsource_flambda)
 
+            pointsource_phflux = pointsource_flambda*self.spectrograph.flambda2photon
+            spec_signal = pointsource_phflux * self.detector.photonflux_to_adu(lbda)
         else:
             spec_signal = np.zeros_like(self.spectrograph.lbda)
 
@@ -1653,7 +1653,6 @@ class Simulation:
 
         # adu <=> photons
         elif units_in == "adu" and units_out == "fphoton":
-            print("this is used")
             coefs = 1/ (self.detector.photonflux_to_adu(self.spectrograph.lbda) * self.get_parameter("nramps"))
         elif units_in == "fphoton" and units_out == "adu":
             coefs = (self.detector.photonflux_to_adu(self.spectrograph.lbda) * self.get_parameter("nramps"))
