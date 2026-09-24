@@ -1,4 +1,9 @@
-""" module containing the scene elements. """
+""" module containing the scene elements.
+
+The scene is made of a point source (e.g. a supernova or a kilonova, see
+`slicersim.scene.sources`), a spatially flat background, and an optional
+structured background (host). Use `get_scene` to build a scene configuration.
+"""
 import warnings
 from .pointsource import PointSource  # noqa: F401
 from .scene import Scene  # noqa: F401
@@ -12,29 +17,51 @@ def get_scene(source, background="zodi", host={}, **kwargs):
 
     Parameters
     ----------
-    source : str, optional
-        The name of the source model to use. You can specify the source version to use using "-".
-        For instance, snia-salt means "source='salt' for a supernova".
-        or kilonova-bulla23.
-        Here are sources:
-            - snia: salt [default], twin # hence snia-salt is the default.
-            - kilonova: bulla23 [default], bulla19
-    background : str, optional
-        The name of the background model to use. Defaults to "zodi".
+    source : str
+        The kind of point source, optionally followed by the model to use,
+        separated by "-" (``"{kind}-{model}"``). For instance, "snia-salt"
+        means a SN Ia modeled with SALT, "kilonova-bulla19" a kilonova
+        modeled with the Bulla (2019) POSSIS model.
+        Available kinds and models are:
+
+        - snia: salt [default], twin, or any sncosmo salt source name
+          (see `sources.supernovae.get_snia_pointsource`).
+        - kilonova: bulla23 [default], bulla19
+          (see `sources.kilonova.get_kilonova_pointsource`).
+
+        Hence "snia" is equivalent to "snia-salt" and "kilonova" to
+        "kilonova-bulla23".
+    background : str or dict, optional
+        The background configuration. "zodi" is a shortcut for the
+        Aldering (2001) zodiacal light model. Defaults to "zodi".
     host : dict, optional
         A dictionary defining the host galaxy. Defaults to an empty dict.
     **kwargs
-        Additional keyword arguments to pass to the source model.
+        Additional keyword arguments to pass to the source model
+        (e.g. redshift, phase, position, or model specific parameters such
+        as x1 and c for SALT or theta and magabs for kilonovae).
 
     Returns
     -------
     dict
         A dictionary defining the scene, with keys for the point source,
         background, and host.
+
+    Raises
+    ------
+    NotImplementedError
+        If the source kind is neither "snia" nor "kilonova".
+
+    Examples
+    --------
+    >>> scene = get_scene("kilonova-bulla23", redshift=0.05, theta=30)
+    >>> scene["scene"]["pointsource"]["source"]
+    'bulla23'
     """
     def _parse_source_(source):
-        """ """
-        _, *source = source.split("-")
+        """Get the model part of "{kind}-{model}", None if not given."""
+        # maxsplit=1: model names may contain "-" (e.g. salt2-extended)
+        _, *source = source.split("-", 1)
         if len(source) == 0:
            return None
 
@@ -64,6 +91,9 @@ def get_scene(source, background="zodi", host={}, **kwargs):
 def get_sn_scene(model="salt", background="zodi", host={}, **kwargs):
     """ Get a scene configuration for a supernova model.
 
+    .. deprecated:: 1.3.1
+        Use ``get_scene(source="snia-{model}", ...)`` instead.
+
     This function generates a dictionary that defines a scene containing a
     supernova, a background, and a host galaxy. The scene can then be used
     to generate a simulation.
@@ -85,6 +115,11 @@ def get_sn_scene(model="salt", background="zodi", host={}, **kwargs):
     dict
         A dictionary defining the scene, with keys for the point source,
         background, and host.
+
+    Warns
+    -----
+    DeprecationWarning
+        Always, since this function is deprecated in favour of `get_scene`.
     """
     warnings.warn(f"get_sn_scene is deprecated. Use get_scene(source='snia-{model}', ...) instead.", DeprecationWarning)
     return get_scene(source=f"snia-{model}", background=background, host=host, **kwargs)

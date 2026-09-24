@@ -1,3 +1,8 @@
+""" Scene: scene module.
+
+`Scene` gathers the scene elements (point source, background, host) that
+are observed together, and dispatches parameter updates to them.
+"""
 import warnings
 
 import numpy as np

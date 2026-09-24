@@ -7,7 +7,7 @@ access to the simulated spectra and cubes.
 
 `VirtualTarget` holds that generic interface and is not meant to be used
 directly. The concrete targets differ only by the scene they build:
-`Supernova` for SN Ia models, `CalSpec` for HST CalSpec standard stars, and
+`Supernova` for SN Ia models, `Kilonova` for kilonova models, `CalSpec` for HST CalSpec standard stars, and
 `Target` for an arbitrary input spectrum. Instrument-specific flavours are
 defined in `~slicersim.lazuli`, and calibration exposures in
 `~slicersim.calibration`.
@@ -51,17 +51,23 @@ class VirtualTarget:
         Parameters
         ----------
         scene : dict, optional
-            Scene configuration with the given format:
-            `scene = {scene: {pointsource:{}, # PSF
-                             background: {}, # spatially flat
-                             host: {} }} # structured background`
+            Scene configuration with the given format (see
+            `slicersim.scene.get_scene`)::
+
+                scene = {"scene": {"pointsource": {},  # PSF
+                                   "background": {},   # spatially flat
+                                   "host": {}}}        # structured background
+
             Default is None.
+        instrument : str or dict, optional
+            Configuration of the instrument, if any. If None, the class
+            ``_INSTRUMENT`` is used when defined. Default is None.
         **kwargs
             Goes to `iotools.get_config()` and updates the configuration.
 
         Returns
-        ------
-        VirtualLazuliTarget
+        -------
+        VirtualTarget
             An instance of the class.
         """
         from .iotools import get_config
@@ -282,6 +288,8 @@ class VirtualTarget:
         Returns
         -------
         dict
+            Readout configuration:
+
             - nmd: (ngroup, nframe_per_group, ndrop)
             - nramps: number of ramps (1-ramp = 1-nmd)
         """
@@ -303,11 +311,13 @@ class VirtualTarget:
         unit : str, optional
             The unit to convert the spectrum flux and variance to.
             Available units are:
+
             - adu [total]
             - flambda [erg/s/a/cm2]
             - fphoton [ph/s]
             - rate [adu/s]
             - framerate [adu/frame]
+
             Default is "adu".
         incl_error : bool, optional
             If True, the returned flux is scattered from the true_flux given the
@@ -435,7 +445,7 @@ class VirtualTarget:
     def pointsource_properties(self):
         """Get mutable properties of the pointsource."""
         return [param_ for param_ in self.simulation.scene.mutable_parameters
-                    if param_.startswith("pointsource__")]
+                    if param_.startswith("pointsource.")]
 
     @property
     def simulation(self):
@@ -447,27 +457,42 @@ class VirtualTarget:
 # ============ #
 # Supernova
 class Supernova( VirtualTarget ):
-    """Lazuli class for Supernovae.
+    """Target class for Supernovae.
 
     Parameters
     ----------
+    instrument : str, optional
+        Configuration of the instrument, if any. If None, the class
+        ``_INSTRUMENT`` is used when defined. Default is None.
     model : str, optional
         The supernova model to use. Default is "salt".
     **kwargs
-        Goes to `scene.get_sn_scene()`.
+        Goes to `scene.get_scene()`.
 
+    See Also
+    --------
+    slicersim.lazuli.LazuliSupernova : The Lazuli flavour of this target.
     """
     def __init__(self, instrument=None, model="salt", **kwargs):
-        """Initialize the LazuliSN.
+        """Initialize the Supernova.
 
         Parameters
         ----------
+        instrument : str, optional
+            Configuration of the instrument, if any. If None, the class
+            ``_INSTRUMENT`` is used when defined. Default is None.
         model : str, optional
-            The supernova model to use. Default is "salt".
-        instrument: str, None, optional
-            configuration of the instrument if any. (see self._INSTRUMENT for default)
+            The supernova model to use (it is passed to `scene.get_scene` as
+            ``source="snia-{model}"``):
+
+            - "salt": SALT2-extended (parameters: x1, c, MBmax)
+            - any sncosmo salt source name (e.g. "salt3")
+            - "twin": Twins-Embedding
+
+            Default is "salt".
         **kwargs
-            Goes to `scene.get_scene()`.
+            Goes to `scene.get_scene()`, i.e. to the point source
+            configuration (e.g. redshift, phase, position, x1, c).
         """
         from .iotools import get_config
         from .scene import get_scene
@@ -481,30 +506,54 @@ class Supernova( VirtualTarget ):
 
         super().__init__(simulation=simulation)
 
-# Supernova
+# Kilonova
 class Kilonova( VirtualTarget ):
-    """Lazuli class for Kilonova.
+    """Target class for Kilonovae.
+
+    The kilonova spectrum is computed from POSSIS radiative transfer models
+    (Bulla 2019, 2023) for a given viewing angle, see
+    `~slicersim.scene.sources.kilonova.get_kilonova_flux`.
 
     Parameters
     ----------
+    instrument : str, optional
+        Configuration of the instrument, if any. If None, the class
+        ``_INSTRUMENT`` is used when defined. Default is None.
     model : str, optional
-        The Kilonova model to use. Default is "bulla23".
-
+        The kilonova model to use. Default is "bulla23".
     **kwargs
         Goes to `scene.get_scene()`.
 
+    See Also
+    --------
+    slicersim.lazuli.LazuliKilonova : The Lazuli flavour of this target.
     """
     def __init__(self, instrument=None, model="bulla23", **kwargs):
-        """Initialize the LazuliSN.
+        """Initialize the Kilonova.
 
         Parameters
         ----------
+        instrument : str, optional
+            Configuration of the instrument, if any. If None, the class
+            ``_INSTRUMENT`` is used when defined. Default is None.
         model : str, optional
-            The supernova model to use. Default is "salt".
-        instrument: str, None, optional
-            configuration of the instrument if any. (see self._INSTRUMENT for default)
+            The kilonova model to use (it is passed to `scene.get_scene` as
+            ``source="kilonova-{model}"``):
+
+            - "bulla23": POSSIS grid from Bulla (2023) [default]
+            - "bulla19": POSSIS model from Bulla (2019)
         **kwargs
-            Goes to `scene.get_sn_scene()`.
+            Goes to `scene.get_scene()`, i.e. to the point source
+            configuration. Main parameters are (see
+            `~slicersim.scene.sources.kilonova.get_kilonova_flux`):
+
+            - redshift: redshift of the kilonova (default 0.2)
+            - phase: days since merger (default 1.4)
+            - theta: viewing angle in degrees (default 0, i.e. pole-on)
+            - magabs: peak absolute magnitude in `band` (default -15.8)
+            - magobs: peak observed magnitude in `band` (overrides `magabs`)
+            - band: bandpass for the normalization (default "sdssr")
+            - position: position in the IFU in spaxels (default [1, 0.5])
         """
         from .iotools import get_config
         from .scene import get_scene

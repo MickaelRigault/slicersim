@@ -117,7 +117,7 @@ def read_config(filename, verbose=False):
     filename : str or list
         Filename of the configuration file. If no extension is provided,
         `.toml` is assumed. `filename="supernova"` is equivalent to
-        `filename="supernova.toml".
+        `filename="supernova.toml"`.
 
         `filename` can also be a list of names or a mix of names and dicts.
         These nested dictionaries are merged from left to right, such that for

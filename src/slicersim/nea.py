@@ -19,6 +19,7 @@ def get_2dpsf_nea(name, xx="-7:7:15j", yy="-7:7:15j", norm_by_step=True,
     name : str
         Name of the 2D PSF model from astropy.
         Shortcuts:
+
         - "airy", "airydisk": "AiryDisk2D"
         - "gaussian", "gauss", "normal": "Gaussian2D"
         - "moffat": "Moffat2D"
@@ -38,6 +39,7 @@ def get_2dpsf_nea(name, xx="-7:7:15j", yy="-7:7:15j", norm_by_step=True,
         Goes to the corresponding astropy model init.
         See https://docs.astropy.org/en/latest/modeling/predef_models2D.html
         All have amplitude=1 and:
+
         - AiryDisk2D: radius=1
         - Gaussian2D: x_stddev=None, y_stddev=None, theta=None, cov_matrix=None
         - Moffat2D: gamma=1, alpha=1
@@ -129,7 +131,7 @@ def get_2d_nea(func, xx="-7:7:15j", yy="-7:7:15j",
     Parameters
     ----------
     func: func
-        2D PSF function such that: pixels = func(xx, yy, **kwargs)
+        2D PSF function such that: ``pixels = func(xx, yy, **kwargs)``
         where xx and yy are (N,) and (M,) centroid 1d arrays. 
         returning in pixels as a (..., M, N,) array. 
         

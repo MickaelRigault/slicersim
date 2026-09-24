@@ -42,6 +42,11 @@ A collection of notebooks demonstrating how to use ``slicersim``.
 
       Learn how to build your own "Scene".
 
+   .. grid-item-card:: Beginner: Kilonovae
+      :link: notebooks/beginner_kilonova.ipynb
+
+      Simulate kilonovae, change their viewing angle, phase and model, and compute exposure times.
+
    .. grid-item-card:: Beginner: Comparing Multiple Targets
       :link: notebooks/beginner_sample_multiple_targets.ipynb
 
@@ -70,6 +75,7 @@ A collection of notebooks demonstrating how to use ``slicersim``.
    notebooks/beginner_LazuliTargets.ipynb
    notebooks/beginner_variancesource.ipynb
    notebooks/beginner_sample_multiple_targets.ipynb
+   notebooks/beginner_kilonova.ipynb
    notebooks/advanced_change_detector_and_spectrograph.ipynb
    notebooks/advanced_access_qe_spectral_resolution_etc.ipynb
    notebooks/advanced_change_resolution_dispersion.ipynb

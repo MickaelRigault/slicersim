@@ -5,6 +5,8 @@ slicersim
 
 .. automodule:: slicersim
 
+
+
 .. rubric:: Modules
 
 .. autosummary::
@@ -13,6 +15,7 @@ slicersim
 
    calibration
    detector
+   extra
    iotools
    lazuli
    mapper

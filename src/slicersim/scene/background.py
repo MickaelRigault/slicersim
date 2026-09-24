@@ -1,3 +1,8 @@
+""" Scene: background module.
+
+Spatially flat backgrounds of the scene, e.g. the zodiacal light
+(`zodiacal_spectrum`), wrapped as a `Background` scene element.
+"""
 import warnings
 
 import numpy as np
@@ -53,18 +58,19 @@ def zodiacal_spectrum(lbda, scale=1, model="Aldering01.BB5800"):
     array_like
         Flux in erg/s/cm^2/A/arcsec^2.
 
-    See Also
-    --------
-    :ads:`Scaramella+22 <2022A&A...662A.112E>`
+    References
+    ----------
+    Scaramella et al. 2022, A&A 662, A112
+    (`2022A&A...662A.112E <https://ui.adsabs.harvard.edu/abs/2022A%26A...662A.112E>`_)
 
     Examples
     --------
     .. plot::
 
+       import numpy as np
        import matplotlib.pyplot as plt
-       from slicersim.spectrograph import Spectrograph
        from slicersim.scene.background import zodiacal_spectrum
-       lbda, _ = Spectrograph.lbda_from_respow([4000, 17000], 75)
+       lbda = np.linspace(4000, 17000, 200)
        fig, ax = plt.subplots()
        ax.plot(lbda / 1e4,
                np.log10(zodiacal_spectrum(lbda, model="Aldering01.BB5800")),

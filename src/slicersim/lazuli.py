@@ -1,16 +1,32 @@
+""" This module handles the Lazuli-specific targets and exposure time calculators.
+
+Lazuli is a two-field integral field spectrograph: a narrow field (40 mas
+spaxels) and a wide field (80 mas spaxels) observe the same sky region at two
+samplings and are imaged side by side on a single detector. The classes here
+specialise the generic targets of `~slicersim.target` (e.g.
+`LazuliSupernova`, `LazuliKilonova`, `LazuliCalSpec`, `LazuliTarget`) with
+the Lazuli instrument configuration and add the handling of the two fields, from
+switching between them (`VirtualLazuliTarget.change_spectrograph`) to
+projecting both onto one detector image (`VirtualLazuliTarget.to_image`).
+
+The module also exposes two convenience exposure time calculators,
+`lazuli_sn_etc` for SN Ia models and `lazuli_etc` for an arbitrary input
+spectrum.
+"""
+
 import os
 
 import numpy as np
 
 from .iotools import get_config
 from .simulation import Simulation
-from .target import CalSpec, Supernova, Kilonova, Target
+from .target import CalSpec, Kilonova, Supernova, Target
 
 __all__ = [
     "LazuliBlackBody",
     "LazuliCalSpec",
-    "LazuliSupernova",
     "LazuliKilonova",
+    "LazuliSupernova",
     "LazuliTarget",
     "lazuli_etc",
     "lazuli_sn_etc",
@@ -48,6 +64,7 @@ def lazuli_sn_etc(model, redshift, snr, per_resolution=True,
     ----------
     model : str
         The kind of supernova requested. Specify parameters with kwargs.
+
         - salt: SN Ia - parameters: x1, c
         - twin: SN Ia - parameters: xi1, xi2, xi3, color
     redshift : float
@@ -203,6 +220,10 @@ class VirtualLazuliTarget:
         ----------
         simulation : slicersim.Simulation, optional
             The simulation object. Default is None.
+        field : str, optional
+            Lazuli field the spectrograph is configured for, "narrow" or
+            "wide". If None, the spectrograph is left as the simulation
+            defines it. Default is "narrow".
         """
         # set it.
         self._simulation = simulation
@@ -216,24 +237,24 @@ class VirtualLazuliTarget:
         Parameters
         ----------
         scene : dict, optional
-            Scene configuration with the given format:
-            `scene = {scene: {pointsource:{}, # PSF
-                             background: {}, # spatially flat
-                             host: {} }} # structured background`
+            Scene configuration with the given format (see
+            `slicersim.scene.get_scene`)::
+
+                scene = {"scene": {"pointsource": {},  # PSF
+                                   "background": {},   # spatially flat
+                                   "host": {}}}        # structured background
+
             Default is None.
-        slicer : bool, optional
-            Should the spectrograph assume slicer (True) or MLA (False).
-            Default is True.
         **kwargs
             Goes to `iotools.get_config()` and updates the configuration.
 
         Returns
-        ------
+        -------
         VirtualLazuliTarget
             An instance of the class.
         """
         # create the simulator
-        config = get_config( **(cls._DEFAULT_CONFIG | {"instrument": cls._INSTRUMENT } | kwargs) )
+        config = get_config( **(cls._DEFAULT_CONFIG | {"instrument": cls._INSTRUMENT, "scene": scene} | kwargs) )
         simulation = Simulation.from_config(config)
         return cls(simulation=simulation)
 
@@ -269,8 +290,10 @@ class VirtualLazuliTarget:
         ----------
         field : str, optional
             Field mode to use:
+
             - "narrow": well-spatially sampled grid (~[58/2, 58] with 40mas spaxels)
             - "wide": coarser grid field (~[58/2, 58] with 80mas spaxels)
+
             Default is None.
         spatial_shape : tuple of float, optional
             Manually set the grid shape (e.g., (40, 40)).
@@ -311,6 +334,8 @@ class VirtualLazuliTarget:
         Returns
         -------
         dict
+            Readout configuration:
+
             - nmd: (ngroup, nframe_per_group, ndrop)
             - nramps: number of ramps (1-ramp = 1-nmd)
         """
@@ -340,27 +365,36 @@ class VirtualLazuliTarget:
         return field, current_config
 
     def get_cube(self, which="both", **kwargs):
-        """ returns both cubes, one for each slicer.
+        """Get the simulated cubes, for one or both Lazuli fields.
 
         Parameters
         ----------
-        which: string
-            which cube should be computed.
-            - both: both narrow and wide field.
-            - current: only current setup.
-            - narrow: only the narrow field
-            - wide: only the wide field
+        which : str, optional
+            Which cube should be computed:
 
-        **kwargs goes to simulation.get_cube(**kwargs)
+            - "both": both narrow and wide field.
+            - "current": only the current setup.
+            - "narrow": only the narrow field.
+            - "wide": only the wide field.
+
+            Default is "both".
+        **kwargs
+            Goes to `simulation.Simulation.get_cube`.
 
         Returns
         -------
-        (cube, varcube)[, (cube, varcube)]:
-            cube and variance cube.
-            if which == "both":
-                (cube_narrow, varcube_narrow), (cube_med, varcube_med)
-            else:
-                (cube, varcube)
+        tuple
+            ``(cube, varcube)``, the cube and variance cube of the requested
+            field, or, if ``which="both"``,
+            ``((cube_narrow, varcube_narrow), (cube_wide, varcube_wide))``.
+
+        Raises
+        ------
+        ValueError
+            If `which` is not "current" while the spectrograph is set up
+            neither as the narrow nor the wide field.
+        NotImplementedError
+            If the scene contains a host (not yet supported).
         """
         # just get the current cube.
         if which == "current":
@@ -420,7 +454,36 @@ class VirtualLazuliTarget:
             return cubes_wide
 
     def to_image(self, mapper, cubes=None, **kwargs):
-        """ """
+        """Project the narrow and wide field cubes onto a single detector image.
+
+        Both fields are generated, then each is projected onto the slices it
+        occupies: the narrow field fills the first ``nslices_narrow`` slices
+        and the wide field the ones immediately above. The two projections are
+        summed into one image.
+
+        Parameters
+        ----------
+        mapper : slicersim.mapper.SlicerMapper
+            Mapper describing where each slice falls on the detector.
+        cubes : tuple, optional
+            ``(cube_narrow, cube_wide)`` to project, to avoid regenerating
+            them. If None, both are generated with
+            ``get_cube(which="both")``. Default is None.
+        **kwargs
+            Goes to `get_cube`.
+
+        Returns
+        -------
+        numpy.ndarray
+            2D detector image, summing the narrow and wide field
+            contributions.
+
+        Notes
+        -----
+        The slice identifiers are reversed (``[::-1]``) before being handed to
+        the mapper, because the mapper numbers slices from the top of the
+        detector while the cubes are ordered from the bottom.
+        """
         # Generate cube
         if cubes is None:
             (cube_narrow, _), (cube_wide, _) = self.get_cube(which="both", **kwargs)
@@ -439,7 +502,30 @@ class VirtualLazuliTarget:
         return img_
 
     def get_detector_image(self, mapper, cubes=None, **kwargs):
-        """ """
+        """Project the narrow and wide field cubes onto a single detector image.
+
+        .. deprecated::
+            Use `to_image` instead, which this simply forwards to.
+
+        Parameters
+        ----------
+        mapper : slicersim.mapper.SlicerMapper
+            Mapper describing where each slice falls on the detector.
+        cubes : tuple, optional
+            ``(cube_narrow, cube_wide)`` to project. Default is None.
+        **kwargs
+            Goes to `to_image`.
+
+        Returns
+        -------
+        numpy.ndarray
+            2D detector image.
+
+        Warns
+        -----
+        UserWarning
+            Always, since this method is deprecated in favour of `to_image`.
+        """
         import warnings
         warnings.warn("get_detector_image is deprecated. use to_image() instead")
         return self.to_image(mapper, cubes=cubes, **kwargs)
@@ -528,57 +614,105 @@ class LazuliSupernova( VirtualLazuliTarget, Supernova ):
     ----------
     model : str, optional
         The supernova model to use. Default is "salt".
-    slicer : bool, optional
-        Should the spectrograph assume slicer (True) or MLA (False).
-        Default is True.
     **kwargs
-        Goes to `scene.get_sn_scene()`.
+        Goes to `scene.get_scene()`.
 
+    See Also
+    --------
+    LazuliKilonova : The same, for kilonovae.
     """
     def __init__(self, model="salt", **kwargs):
-        """Initialize the LazuliSN.
+        """Initialize the LazuliSupernova.
 
         Parameters
         ----------
         model : str, optional
-            The supernova model to use. Default is "salt".
-        slicer : bool, optional
-            Should the spectrograph assume slicer (True) or MLA (False).
-            Default is True.
-        **kwargs
-            Goes to `scene.get_scene()`.
-        """
-        Supernova.__init__(self, model=model, **kwargs)
+            The supernova model to use (see `scene.get_scene`, it is passed
+            as ``source="snia-{model}"``):
 
+            - "salt": SALT2-extended (parameters: x1, c, MBmax)
+            - any sncosmo salt source name (e.g. "salt3")
+            - "twin": Twins-Embedding
+
+            Default is "salt".
+        **kwargs
+            Goes to `scene.get_scene()`, i.e. to the point source
+            configuration (e.g. redshift, phase, position, x1, c).
+        """
+        from .scene import get_scene
+        scene = get_scene(source=f"snia-{model}", **kwargs)
+        config = get_config( **( self._DEFAULT_CONFIG | {"instrument": self._INSTRUMENT} | {"scene": scene}) )
+        simulation = Simulation.from_config(config)
+
+        super().__init__(simulation=simulation)
+
+# Kilonovae
 class LazuliKilonova( VirtualLazuliTarget, Kilonova ):
-    """Lazuli class for Supernovae.
+    """Lazuli class for Kilonovae.
+
+    The kilonova spectrum is computed from POSSIS radiative transfer
+    models (Bulla 2019, 2023; see `scene.sources.kilonova`), for a given
+    viewing angle `theta`, and normalized either to a peak absolute magnitude
+    (`magabs`) or to a peak observed magnitude (`magobs`).
 
     Parameters
     ----------
     model : str, optional
-        The supernova model to use. Default is "salt".
-    slicer : bool, optional
-        Should the spectrograph assume slicer (True) or MLA (False).
-        Default is True.
-    **kwargs
-        Goes to `scene.get_sn_scene()`.
+        The kilonova model to use:
 
+        - "bulla23": POSSIS grid from Bulla (2023) [default]
+        - "bulla19": POSSIS model from Bulla (2019)
+    **kwargs
+        Goes to `scene.get_scene()`.
+
+    See Also
+    --------
+    LazuliSupernova : The same, for supernovae.
+    slicersim.scene.sources.kilonova.get_kilonova_flux : The spectral model.
+
+    Examples
+    --------
+    >>> import slicersim
+    >>> target = slicersim.LazuliKilonova(redshift=0.1, phase=1.4, theta=30)
+    >>> _ = target.setup_to_snr(10, lbda_range=[6000, 9000], frame="obs")
+    >>> lbda, flux, variance = target.get_spectrum(unit="flambda")
     """
-    def __init__(self, **kwargs):
-        """Initialize the LazuliSN.
+    def __init__(self, model="bulla23", **kwargs):
+        """Initialize the LazuliKilonova.
 
         Parameters
         ----------
+        model : str, optional
+            The kilonova model to use (it is passed to `scene.get_scene`
+            as ``source="kilonova-{model}"``):
+
+            - "bulla23": POSSIS grid from Bulla (2023) [default]
+            - "bulla19": POSSIS model from Bulla (2019)
         **kwargs
-            Goes to `scene.get_scene()`.
+            Goes to `scene.get_scene()`, i.e. to the point source
+            configuration. Main parameters are (see
+            `scene.sources.kilonova.get_kilonova_flux`):
+
+            - redshift: redshift of the kilonova (default 0.2)
+            - phase: days since merger (default 1.4)
+            - theta: viewing angle in degrees (default 0, i.e. pole-on)
+            - magabs: peak absolute magnitude in `band` (default -15.8)
+            - magobs: peak observed magnitude in `band` (overrides `magabs`)
+            - band: bandpass for the normalization (default "sdssr")
+            - position: position in the IFU in spaxels (default [1, 0.5])
         """
-        Kilonova.__init__(self, **kwargs)
+        from .scene import get_scene
+        scene = get_scene(source=f"kilonova-{model}", **kwargs)
+        config = get_config( **( self._DEFAULT_CONFIG | {"instrument": self._INSTRUMENT} | {"scene": scene}) )
+        simulation = Simulation.from_config(config)
+
+        super().__init__(simulation=simulation)
 
 # Blackbody point source
 class LazuliBlackBody( VirtualLazuliTarget, Target ):
     """Lazuli class for blackbody point sources.
 
-    The blackbody spectrum is generated by `scene.pointsource.get_blackbody_flux`
+    The blackbody spectrum is generated by `scene.sources.blackbody.get_blackbody_flux`
     (based on `astropy.modeling.models.BlackBody`) and normalized to the requested
     magnitude in the given band.
 
@@ -653,8 +787,6 @@ class LazuliCalSpec( VirtualLazuliTarget, CalSpec  ):
         Goes to `simulation.Simulation.from_source()`.
 
     """
-    from .extra.calspec import calspecsource
-    _SOURCES = calspecsource
     def __init__(self, name, background="zodi",
                  **kwargs):
         """Initialize the LazuliCalSpec.
@@ -771,12 +903,30 @@ class LazuliFlat( VirtualLazuliTarget, Target  ):
             Wavelength array.
         flux : array_like
             Flux array.
+        amplitude : float, optional
+            Scaling factor applied to `flux`. It is a mutable parameter of the
+            resulting scene, so the flat level can be changed afterwards
+            without rebuilding the target. Default is 1.
         **kwargs
             Goes to `simulation.Simulation.from_config()`.
         """
 
         def model_flux(wave, amplitude):
-            """ """
+            """Interpolate the reference flat spectrum onto a wavelength array.
+
+            Parameters
+            ----------
+            wave : array_like
+                Wavelength array in Angstrom.
+            amplitude : float
+                Scaling factor applied to the interpolated flux.
+
+            Returns
+            -------
+            numpy.ndarray
+                The scaled flat flux. Wavelengths outside the range of the
+                reference spectrum are `numpy.nan`.
+            """
             return np.interp(wave, lbda, flux, left=np.nan, right=np.nan) * amplitude
 
         # build the scene config
@@ -797,7 +947,31 @@ from .calibration import Flat3DCalibration
 
 
 class Lazuli3DFlat(VirtualLazuliTarget, Flat3DCalibration):
-    """ """
+    """Lazuli 3D flat-field calibration target.
+
+    Combines the Lazuli instrument configuration of `VirtualLazuliTarget` with
+    the spatially uniform scene of
+    `~slicersim.calibration.Flat3DCalibration`, to simulate the flat-field
+    exposures used to calibrate the wavelength response of the two fields.
+
+    The calibration source is the on-board QTH lamp, approximated by a
+    blackbody (see `from_qth`), optionally seen through the Fabry-Perot etalon
+    that turns its continuum into a comb of spectral features used for
+    wavelength calibration (see `from_febryperot`).
+
+    Parameters
+    ----------
+    simulation : slicersim.Simulation, optional
+        The simulation object. Default is None.
+    field : str, optional
+        Lazuli field the spectrograph is configured for, "narrow" or "wide".
+        Default is "narrow".
+
+    Attributes
+    ----------
+    _QTH_TEMPERATURE : float
+        Blackbody temperature in Kelvin assumed for the QTH lamp.
+    """
     _QTH_TEMPERATURE = 3000
     @classmethod
     def from_qth(cls, temperature=None, mag=12, band='sdssr',
@@ -813,7 +987,45 @@ class Lazuli3DFlat(VirtualLazuliTarget, Flat3DCalibration):
     @classmethod
     def from_febryperot(cls, fp_throughput="lazuli_fp_transmission.csv",
                             temperature=None, mag=12, band='sdssr', **kwargs):
-        """ """
+        """Initialize the flat as observing the QTH lamp through the Fabry-Perot.
+
+        Parameters
+        ----------
+        fp_throughput : str or callable, optional
+            Fabry-Perot transmission. If a str, the path to a csv file with
+            the wavelength in Angstrom as index and a "transmission" column;
+            it is looked up in the package config directory when it is not
+            found locally. If a callable, the transmission as a function of
+            wavelength in Angstrom.
+            Default is "lazuli_fp_transmission.csv".
+        temperature : float, optional
+            Temperature of the lamp in Kelvin. Default is None.
+            If None`_QTH_TEMPERATURE` is used.
+        mag : float, optional
+            Magnitude the lamp spectrum is normalised to. Default is 12.
+        band : str, optional
+            Name of the bandpass used for the normalisation (must be known by
+            `sncosmo`). Default is "sdssr".
+        **kwargs
+            Goes to
+            `~slicersim.calibration.Flat3DCalibration.from_febryperot`.
+
+        Returns
+        -------
+        Lazuli3DFlat
+            An instance of the class.
+
+        Warns
+        -----
+        UserWarning
+            When `fp_throughput` is read from a file, flagging the temporary
+            extrapolation patch that fills wavelengths outside the tabulated
+            range with the first tabulated transmission value.
+
+        See Also
+        --------
+        from_qth : The same lamp, without the Fabry-Perot etalon.
+        """
         if type(fp_throughput) is str:
             if not os.path.isfile(fp_throughput):
                 from .iotools import expand_path
@@ -828,6 +1040,9 @@ class Lazuli3DFlat(VirtualLazuliTarget, Flat3DCalibration):
             fp_throughput = interpolate.interp1d(fp_throughput.index, fp_throughput["transmission"], bounds_error=False,
                                                  fill_value=fp_throughput["transmission"].iloc[0]
             )
+
+        if temperature is None:
+            temperature = cls._QTH_TEMPERATURE
 
         return super().from_febryperot(temperature=cls._QTH_TEMPERATURE, fp_throughput=fp_throughput,
                                         mag=mag, band=band, **kwargs)

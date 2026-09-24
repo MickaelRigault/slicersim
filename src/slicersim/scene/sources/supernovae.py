@@ -21,6 +21,7 @@ def get_snia_pointsource(source=None, **kwargs):
     ----------
     source : str, optional
         Name of the SN Ia model to use. If None the default is used.
+
         - "salt" [default]
         - any sncosmo salt source name.
         - "twin"
@@ -36,15 +37,15 @@ def get_snia_pointsource(source=None, **kwargs):
     Raises
     ------
     NotImplementedError
-        If ``soource`` matches neither the "salt" nor the "twin" family.
+        If ``source`` matches neither the "salt" nor the "twin" family.
 
     See Also
     --------
-    slicersim.scene.get_sn_scene : Build a full scene around a SN Ia.
+    slicersim.scene.get_scene : Build a full scene around a SN Ia.
 
     Examples
     --------
-    >>> get_snia_pointsource(soource="salt", redshift=0.5)  # doctest: +SKIP
+    >>> get_snia_pointsource(source="salt", redshift=0.5)  # doctest: +SKIP
     {'name': 'SN Ia', 'redshift': 0.5, ...}
     """
     generic = {'name': 'SN Ia',

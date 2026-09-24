@@ -18,6 +18,16 @@ slicersim.profiles
       get_profilemodel
       get_profilepsf
       psfimage_to_encircledenergy
+
+   
+   .. autofunction:: slicersim.profiles.airyradius_to_gaussiansigma
+   .. autofunction:: slicersim.profiles.build_pixels
+   .. autofunction:: slicersim.profiles.gaussiansigma_to_airyradius
+   .. autofunction:: slicersim.profiles.get_gaussian1d
+   .. autofunction:: slicersim.profiles.get_gaussian2d
+   .. autofunction:: slicersim.profiles.get_profilemodel
+   .. autofunction:: slicersim.profiles.get_profilepsf
+   .. autofunction:: slicersim.profiles.psfimage_to_encircledenergy
    
 
    

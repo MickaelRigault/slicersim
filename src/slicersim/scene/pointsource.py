@@ -41,16 +41,35 @@ class PointSource(SceneElement):
         Parameters
         ----------
         config : dict
-            Configuration dictionary.
-            It must contain:
-            - position: tuple, optional
-            - model_func: callable, optional
-            - source: str, optional
+            Configuration dictionary. It must contain either
+            ``model_func`` or ``source``:
+
+            - position: tuple, optional (default (0, 0))
+            - model_func: callable, optional. Used as is if given.
+            - source: str or (lbda, flux), optional. If str, the model
+              function is obtained from
+              `~slicersim.scene.sources.source_to_modelfunc` (e.g.
+              "salt2-extended", "blackbody", "bulla23"). Otherwise, it is
+              assumed to be a spectrum (see `from_spectrum`).
+
+            Any other entry is stored in the meta and used as parameter of
+            the model function (e.g. redshift, phase).
+            The input dict is not modified.
 
         Returns
         -------
         PointSource
             An instance of the `PointSource` class.
+
+        Raises
+        ------
+        ValueError
+            If neither ``model_func`` nor ``source`` is in `config`.
+
+        Examples
+        --------
+        >>> ps = PointSource.from_config({"source": "bulla23", "redshift": 0.1,
+        ...                               "phase": 1.4, "position": [1, 0.5]})
         """
         # do not affect the input config
         config = deepcopy(config)
@@ -58,10 +77,13 @@ class PointSource(SceneElement):
         position = config.get("position", (0, 0))
         model_func = config.get("model_func", None)
         # look for one
-        if model_func is None and "source" in config:
+        if model_func is None:
+            if "source" not in config:
+                raise ValueError("neither 'model_func' nor 'source' in the config. One is needed.")
+
             source_ = config["source"]
             if type(source_) in [str, np.str_]:
-                model_func = source_to_modelfunc(config["source"])
+                model_func = source_to_modelfunc(source_)
             else:
                 # assume it's a spectrum
                 mag = config.get("mag", None)
@@ -71,8 +93,6 @@ class PointSource(SceneElement):
                                             mag=mag, band=band,
                                             position=position,
                                             meta=config)
-        else:
-            raise ValueError("neither 'model_func' nor 'source' in the config. One is needed.")
 
         return cls(model_func=model_func, position=position,
                    meta=config)
