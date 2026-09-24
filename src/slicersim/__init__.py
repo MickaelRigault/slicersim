@@ -1,11 +1,11 @@
 """
-Slicersim is a Python package for simulating integral field spectrograph (IFS) data. 
+Slicersim is a Python package for simulating integral field spectrograph (IFS) data.
 It serves as Lazuli Space Observatory slicer's simulator.
 
 It provides tools to create realistic datacubes, including various noise sources
 and instrument effects.
 """
-__version__ = '1.3.0'
+__version__ = '1.3.3'
 
 # Top level simulations
 # quick access useful for simulation

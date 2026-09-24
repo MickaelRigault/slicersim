@@ -1,9 +1,9 @@
 
 
-slicersim.scene.sources
+slicersim.scene.targets
 =======================
 
-.. automodule:: slicersim.scene.sources
+.. automodule:: slicersim.scene.targets
 
 
 .. rubric:: Functions
@@ -13,7 +13,7 @@ slicersim.scene.sources
    source_to_modelfunc
 
 
-.. autofunction:: slicersim.scene.sources.source_to_modelfunc
+.. autofunction:: slicersim.scene.targets.source_to_modelfunc
 
 
 .. rubric:: Modules
@@ -23,8 +23,6 @@ slicersim.scene.sources
    :recursive:
 
    blackbody
-   calspec
-   kilonova
    supernovae
    utils
 

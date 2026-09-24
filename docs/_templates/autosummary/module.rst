@@ -4,6 +4,19 @@
 
 .. automodule:: {{ fullname }}
 
+{% if functions %}
+.. rubric:: Functions
+
+.. autosummary::
+{% for item in functions %}
+   {{ item }}
+{%- endfor %}
+
+{% for item in functions %}
+.. autofunction:: {{ fullname }}.{{ item }}
+{%- endfor %}
+{% endif %}
+
 .. rubric:: Modules
 
 .. autosummary::
@@ -25,6 +38,10 @@
    .. autosummary::
    {% for item in functions %}
       {{ item }}
+   {%- endfor %}
+
+   {% for item in functions %}
+   .. autofunction:: {{ fullname }}.{{ item }}
    {%- endfor %}
    {% endif %}
 

@@ -14,16 +14,17 @@ except ImportError:
     twins_embedding_model = None
 
 
-def get_snia_pointsource(model="salt", **kwargs):
+def get_snia_pointsource(source=None, **kwargs):
     """Get a generic configuration for a SN Ia point source.
 
     Parameters
     ----------
-    model : str, optional
-        Name of the SN Ia model to use.
-        - "salt" (or any sncosmo salt source name).
+    source : str, optional
+        Name of the SN Ia model to use. If None the default is used.
+
+        - "salt" [default]
+        - any sncosmo salt source name.
         - "twin"
-        Default is "salt".
     **kwargs
         Additional parameters to update the configuration.
 
@@ -36,32 +37,32 @@ def get_snia_pointsource(model="salt", **kwargs):
     Raises
     ------
     NotImplementedError
-        If ``model`` matches neither the "salt" nor the "twin" family.
+        If ``source`` matches neither the "salt" nor the "twin" family.
 
     See Also
     --------
-    slicersim.scene.get_sn_scene : Build a full scene around a SN Ia.
+    slicersim.scene.get_scene : Build a full scene around a SN Ia.
 
     Examples
     --------
-    >>> get_snia_pointsource(model="salt", redshift=0.5)  # doctest: +SKIP
+    >>> get_snia_pointsource(source="salt", redshift=0.5)  # doctest: +SKIP
     {'name': 'SN Ia', 'redshift': 0.5, ...}
     """
     generic = {'name': 'SN Ia',
                'redshift': 1.5,
                'phase': 0, 'position': [1, 0.5]}
 
-    if "salt" in model.lower():
-        if model == "salt":
-            model = "salt2-extended"
+    if (source is None) or ("salt" in source.lower()):
+        if (source is None) or (source == "salt"):
+            source = "salt2-extended"
 
-        pointsource = {'source': model, 'MBmax': -19.3, 'c': 0., 'x1': 0.}
+        pointsource = {'source': source, 'MBmax': -19.3, 'c': 0., 'x1': 0.}
 
-    elif "twin" in model.lower():
+    elif "twin" in source.lower():
         pointsource = {'magnitude': 0., 'color': 0., 'coordinates': (0., 0., 0.)}
 
     else:
-        raise NotImplementedError(f"no SN Ia configuration defined for model: {model}")
+        raise NotImplementedError(f"no SN Ia configuration defined for {source=}")
 
     return generic | pointsource | kwargs
 
@@ -140,7 +141,6 @@ def get_saltmodel(redshift=0.1,
 
     model.get_flux = get_flux  # Monkey patching
     return model
-
 
 # explicit here the parameters to enable mutable_parameters parsing
 def get_saltmodel_flux(lbda, phase,

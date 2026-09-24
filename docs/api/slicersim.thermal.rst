@@ -13,6 +13,11 @@ slicersim.thermal
       blackbody_photonflux
       fratio_to_solidangle
       get_source_radiation
+
+   
+   .. autofunction:: slicersim.thermal.blackbody_photonflux
+   .. autofunction:: slicersim.thermal.fratio_to_solidangle
+   .. autofunction:: slicersim.thermal.get_source_radiation
    
 
    
