@@ -15,6 +15,7 @@ slicersim
 
    calibration
    detector
+   extra
    iotools
    lazuli
    mapper

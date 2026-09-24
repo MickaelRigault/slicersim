@@ -10,6 +10,8 @@ Each module implements one family of sources:
   and 2023) with a viewing angle dependency.
 - `~slicersim.scene.sources.blackbody`: blackbody continuum sources.
 - `~slicersim.scene.sources.calspec`: HST CalSpec spectrophotometric standards.
+- `~slicersim.scene.sources.stars`: point sources built from stellar spectra
+  (e.g. CalSpec stars).
 - `~slicersim.scene.sources.utils`: helper tools shared by the source models.
 
 A model function always takes the wavelength array ``lbda`` (in Angstrom) as
