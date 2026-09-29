@@ -71,7 +71,7 @@ class Detector:
                           "ron_floor", "roic_glow"]
 
     def __init__(self, tframe, dark, ron, qe, pixel_size,
-                     gain=1, saturation=65_635,
+                     gain=1, saturation=65_535,
                      roic_glow=0,
                      nmd=(64, 8, 0), lbda_range=None,
                      min_group=2, max_group=64,
