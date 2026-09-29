@@ -1,5 +1,6 @@
 """ structured background """
 import warnings
+from copy import deepcopy
 import numpy as np
 from astropy.modeling.models import Sersic2D
 from astropy.cosmology import Planck18 as cosmology
