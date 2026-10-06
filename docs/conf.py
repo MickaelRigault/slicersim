@@ -1,103 +1,109 @@
-# Configuration file for the Sphinx documentation builder.
-#
-# This file only contains a selection of the most common options. For a full
-# list see the documentation:
+# Sphinx configuration for the slicersim documentation.
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
-
-# -- Path setup --------------------------------------------------------------
-
-# If extensions (or modules to document with autodoc) are in another directory,
-# add these directories to sys.path here. If the directory is relative to the
-# documentation root, use os.path.abspath to make it absolute, like shown here.
-#
+import datetime
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../'))
 
+# Document the source tree (and not an older installed version).
+sys.path.insert(0, os.path.abspath("../src"))
+
+import slicersim  # noqa: E402
 
 # -- Project information -----------------------------------------------------
-
-project = 'slicersim'
-copyright = '2025, Mickael Rigault'
-author = 'Mickael Rigault'
-
-# The full version, including alpha/beta/rc tags
-release = '0.1.0'
-
+project = "slicersim"
+author = "Mickael Rigault"
+copyright = f"2024-{datetime.date.today().year}, {author}"
+release = slicersim.__version__
+version = ".".join(release.split(".")[:2])
 
 # -- General configuration ---------------------------------------------------
-
-# Add any Sphinx extension module names here, as strings. They can be
-# extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
-# ones.
 extensions = [
-    'sphinx_design',
-    'sphinx.ext.autodoc',
-    'sphinx.ext.autosummary',
-    'sphinx.ext.napoleon', # For NumPy and Google style docstrings
-    'sphinx.ext.intersphinx',
-    'sphinx.ext.autosectionlabel',
-    'sphinx.ext.mathjax',
-
-    'sphinx.ext.viewcode',
-    'matplotlib.sphinxext.plot_directive',
-    # extra
-    "numpydoc",
-    'myst_nb',
-    "nbsphinx",
-    'sphinx_copybutton'
+    "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
+    "sphinx.ext.napoleon",
+    "sphinx.ext.intersphinx",
+    "sphinx.ext.mathjax",
+    "sphinx.ext.viewcode",
+    "matplotlib.sphinxext.plot_directive",
+    "myst_nb",
+    "sphinx_design",
+    "sphinx_copybutton",
 ]
 
-nbsphinx_execute = 'never'
+master_doc = "index"
+templates_path = ["_templates"]
+exclude_patterns = [
+    "_build",
+    "Thumbs.db",
+    ".DS_Store",
+    "**.ipynb_checkpoints",
+    "notebooks/extra",
+    "notebooks/gemini",
+]
+
+# `foo` in docstrings is a cross-reference to the Python object foo.
+default_role = "py:obj"
+
+# -- API (autodoc / autosummary / napoleon) ----------------------------------
+autosummary_generate = True
+autosummary_imported_members = False
+autodoc_member_order = "groupwise"
+autoclass_content = "class"
+autodoc_typehints = "none"
+autodoc_default_options = {
+    "members": True,
+    "show-inheritance": True,
+}
+add_module_names = False
+toc_object_entries_show_parents = "hide"
+
+napoleon_google_docstring = False
+napoleon_numpy_docstring = True
+napoleon_use_rtype = False
+napoleon_use_ivar = True
+
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable", None),
+    "scipy": ("https://docs.scipy.org/doc/scipy", None),
+    "pandas": ("https://pandas.pydata.org/docs", None),
+    "astropy": ("https://docs.astropy.org/en/stable", None),
+    "matplotlib": ("https://matplotlib.org/stable", None),
+    "sncosmo": ("https://sncosmo.readthedocs.io/en/stable", None),
+}
+
+# Figures produced by ``.. plot::`` directives in docstrings.
+plot_include_source = True
+plot_html_show_source_link = False
+plot_html_show_formats = False
+plot_formats = [("png", 120)]
+
+# -- Notebooks (myst-nb) -----------------------------------------------------
+# Notebooks are stored with their outputs and are not re-executed.
 nb_execution_mode = "off"
+myst_enable_extensions = ["colon_fence", "dollarmath"]
 
+# -- Copy button: strip prompts ----------------------------------------------
+copybutton_prompt_text = r">>> |\.\.\. |\$ "
+copybutton_prompt_is_regexp = True
 
-
-
-autodoc_member_order = "bysource"
-autosectionlabel_prefix_document = True
-
-
-# Add any paths that contain templates here, relative to this directory.
-templates_path = ['_templates']
-
-# List of patterns, relative to source directory, that match files and
-# directories to ignore when looking for source files.
-# This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'doc_extra.md', 'source_backup']
-
-source_suffix = ['.rst', '.ipynb', '.md']
-
-
-# -- Options for HTML output -------------------------------------------------
-
-html_logo = '_static/slicersim_logo.png'
-# The theme to use for HTML and HTML Help pages.  See the documentation for
-# a list of builtin themes.
-#
-html_theme = 'sphinx_book_theme'
-#html_theme = "pydata_sphinx_theme"
+# -- HTML output -------------------------------------------------------------
+html_theme = "sphinx_book_theme"
+html_title = "slicersim"
+html_logo = "_static/slicersim_logo.png"
+html_static_path = ["_static"]
+html_css_files = ["custom.css"]
 
 html_theme_options = {
-    'logo_only': True,
-    'show_toc_level': 2,
-    'repository_url': f'https://github.com/MickaelRigault/{project}',
-    'use_repository_button': True,     # add a "link to repository" button
+    "repository_url": "https://github.com/MickaelRigault/slicersim",
+    "repository_branch": "main",
+    "path_to_docs": "docs",
+    "use_repository_button": True,
+    "use_issues_button": True,
+    "use_edit_page_button": True,
+    "use_download_button": True,
+    "show_toc_level": 2,
+    "show_navbar_depth": 1,
+    "home_page_in_toc": False,
+    "navigation_with_keys": False,
 }
-# Add any paths that contain custom static files (such as style sheets) here,
-# relative to this directory. They are copied after the builtin static files,
-# so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
-
-# -- Extension configuration -------------------------------------------------
-
-# Auto-generate stub files
-autosummary_generate = True
-
-# Include both the class docstring and the __init__ method
-autoclass_content = "both"
-
-numpydoc_show_class_members = True
-numpydoc_class_members_toctree = False
-
-master_doc = "contents"

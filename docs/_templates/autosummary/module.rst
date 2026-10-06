@@ -1,67 +1,48 @@
-{% if modules %}
-{# This is a package with submodules #}
 {{ fullname | escape | underline }}
 
 .. automodule:: {{ fullname }}
+   :no-members:
+
+{% if classes %}
+.. rubric:: Classes
+
+.. autosummary::
+   :toctree:
+   :nosignatures:
+{% for item in classes %}
+   {{ item }}
+{%- endfor %}
+{% endif %}
 
 {% if functions %}
 .. rubric:: Functions
 
 .. autosummary::
+   :toctree:
+   :nosignatures:
 {% for item in functions %}
    {{ item }}
 {%- endfor %}
+{% endif %}
 
-{% for item in functions %}
-.. autofunction:: {{ fullname }}.{{ item }}
+{% if exceptions %}
+.. rubric:: Exceptions
+
+.. autosummary::
+   :toctree:
+   :nosignatures:
+{% for item in exceptions %}
+   {{ item }}
 {%- endfor %}
 {% endif %}
 
-.. rubric:: Modules
+{% if modules %}
+.. rubric:: Submodules
 
 .. autosummary::
-   :toctree: .
+   :toctree:
    :recursive:
 {% for item in modules %}
    {{ item }}
 {%- endfor %}
-
-{% else %}
-{# This is a regular module with code #}
-{{ fullname | escape | underline }}
-
-.. automodule:: {{ fullname }}
-
-   {% if functions %}
-   .. rubric:: Functions
-
-   .. autosummary::
-   {% for item in functions %}
-      {{ item }}
-   {%- endfor %}
-
-   {% for item in functions %}
-   .. autofunction:: {{ fullname }}.{{ item }}
-   {%- endfor %}
-   {% endif %}
-
-   {% if classes %}
-   .. rubric:: Classes
-
-   {% for item in classes %}
-   .. dropdown:: {{ item }}
-
-      .. autoclass:: {{ fullname }}.{{ item }}
-         :members:
-   {%- endfor %}
-   {% endif %}
-
-   {% if exceptions %}
-   .. rubric:: Exceptions
-
-   .. autosummary::
-   {% for item in exceptions %}
-      {{ item }}
-   {%- endfor %}
-   {% endif %}
 {% endif %}

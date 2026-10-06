@@ -384,19 +384,16 @@ class Spectrograph:
     def update(self, reset_others=False, **kwargs):
         """Update any mutable attribute of the spectrograph.
 
-        remark: the method accepts django like format such that
-                a__b is understood as a.b.
-                For instance: optics__temperature => optics.temperature.
-                so update(**{'optics.temperature':220}) is equivalent to
-                update(optics__temperature=220)
+        The method accepts the django-like format, such that ``a__b`` is
+        understood as ``a.b``. For instance, ``update(optics__temperature=220)``
+        is equivalent to ``update(**{'optics.temperature': 220})``.
 
-        Information:
-        ------------
-           # lbda:
-           - changing `dispersion_resolution` redefines self.lbda such that
-             the resolving_power() is unchanged
-           - changing `spotsize` updates self.dispersion_resolution
-             *without* updating lbda, effectively changing the resolving_power()
+        Notes on the wavelength sampling (``lbda``):
+
+        - changing ``dispersion_resolution`` redefines ``self.lbda`` such that
+          the resolving power is unchanged;
+        - changing ``spotsize`` updates ``self.dispersion_resolution``
+          *without* updating ``lbda``, effectively changing the resolving power.
 
 
         Parameters
@@ -556,7 +553,8 @@ class Spectrograph:
         Parameters
         ----------
         throughput: pandas.Series, float, array, func, OpticsThroughput
-            The throughput of the system as a function of wavelength (0->1)
+            The throughput of the system as a function of wavelength (0->1):
+
             - float: constant throughput
             - array: must broadcast with self.lbda
             - func: function that input self.lbda such that throughput_array = throughput(self.lbda)
@@ -768,9 +766,9 @@ class Spectrograph:
         """Get spatial PSF standard deviation (in arcsec or in spaxels).
 
         The total (Gaussian) spatial PSF is made of two components:
+
         - the optical (chromatic) component, with stddev proportional
           to wavelength, normalized at wref=1 µm,
-
         - the guiding (achromatic) component, with constant stddev.
 
         If needed, the 1D vector can be embedded in a N-dim array of
@@ -2209,6 +2207,7 @@ class MLASpectrograph(Spectrograph):
         """Get spectral PSF stddev in pixels.
 
         The total (Gaussian) spectral PSF is made of two components:
+
         - the optical (chromatic) component, with stddev proportional
           to wavelength, normalized at wref=1 µm,
         - the achromatic component, with constant stddev.
@@ -2359,14 +2358,12 @@ class OpticsThroughput:
         Parameters
         ----------
         curves: list, pandas.DataFrame
-            one curve per elements. Each curve is associated with noptics.
-            format:
-            - dataframe:
-                index: wavelengths
-                columns: names
-                values: curves
-            - list of array 2d: [curve_1, curve_2, ...]
-            - list of lbda, array 3d: [[lbda_1, curve_1], [lbda_2, curve_2], ...]
+            One curve per element. Each curve is associated with noptics.
+            Accepted formats:
+
+            - dataframe: wavelengths as index, one column (name) per curve.
+            - list of array 2d: ``[curve_1, curve_2, ...]``
+            - list of lbda, array 3d: ``[[lbda_1, curve_1], [lbda_2, curve_2], ...]``
         """
         # reformat as dataframe
         curves = np.asarray(curves)
@@ -2455,10 +2452,14 @@ class OpticsThroughput:
     def from_filename(cls, filename, noptics=1, meta={}, **kwargs):
         """ Create an OpticsThroughput instance from a datafile
 
-         Parameters
+        Parameters
         ----------
-        config : str
-            path (.ecsv or .csv)
+        filename : str
+            Path of the throughput file (.ecsv or .csv).
+        noptics : int, optional
+            Number of optical elements associated to each curve. Default is 1.
+        meta : dict, optional
+            Metadata stored with the instance. Default is {}.
 
         **kwargs
             Additional arguments passed to `pandas.read_csv`.

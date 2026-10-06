@@ -424,9 +424,9 @@ class Simulation:
     def update(self, reset_others=False, **kwargs):
         """Update any mutable parameter of the simulation.
 
-        For convinience, the update method respects the django '__' format,
-        such that, e.g. 'pointsource__phase' is understood as
-        'pointsource.phase'. This way, one can do:
+        For convinience, the update method respects the django ``__`` format,
+        such that, e.g. ``pointsource__phase`` is understood as
+        ``pointsource.phase``. This way, one can do:
 
         >>> self.update(pointsource__phase = -1)  # doctest: +SKIP
 
@@ -435,8 +435,8 @@ class Simulation:
 
         >>> self.update(phase = -1)  # doctest: +SKIP
 
-        For convenience and backward compatiblity, you can use "target__" in
-        place of "pointsource__".
+        For convenience and backward compatiblity, you can use ``target__`` in
+        place of ``pointsource__``.
 
         Parameters
         ----------

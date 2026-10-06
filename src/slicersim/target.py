@@ -666,14 +666,18 @@ class BlackBody( VirtualTarget ):
 
 # PowerLaw
 class PowerLaw( VirtualTarget ):
-    """Lazuli class for PowerLaw generic objects.
+    """Target class for power-law spectra.
 
     Parameters
     ----------
-    name : str
-        Name of the CalSpec star.
+    alpha : float, optional
+        Power-law index, see `~slicersim.scene.sources.generic.get_powerlaw_flux`.
     **kwargs
-        Goes to `simulation.Simulation.from_source()`.
+        Goes to `scene.get_scene()`, e.g. ``mag``, ``band`` and ``position``.
+
+    See Also
+    --------
+    slicersim.lazuli.LazuliPowerLaw : The Lazuli flavour of this target.
     """
     from .scene.sources.calspec import calspecsource
     _SOURCES = calspecsource

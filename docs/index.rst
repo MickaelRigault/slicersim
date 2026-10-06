@@ -1,119 +1,109 @@
-Welcome to slicersim
-======================
+slicersim
+=========
 
-`slicersim` is a Python package for simulating integral field spectrograph (IFS) data.
-It provides tools to create realistic datacubes, including various noise sources and instrument effects.
+**Realistic simulations of integral field spectrograph observations.**
 
-*Top level functionalities of this package is currently built for the
-Lazuli Space Telescope. But the code is generic and can be extended to
-any Integral Field Units (slicers or micro-lense arrays).*
+``slicersim`` turns a spectrum on the sky into the spectrum you would actually
+measure: it propagates a scene through the telescope, the spectrograph and the
+detector, adds every noise source, and tells you how long you need to
+expose to reach a given signal-to-noise.
 
-
-Sharp start
-============
-
-Create the target of interest. Setup the configuration you
-want. Obtained simulated spectrum.
-
-Create the target of interest
------------------------------
-
-.. tab-set::
-    :sync-group: category
-
-    .. tab-item:: Supernovae
-        :sync: sn
-
-        .. code-block:: python
-
-	    import slicersim
-
-	    # load a Type Ia Supernovae
-	    target = slicersim.LazuliSupernova(redshift=1.0, c=0.2, phase=1.5)
-
-    .. tab-item:: Kilonova
-        :sync: kn
-
-        .. code-block:: python
-
-	    import slicersim
-
-	    # load a kilonova (POSSIS Bulla 2023 model) seen at 30 degrees
-	    target = slicersim.LazuliKilonova(redshift=0.05, phase=1.4, theta=30)
-
-    .. tab-item:: BlackBody
-        :sync: bb
-
-        .. code-block:: python
-
-            import slicersim
-
-            # load a Blackbody spectrum with a temperature of 5000K and a magnitude of 20 in the SDSS r-band
-            target = slicersim.LazuliBlackBody(temperature=5_000, mag=20, band="sdssr")
-
-    .. tab-item:: CalSpec
-        :sync: star
-
-        .. code-block:: python
-
-	    import slicersim
-
-	    # provide the name (or short-name) of any calspec star
-	    target = slicersim.LazuliCalSpec("bd_17")
-
-    .. tab-item:: Anything
-        :sync: flat
-
-        .. code-block:: python
-
-	    import slicersim
-	    import numpy as np
-
-	    # provide your spectrum | here a flat spectrum
-	    lbda = np.arange(3_000, 20_000, 0.5) # every 0.5A
-	    flux = np.ones( lbda.shape )
-
-	    # build it forcing it to have a lsst-g of 20 mag.
-	    target = slicersim.LazuliTarget(lbda, flux, mag=20, band="lsstg")
-
-
-Set observing conditions
-------------------------
-
-.. tab-set::
-
-    .. tab-item:: to a mean SNR
-        :sync: snr
-
-        You can setup the read-out properties such that a requested
-        signal-to-noise is reached.
-
-        .. code-block:: python
-
-	    # say you want an average SNR of 20 between [5000, 6000] rest-frame
-	    _ = target.setup_to_snr(20, per_resolution=True, lbda_range=[5000, 6000], frame="rest")
-
-	    # get corresponding total exposure time,
-	    exposure_time = target.get_exposure_time() # [s] see options
-
-
-    .. tab-item:: to a read-out mode
-
-        You can directly specify how the detector should be red.
-
-        .. code-block:: python
-
-	    # Specify the detector read-out mode and number of ramps
-	    target.change_detector(nmd=(40, 10, 0), nramps=2)
-
-	    # get corresponding total exposure time,
-	    exposure_time = target.get_exposure_time() # see options
-
-
-Get realistic spectra
-----------------------
+It is the reference simulator of the `Lazuli Space Observatory
+<https://scixplorer.org/abs/2026arXiv260706391R/abstract>`_ image slicer,
+but its core is generic and applies to any slicer or micro-lens array IFU.
 
 .. code-block:: python
 
-    # get the flux and variance in erg/s/cm2/A ; see unit options
-    lbda, flux, variance = target.get_spectrum(unit="flambda")
+   import slicersim
+
+   sn = slicersim.LazuliSupernova(redshift=1.0, x1=0, c=0.2, phase=1.5)
+   sn.setup_to_snr(20)                                 # choose the detector read-out
+   exptime = sn.get_exposure_time()                    # [s]
+   lbda, flux, variance = sn.get_spectrum(unit="flambda")
+
+.. grid:: 1 2 2 2
+   :gutter: 3
+   :class-container: sd-mt-4
+
+   .. grid-item-card:: :octicon:`zap;1.2em` Exposure time calculator
+      :class-card: sd-border-0 sd-shadow-sm
+
+      One call gives the exposure time and read-out mode needed to reach a
+      requested signal-to-noise, for any target.
+
+   .. grid-item-card:: :octicon:`graph;1.2em` Realistic spectra and cubes
+      :class-card: sd-border-0 sd-shadow-sm
+
+      Noisy spectra, 3D cubes and detector images, with photon, read-out,
+      dark, thermal and background noise all accounted for.
+
+   .. grid-item-card:: :octicon:`star;1.2em` Built-in astrophysical sources
+      :class-card: sd-border-0 sd-shadow-sm
+
+      Type Ia supernovae (SALT, Twins-Embedding), kilonovae (POSSIS),
+      CalSpec standards, black bodies, power laws, or your own spectrum.
+
+   .. grid-item-card:: :octicon:`gear;1.2em` Every knob is accessible
+      :class-card: sd-border-0 sd-shadow-sm
+
+      Change the detector, the spectrograph sampling, the throughput or the
+      scene, and see at once how each noise source contributes.
+
+Installation
+------------
+
+.. code-block:: bash
+
+   pip install slicersim
+
+See :doc:`installation` for development installs.
+
+Where to go next
+----------------
+
+.. grid:: 1 1 3 3
+   :gutter: 3
+
+   .. grid-item-card:: :octicon:`rocket;1.5em` Getting started
+      :link: quickstart
+      :link-type: doc
+      :class-card: sd-shadow-sm
+
+      A five-minute tour: build a target, reach a signal-to-noise and get
+      a realistic spectrum.
+
+   .. grid-item-card:: :octicon:`book;1.5em` Tutorials
+      :link: tutorials
+      :link-type: doc
+      :class-card: sd-shadow-sm
+
+      Notebooks, from first exposure time calculations to custom scenes and
+      detector read-out modes.
+
+   .. grid-item-card:: :octicon:`code-square;1.5em` API reference
+      :link: api/index
+      :link-type: doc
+      :class-card: sd-shadow-sm
+
+      Every public class and function, grouped by what it does.
+
+Citing slicersim
+----------------
+
+If ``slicersim`` is useful for your work, please cite `Rigault et al. (2026)
+<https://scixplorer.org/abs/2026arXiv260706391R/abstract>`_.
+
+.. toctree::
+   :hidden:
+   :caption: User guide
+
+   installation
+   quickstart
+   concepts
+   tutorials
+
+.. toctree::
+   :hidden:
+   :caption: Reference
+
+   api/index

@@ -593,29 +593,128 @@ class VirtualLazuliTarget:
 # ============ #
 # Supernovae
 class LazuliSupernova( VirtualLazuliTarget, Supernova ):
-    pass
+    """A supernova observed with Lazuli.
+
+    Parameters
+    ----------
+    model : str, optional
+        The supernova model:
+
+        - "salt": SALT2-extended, parameters ``x1``, ``c`` and ``MBmax``
+          [default]. Any sncosmo SALT source name (e.g. "salt3") also works.
+        - "twin": Twins-Embedding, parameters ``xi1``, ``xi2``, ``xi3`` and
+          ``color``.
+    **kwargs
+        Point source parameters, e.g. ``redshift``, ``phase`` (days from
+        maximum light), ``position`` and the model parameters above.
+
+    See Also
+    --------
+    lazuli_sn_etc : Exposure time to reach a SNR, in one call.
+
+    Examples
+    --------
+    >>> sn = LazuliSupernova(redshift=1.0, x1=0, c=0.2, phase=1.5)  # doctest: +SKIP
+    >>> config, snr = sn.setup_to_snr(20)  # doctest: +SKIP
+    >>> lbda, flux, variance = sn.get_spectrum(unit="flambda")  # doctest: +SKIP
+    """
 
 # Kilonovae
 class LazuliKilonova( VirtualLazuliTarget, Kilonova ):
-    pass
+    """A kilonova observed with Lazuli.
+
+    The spectrum comes from the POSSIS radiative transfer models (Bulla 2019,
+    2023) for a given viewing angle, see
+    `~slicersim.scene.sources.kilonova.get_kilonova_flux`.
+
+    Parameters
+    ----------
+    model : str, optional
+        "bulla23" [default] or "bulla19".
+    **kwargs
+        Point source parameters, mainly ``redshift``, ``phase`` (days since
+        merger), ``theta`` (viewing angle in degrees), ``magabs`` or
+        ``magobs`` (peak magnitude in ``band``) and ``position``.
+
+    Examples
+    --------
+    >>> kn = LazuliKilonova(redshift=0.05, phase=1.4, theta=30)  # doctest: +SKIP
+    """
 
 # CalSpec Stars
 class LazuliCalSpec( VirtualLazuliTarget, CalSpec  ):
-    pass
+    """An HST CalSpec spectrophotometric standard star observed with Lazuli.
+
+    Parameters
+    ----------
+    name : str
+        Name (or short name) of the CalSpec star, e.g. "bd_17" or "gd_71".
+    **kwargs
+        Point source parameters, e.g. ``position``.
+
+    Examples
+    --------
+    >>> star = LazuliCalSpec("bd_17")  # doctest: +SKIP
+    """
 
 # Blackbody point source
 class LazuliBlackBody( VirtualLazuliTarget, BlackBody ):
-    pass
+    """A black body point source observed with Lazuli.
+
+    Parameters
+    ----------
+    temperature : float
+        Black body temperature in Kelvin.
+    **kwargs
+        Point source parameters: ``mag`` and ``band`` (normalisation, e.g.
+        ``band="sdssr"``), ``magsys`` and ``position``.
+
+    Examples
+    --------
+    >>> bb = LazuliBlackBody(temperature=5_000, mag=20, band="sdssr")  # doctest: +SKIP
+    """
 
 
-# Blackbody point source
+# Power-law point source
 class LazuliPowerLaw( VirtualLazuliTarget, PowerLaw ):
-    pass
+    """A power-law point source observed with Lazuli.
+
+    Parameters
+    ----------
+    alpha : float
+        Power-law index, see `~slicersim.scene.sources.generic.get_powerlaw_flux`.
+    **kwargs
+        Point source parameters: ``mag`` and ``band`` (normalisation),
+        ``lambda_ref`` and ``position``.
+
+    Examples
+    --------
+    >>> pl = LazuliPowerLaw(alpha=-2, mag=20, band="sdssr")  # doctest: +SKIP
+    """
 
 
 # Generic object
 class LazuliTarget( VirtualLazuliTarget, Target  ):
-    pass
+    """Any spectrum observed with Lazuli, as a point source.
+
+    Parameters
+    ----------
+    lbda : array_like
+        Wavelengths in Angstrom. Should cover the Lazuli bandpass.
+    flux : array_like
+        Flux in erg/s/cm2/A, or in arbitrary units when ``mag`` is given.
+    mag : float, optional
+        If given, ``flux`` is rescaled to this magnitude in ``band``.
+    band : str, optional
+        Bandpass of ``mag`` (any sncosmo bandpass). Default is "bessellb".
+    **kwargs
+        Other point source parameters, e.g. ``position``.
+
+    Examples
+    --------
+    >>> lbda = np.arange(3_000, 20_000, 0.5)  # doctest: +SKIP
+    >>> target = LazuliTarget(lbda, np.ones_like(lbda), mag=20, band="lsstg")  # doctest: +SKIP
+    """
 
 # Generic object
 class LazuliFlat( VirtualLazuliTarget, Target  ):

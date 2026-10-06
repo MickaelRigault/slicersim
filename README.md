@@ -6,6 +6,8 @@
 # slicersim
 Simulation of Slicer observations
 
+📖 **Documentation: https://slicersim.readthedocs.io**
+
 ***
 
 # reference
@@ -55,7 +57,7 @@ Compute the exposure time needed to observe a Supernovae:
 ```python
 import slicersim
 # load a SN Ia (see also: `slicersim.LazuliTarget(lbda, flux)`)
-snia = slicersim.LazuliSN(redshift=0.8, c=0.2, x1=-1.2, phase=1.5)
+snia = slicersim.LazuliSupernova(redshift=0.8, c=0.2, x1=-1.2, phase=1.5)
 
 # update configuration to reach a signal-to-noise of 20
 _ = snia.setup_to_snr(20)
@@ -65,7 +67,7 @@ lbda, flux_1, variance_1 = snia.get_spectrum(unit="adu")
 
 # change the target property
 # warning: without updating the setting, this new target won't have a snr=20
-snia.set_properties(redshift=1.2)
+snia.change_properties(redshift=1.2)
 lbda, flux_2, variance_2 = snia.get_spectrum(unit="adu")
 ```
 
@@ -106,16 +108,16 @@ ax.set(xlabel=r"wavelength [$\AA$]", ylabel="flux [ADU]")
   - origin of variance (read-out noise, target poisson noise, dark-current etc)
   - switch off any contribution and see resulting variance
   - scan all variance contributions, get the resulting dataframe and plot the result.
-- [Change properties of the target](beginner_change_properties.ipynb):
+- [Change properties of the target](docs/notebooks/beginner_change_properties.ipynb):
   - change any supernovae properties
   - change the magnitude of a loaded target
 
 ## Advanced
-- [Change the detector read-out mode or spectrograph spatial sampling](advanced_change_detector_and_spectrograph.ipynb)
+- [Change the detector read-out mode or spectrograph spatial sampling](docs/notebooks/advanced_change_detector_and_spectrograph.ipynb)
   - change the detector mode: max-group, n-frames per group
   - force the read-our mode (and see which SNR you eventually get)
   - change the spectrograph sampling (fine and medium grid)
-- [Access the detector QE, throughtput, effective spectral resolution...](advanced_access_qe_spectral_resolution_etc.ipynb) 
+- [Access the detector QE, throughtput, effective spectral resolution...](docs/notebooks/advanced_access_qe_spectral_resolution_etc.ipynb) 
 - Access any property of any simulation element, and change them !
 
   
@@ -140,7 +142,7 @@ Once your simulator is loaded, you have several method to check the variance ori
 ```python
 import slicersim
 # load the correct simulator
-config = slicersim.iotools.get_config(instrument='lazuli.toml')
+config = slicersim.get_config(instrument='lazuli_cbe.toml')
 sim = slicersim.Simulation.from_config(config)
 
 # Set the target you want

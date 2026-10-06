@@ -124,14 +124,14 @@ class Scene:
     def update(self, reset_others=False, **kwargs):
         """Update mutable parameters.
 
-        For convenience, the update method respects the django '__' format,
-        such that, e.g. 'pointsource__phase' is understood as 'pointsource.phase'.
+        For convenience, the update method respects the django ``__`` format,
+        such that, e.g. ``pointsource__phase`` is understood as ``pointsource.phase``.
         This way, one can do:
 
         >>> scene.update(pointsource__phase=-1)  # doctest: +SKIP
 
         For convenience and backward compatiblity, you can use
-        "target__" in place of "pointsource__".
+        ``target__`` in place of ``pointsource__``.
 
         Parameters
         ----------

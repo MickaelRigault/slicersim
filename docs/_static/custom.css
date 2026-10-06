@@ -1,0 +1,75 @@
+/* Lighter, sharper look on top of sphinx-book-theme. */
+
+/* Logo: a bit more room around the wordmark. */
+.navbar-brand img {
+  max-height: 2.4rem;
+  margin: 0.5rem 0;
+}
+
+/* Landing page tagline. */
+#slicersim > p:first-of-type strong {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+/* Cards: subtle lift on hover. */
+.sd-card {
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+a.sd-stretched-link:hover ~ *,
+.sd-card:has(a.sd-stretched-link):hover {
+  transform: translateY(-2px);
+}
+.sd-card-body .sd-card-title {
+  font-weight: 600;
+}
+
+/* API pages: separate the signature of each object. */
+dl.py.class > dt,
+dl.py.function > dt {
+  border-left: 3px solid var(--pst-color-primary);
+  padding-left: 0.6rem;
+}
+dl.py.method > dt,
+dl.py.property > dt,
+dl.py.attribute > dt {
+  background-color: var(--pst-color-surface);
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+}
+
+/* Autosummary tables: no wrapping of object names. */
+table.autosummary td:first-child {
+  white-space: nowrap;
+}
+
+/* Tabs: light underline style (overrides the pydata boxed tabs). */
+.bd-content .sd-tab-set > label {
+  background-color: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--pst-color-text-muted);
+  font-weight: 600;
+  padding: 0 0.9em;
+}
+html[data-theme="dark"] .bd-content .sd-tab-set > label {
+  background-color: transparent;
+}
+.bd-content .sd-tab-set > input:checked + label {
+  background-color: transparent;
+  border: none;
+  border-bottom: 2px solid var(--pst-color-primary);
+  color: var(--pst-color-primary);
+}
+.bd-content .sd-tab-set > input:not(:checked, :focus-visible) + label:hover {
+  color: var(--pst-color-text-base);
+  text-decoration: none;
+}
+.bd-content .sd-tab-set .sd-tab-content {
+  background-color: transparent;
+  border: none;
+  border-top: 1px solid var(--pst-color-border);
+  border-radius: 0;
+  padding: 0.75rem 0 0;
+}

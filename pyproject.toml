@@ -36,11 +36,9 @@ dependencies = [
 docs = [
     "matplotlib",
     "myst-nb",
-    "nbsphinx",
-    "numpydoc",
-    "pandas-sphinx",
+    "sphinx>=7.2",
     "sphinx-book-theme",
-    "sphinx_copybutton",
+    "sphinx-copybutton",
     "sphinx-design",
     ]
 tests = ["pytest", "pytest-doctestplus", "pytest-cov"]
