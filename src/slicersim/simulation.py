@@ -1444,7 +1444,9 @@ class Simulation:
             return np.asarray(band_sigs), np.asarray(band_vars)
 
     def get_band_snr(self, lbda_range, frame="obs",
-                     statistic=np.nanmean, **kwargs):
+                     statistic=np.nanmean,
+                     at_saturation=np.inf,
+                     **kwargs):
         """Compute mean signal to noise ratio over a spectral domain.
         (see get_band_flux)
 
@@ -1469,6 +1471,9 @@ class Simulation:
         signal, variance = self.get_band_flux(lbda_range, frame,
                                               statistic=statistic,
                                               **kwargs)
+        if self.detector.nsaturated_detpx >0:
+            return at_saturation
+
         return signal / variance**0.5
 
     def get_times(self):
@@ -1675,7 +1680,6 @@ class Simulation:
                       too_large=1.,
                       ndrop=None,
                       guess=None,
-                      fitter="native",
                       use_cache=True,
                       lbda_range=[4000, 6800], frame="rest",
                       statistic=np.nanmean,
@@ -1751,24 +1755,25 @@ class Simulation:
                                   "nramps": 1}
         self.update(**full_singleramp_config)
 
-
         # who the snr is computed
         snr_prop = {"lbda_range": lbda_range,
                     "frame": frame,
                     "statistic": statistic,
-                    "cached": use_cache}
+                    "cached": use_cache,
+                    # handles staturation SNR.
+                    "at_saturation": np.inf}
 
         # compute the snr for 1 ramp.
         single_fullramp_snr = self.get_band_snr(**snr_prop)
 
-
         # is one ramp enought ?
-        if single_fullramp_snr >= (target_snr-tol):
+        if (single_fullramp_snr >= (target_snr-tol) ):
             # yes ? Check if small ramp ok ?
             self.update( nramps = 1, nmd=(np.max(small_ngroup_range), nframe_per_group_small, 0) ) # e.g., 1* (n, 4, 0)
             single_ramp_smallgroup_snr = self.get_band_snr(**snr_prop)
+
             # do you reach the SNR with `np.max(small_ngroup_range)` "small ramps"
-            if single_ramp_smallgroup_snr <= (target_snr-tol):
+            if (single_ramp_smallgroup_snr <= (target_snr-tol)):
                 # no ? use larger groups
                 if guess is None:
                     guess = int(max_group/2)
@@ -1779,7 +1784,8 @@ class Simulation:
                 # => Is that so bright that (np.min(small_ngroup_range), 4, 0) would do the jobs ?
                 self.update( nramps = 1, nmd=(np.min(small_ngroup_range), nframe_per_group_small, 0) ) # e.g., 1* (8, 4, 0)
                 single_framegroup_snr = self.get_band_snr(**snr_prop)
-                if single_framegroup_snr >= (target_snr-tol):
+
+                if (single_framegroup_snr >= (target_snr-tol)):
                     # yes ? then super bright, let's move to signel frame ramps starting from np.max(small_ngroup_range)
                     self.update( nramps = 1, nmd=(np.max(small_ngroup_range), 1, 0) ) # e.g., 1* (n, 1, 0)
                 else:
