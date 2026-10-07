@@ -1,4 +1,10 @@
-""" structured background """
+""" Scene: host module.
+
+`Host` is the `SceneElement` describing the host galaxy of the observed
+target: a spatially extended source whose spectrum (reference spectrum
+rescaled to a given magnitude) is modulated by a Sersic surface-brightness
+profile, see `get_sersic_profile`.
+"""
 import warnings
 from copy import deepcopy
 import numpy as np
@@ -10,31 +16,34 @@ from .base import SceneElement
 def get_sersic_profile(r_eff, n=1.0, ellip=0.0, theta=0.0, flux=1,
                        pixel_scale=0.1, shape=(10, 10), position=None,
                        oversample=4):
-    """ Render a Sersic profile onto a pixel grid, flux-normalized.
+    """Render a Sersic profile onto a pixel grid, flux-normalized.
 
     Parameters
     ----------
-    flux : float
-        Total integrated flux.
     r_eff : float
         Effective (half-light) radius, in arcsec.
-    n : float
+    n : float, optional
         Sersic index (1 = exponential disk, 4 = de Vaucouleurs).
-    ellip : float
-        Ellipticity, 1 - b/a.
-    theta : float
+        Default is 1.0.
+    ellip : float, optional
+        Ellipticity, 1 - b/a. Default is 0.0.
+    theta : float, optional
         Position angle, in degrees (astropy math convention: from +x axis,
         counterclockwise — remap at the call site if you need on-sky PA).
-    pixel_scale : float
-        Arcsec per pixel of the output grid.
+        Default is 0.0.
+    flux : float, optional
+        Total integrated flux. Default is 1.
+    pixel_scale : float, optional
+        Arcsec per pixel of the output grid. Default is 0.1.
     shape : (int, int), optional
-        Output image shape as (nx, ny).
+        Output image shape as (nx, ny). Default is (10, 10).
     position : (float, float), optional
         Centroid offset (dx, dy) in pixels relative to the geometric center of
         `shape`, where positive dx moves right and positive dy moves down.
-        Defaults to (0, 0).
-    oversample : int
+        Default is None, i.e. (0, 0).
+    oversample : int, optional
         Oversampling factor per axis, for approximating pixel integration.
+        Default is 4.
 
     Returns
     -------
@@ -75,10 +84,12 @@ def get_sersic_profile(r_eff, n=1.0, ellip=0.0, theta=0.0, flux=1,
 class Host(SceneElement):
     """Structured background representing the host galaxy of the observed target.
 
-    Models a spatially extended source (e.g. the galaxy hosting a supernova)
-    whose surface-brightness distribution is wavelength-dependent.  The spatial
-    profile at each wavelength is computed by a ``galsim``-compatible model
-    object and rendered into the scene datacube.
+    Models a spatially extended source (e.g. the galaxy hosting a supernova).
+    Its model function returns a datacube of shape (nlbda, ny, nx): a
+    reference spectrum, rescaled to a given magnitude, multiplied by a
+    flux-normalized Sersic profile (see `get_sersic_profile`).
+
+    Use `from_config` or `from_sersic_and_spectrum` to build it.
 
     .. note::
         Host galaxy support is currently in development; the interface is
@@ -86,7 +97,45 @@ class Host(SceneElement):
     """
     @classmethod
     def from_config(cls, config):
-        """ """
+        """Generate a `Host` from a configuration dictionary.
+
+        Parameters
+        ----------
+        config : dict
+            Configuration dictionary. All entries are optional:
+
+            - refmodel: str, optional (default "blackbody-5000").
+              Reference spectrum, either "blackbody-<temperature>" (in K)
+              or "brown-<galname>" (Brown et al. galaxy template, requires
+              ``wcc_etc``).
+            - mag: float, optional (default 20). Magnitude of the host in
+              `band` (see `from_sersic_and_spectrum`).
+            - r_kpc: float, optional. Effective radius in kpc. If given,
+              ``redshift`` is used to convert it into ``r_eff`` (arcsec),
+              overriding any ``r_eff`` entry.
+            - redshift: float, optional. Needed if ``r_kpc`` is given.
+
+            Any other entry is passed to `from_sersic_and_spectrum` (e.g.
+            band, r_eff, n, ellip, theta, pixel_scale, shape, position,
+            oversample).
+            The input dict is not modified.
+
+        Returns
+        -------
+        Host
+            An instance of the `Host` class.
+
+        See Also
+        --------
+        from_sersic_and_spectrum : build a `Host` from a spectrum and a
+            Sersic profile.
+
+        Examples
+        --------
+        >>> host = Host.from_config({"refmodel": "blackbody-5000", "mag": 21,
+        ...                          "r_eff": 0.5, "n": 1, "ellip": 0.3,
+        ...                          "shape": (20, 20)})
+        """
         # do not affect the input config
         config = deepcopy(config)
 
@@ -103,7 +152,7 @@ class Host(SceneElement):
             elif "r_eff" in config:
                 warnings.warn("r_kpc+redshift and r_eff are both given. r_eff is ignored.")
 
-            config["r_eff"] = r_kpc / cosmology.arcsec_per_kpc_comoving(redshift).value
+            config["r_eff"] = r_kpc / cosmology.arcsec_per_kpc_proper(redshift).value
 
         # use known spectrum.
         if "blackbody" in refmodel:
@@ -142,11 +191,12 @@ class Host(SceneElement):
             (rest-frame, i.e. before applying `redshift`).
         flux : array_like
             Flux of the reference spectrum, sampled at `lbda`.
-        mag : float or None
+        mag : float or None, optional
             Target magnitude of the host in `band`. If None, the reference
-            spectrum is used as-is (no rescaling).
-        band : str
+            spectrum is used as-is (no rescaling). Default is None.
+        band : str, optional
             Bandpass name (must be known by sncosmo) used to normalize `mag`.
+            Default is "sdssr".
         redshift : float, optional
             Redshift applied to the reference spectrum wavelength axis.
             Default is 0.
@@ -171,10 +221,8 @@ class Host(SceneElement):
         oversample : int, optional
             Oversampling factor per axis used to render the Sersic profile.
             Default is 4.
-        meta : dict, optional
-            Extra metadata to store on the instance. Default is {}.
         **kwargs
-            Additional metadata merged into `meta`.
+            Additional entries stored in the instance meta.
 
         Returns
         -------
