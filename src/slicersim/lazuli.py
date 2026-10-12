@@ -50,10 +50,35 @@ SPECTROGRAPH_FIELD = {"narrow": {'spatial_shape': [58, 58], 'spatial_scale': 0.0
 
 
 def spectroconfig_to_fieldname(spatial_shape, spatial_scale, default = "unknown"):
-    from .lazuli import VirtualLazuliTarget
+    """Get the Lazuli field name matching a spectrograph spaxel configuration.
+
+    Parameters
+    ----------
+    spatial_shape : list or tuple of int
+        Spaxel grid shape (ny, nx).
+    spatial_scale : float
+        Spaxel size in arcsec.
+    default : str, optional
+        Name returned if no field of `SPECTROGRAPH_FIELD` matches the input
+        configuration. Default is "unknown".
+
+    Returns
+    -------
+    str
+        Name of the matching field (e.g. "narrow" or "wide"), `default`
+        otherwise.
+
+    See Also
+    --------
+    VirtualLazuliTarget.get_spectrograph_field : field of a Lazuli target.
+    Spectrograph.get_fieldname : field of a spectrograph.
+    """
     field = default
     for this_field, this_config in SPECTROGRAPH_FIELD.items():
-        if this_config["spatial_shape"] == spatial_shape and \
+        if not isinstance(this_config, dict): # e.g. hspace
+            continue
+
+        if list(this_config["spatial_shape"]) == list(spatial_shape) and \
             this_config["spatial_scale"] == spatial_scale:
             field = this_field
             break
@@ -345,7 +370,8 @@ class VirtualLazuliTarget:
         Returns
         -------
         str
-            The name of the field mode if it exists, otherwise "manual".
+            The name of the field mode if it exists, otherwise "unknown"
+            (see `spectroconfig_to_fieldname`).
         dict
             The configuration of the field.
 

@@ -191,7 +191,6 @@ def build_throughput_from_config(config):
         Throughput as a constant value or a function of wavelength.
     """
     throughput =  config.get("throughput", config)
-    print(f"{throughput=}")
 
     if throughput is None:
         raise ValueError("No given 'throughput' in the input config.")
@@ -608,7 +607,22 @@ class Spectrograph:
         return lbda
 
     def get_fieldname(self):
-        """ returns the field name if any. This is based on the spectrograph configuration """
+        """Get the name of the field matching the spaxel configuration.
+
+        The field is inferred from the current `spatial_shape` and
+        `spatial_scale` of the spectrograph (see `meta`).
+
+        Returns
+        -------
+        str
+            Field name (e.g. "narrow" or "wide" for Lazuli), or "unknown" if
+            the configuration does not match any known field.
+
+        Raises
+        ------
+        NotImplementedError
+            If the spectrograph is not Lazuli (see `name`).
+        """
         if self.name.lower() == "lazuli":
             from .lazuli import spectroconfig_to_fieldname
             field_name = spectroconfig_to_fieldname(spatial_shape = self.meta["spatial_shape"],
@@ -621,6 +635,22 @@ class Spectrograph:
 
     def get_throughput(self, lbda=None, **kwargs):
         """Get the spectrograph throughput.
+
+        When the throughput is wavelength dependent (e.g. `OpticsThroughput`),
+        the throughput curve used is set by `which`:
+
+        - `meta["which_throughput"]` if given (see `update`);
+        - otherwise, for Lazuli, the current field name (see `get_fieldname`);
+        - otherwise None, i.e. the product of all throughput curves.
+
+        Parameters
+        ----------
+        lbda : array_like, optional
+            Wavelength array in Angstrom. If None, `self.lbda` is used.
+            Ignored if the throughput is a constant. Default is None.
+        **kwargs
+            Goes to the throughput call (e.g. `OpticsThroughput.get_throughput`).
+            A given `which` overrides the one described above.
 
         Returns
         -------
