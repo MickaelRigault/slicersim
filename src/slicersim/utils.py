@@ -269,7 +269,7 @@ def integ_gaussian2D_erf(xy_edges, sigma, mu=(0, 0), normed=True):
     :param xy_edges: x- and y-coordinates of pixel edges
                      (1, nx+1) and (ny+1, 1)
     :param sigma: Gaussian standard deviation (scalar or shape (nsig, 1, 1))
-    :param mu: center of the 2D Gaussian
+    :param mu: (x, y) center of the 2D Gaussian
     :param normed: use a total flux-normalized 2D Gaussian
     :return: sigma.shape + (ny, nx) array
 
@@ -297,8 +297,8 @@ def integ_gaussian2D_erf(xy_edges, sigma, mu=(0, 0), normed=True):
         sigma = sigma[:, None, :]
 
     mu = np.broadcast_to(mu, sigma.shape)
-    muy = mu[..., 0][..., None]
-    mux = mu[..., 1][..., None]
+    mux = mu[..., 0][..., None] # mu is (x, y)
+    muy = mu[..., 1][..., None]
 
     # allows for asymetric sigma
     sqrt2sig = 1.4142135623730951 * sigma
