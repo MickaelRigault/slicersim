@@ -22,6 +22,18 @@ Exposure time calculators
    ~lazuli.lazuli_etc
    ~lazuli.lazuli_sn_etc
 
+Lazuli fields
+~~~~~~~~~~~~~
+
+The ``"narrow"`` and ``"wide"`` fields are defined in
+``slicersim.lazuli.SPECTROGRAPH_FIELD``. The current field sets the
+throughput curve used by the spectrograph.
+
+.. autosummary::
+   :nosignatures:
+
+   ~lazuli.spectroconfig_to_fieldname
+
 Lazuli targets
 ~~~~~~~~~~~~~~
 

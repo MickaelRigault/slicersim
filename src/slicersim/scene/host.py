@@ -32,7 +32,8 @@ def get_sersic_profile(r_eff, n=1.0, ellip=0.0, theta=0.0, flux=1,
         counterclockwise — remap at the call site if you need on-sky PA).
         Default is 0.0.
     flux : float, optional
-        Total integrated flux. Default is 1.
+        Total integrated flux of the profile (integrated to infinity, so
+        the part falling outside of `shape` is lost). Default is 1.
     pixel_scale : float, optional
         Arcsec per pixel of the output grid. Default is 0.1.
     shape : (int, int), optional
@@ -48,8 +49,10 @@ def get_sersic_profile(r_eff, n=1.0, ellip=0.0, theta=0.0, flux=1,
     Returns
     -------
     numpy.ndarray
-        2D image, shape (ny, nx), summing to `flux`.
+        2D image, shape (ny, nx), flux per pixel. It sums to `flux` only if
+        the profile is fully contained in `shape`.
     """
+    from scipy.special import gamma, gammaincinv
     nx, ny = shape
     center = ((nx - 1) / 2.0, (ny - 1) / 2.0)
 
@@ -77,7 +80,15 @@ def get_sersic_profile(r_eff, n=1.0, ellip=0.0, theta=0.0, flux=1,
 
     img = img_os.reshape(ny, oversample, nx, oversample).mean(axis=(1, 3))
 
-    img *= flux / img.sum()
+    # analytic total flux of the (amplitude=1) profile, in pixel units.
+    # normalizing by it (and not by img.sum()) conserves the surface
+    # brightness when the galaxy extends beyond the grid.
+    r_eff_pix = r_eff / pixel_scale
+    b_n = gammaincinv(2 * n, 0.5)
+    total = (2 * np.pi * n * np.exp(b_n) * b_n**(-2 * n) * gamma(2 * n)
+             * (1 - ellip) * r_eff_pix**2)
+
+    img *= flux / total
     return img
 
 
@@ -87,7 +98,9 @@ class Host(SceneElement):
     Models a spatially extended source (e.g. the galaxy hosting a supernova).
     Its model function returns a datacube of shape (nlbda, ny, nx): a
     reference spectrum, rescaled to a given magnitude, multiplied by a
-    flux-normalized Sersic profile (see `get_sersic_profile`).
+    Sersic profile (see `get_sersic_profile`).
+    In a `~slicersim.Simulation`, the host is rendered on the spaxel grid
+    (see `get_cube`) and convolved by the spatial PSF.
 
     Use `from_config` or `from_sersic_and_spectrum` to build it.
 
@@ -146,20 +159,22 @@ class Host(SceneElement):
         # use kpc scale
         r_kpc = config.pop("r_kpc", None)
         if r_kpc is not None:
-            redshift = float(config.pop("redshift", None))
+            redshift = config.get("redshift", None) # kept: also redshifts the spectrum
             if redshift is None:
                 warnings.warn("r_kpc is given but redshift is not. r_kpc is ignored.")
-            elif "r_eff" in config:
-                warnings.warn("r_kpc+redshift and r_eff are both given. r_eff is ignored.")
+            else:
+                if "r_eff" in config:
+                    warnings.warn("r_kpc+redshift and r_eff are both given. r_eff is ignored.")
 
-            config["r_eff"] = r_kpc / cosmology.arcsec_per_kpc_proper(redshift).value
+                config["r_eff"] = r_kpc * cosmology.arcsec_per_kpc_proper(float(redshift)).value
 
         # use known spectrum.
         if "blackbody" in refmodel:
             from .sources.blackbody import get_blackbody_flux
             temperature = float( refmodel.split("-")[1] )
-            lbda = np.linspace(3000, 20_000, 1000)
+            lbda = np.linspace(1000, 30_000, 2000) # rest-frame, wide enough to be redshifted
             flux = get_blackbody_flux(lbda, temperature=temperature, mag=mag)
+
         elif "brown-" in refmodel:
             galname = refmodel.split("-")[1]
             from astropy.io import fits
@@ -305,3 +320,62 @@ class Host(SceneElement):
 
         this._model_func = _internal_get_flux
         return this
+
+    # ========== #
+    #  Getter    #
+    # ========== #
+    def get_cube(self, lbda=None, **kwargs):
+        """Get the host datacube.
+
+        Parameters
+        ----------
+        lbda : array_like, optional
+            Wavelength array in Angstrom. If None, `self.lbda` is used.
+            Default is None.
+        **kwargs
+            Overwrite the current model parameters for this call only,
+            typically the grid the host is rendered on (``shape`` and
+            ``pixel_scale``).
+
+        Returns
+        -------
+        lbda : array_like
+            Wavelength array in Angstrom.
+        cube : numpy.ndarray
+            (nlbda, ny, nx) datacube, flux per pixel in erg/s/cm²/Å.
+
+        Examples
+        --------
+        Render the host on a 58x58 grid of 0.04 arcsec pixels:
+
+        >>> lbda, cube = host.get_cube(lbda, shape=(58, 58), pixel_scale=0.04)  # doctest: +SKIP
+        """
+        if lbda is None:
+            lbda = self._lbda
+            if lbda is None:
+                raise ValueError("no lbda given and None loading as self.lbda")
+
+        model_kwargs = self._parse_model_kwargs_() | kwargs
+        return lbda, self.model_func(lbda, **model_kwargs)
+
+    def get_spectrum(self, lbda=None):
+        """Get the host spectrum, integrated over its own grid.
+
+        This is `get_cube` summed over the spatial axes, i.e. the flux
+        falling within the host grid (``shape`` x ``pixel_scale`` in meta).
+
+        Parameters
+        ----------
+        lbda : array_like, optional
+            Wavelength array in Angstrom. If None, `self.lbda` is used.
+            Default is None.
+
+        Returns
+        -------
+        lbda : array_like
+            Wavelength array in Angstrom.
+        flux : array_like
+            Flux in erg/s/cm²/Å.
+        """
+        lbda, cube = self.get_cube(lbda)
+        return lbda, np.sum(cube, axis=(-2, -1))

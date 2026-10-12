@@ -44,7 +44,8 @@ methods:
    * - `~slicersim.target.VirtualTarget.change_detector`
      - set the read-out mode (``nmd``, ``max_group``, ``nramps``).
    * - `~slicersim.lazuli.VirtualLazuliTarget.change_spectrograph`
-     - switch between the ``"narrow"`` (40 mas) and ``"wide"`` (80 mas) fields.
+     - switch between the ``"narrow"`` (40 mas) and ``"wide"`` (80 mas) fields;
+       the field also sets the throughput curve used.
    * - `~slicersim.target.VirtualTarget.setup_to_snr`
      - find the read-out mode that reaches a requested signal-to-noise.
    * - `~slicersim.target.VirtualTarget.get_exposure_time`

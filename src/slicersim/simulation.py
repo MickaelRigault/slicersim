@@ -891,7 +891,16 @@ class Simulation:
                                                             apply_lsf=apply_lsf)
 
         # host | empty
-        host_cube = np.zeros( (self.spectrograph.nlbda, *self.spectrograph.get_spectrograph_shape(oversampling=oversampling)) )  # (nlbda, ny, nx)
+        if self.scene.has_element("host"):
+            if as_oversampled:
+                raise NotImplementedError("host not available for oversampled cubes.")
+            host_cube = self.spectrograph.generate_structured_background(self._get_host_cube_(lbda),
+                                                            psf_profile=psf_profile,
+                                                            oversampling=oversampling,
+                                                            apply_lsf=apply_lsf,
+                                                            **kwargs)
+        else:
+            host_cube = np.zeros( (self.spectrograph.nlbda, *self.spectrograph.get_spectrograph_shape(oversampling=oversampling)) )  # (nlbda, ny, nx)
 
         # thermal
         thermal_cube = self.spectrograph.generate_thermal_signal(as_cube=True,
@@ -972,7 +981,7 @@ class Simulation:
 
         # spectra (3, nlbda):
         # * point source spectrum [erg/s/cm²/Å]
-        # * host (not yet implemented)
+        # * host cube [erg/s/cm²/Å/spx]
         # * background spectrum [erg/s/cm²/Å/arcsec²]
         lbda = self.spectrograph.lbda # make sure this is up to date
 
@@ -987,11 +996,16 @@ class Simulation:
                                                             apply_lsf=False, # applied once, at the end
                                                             **kwargs)
 
-        if "host" not in switch_off:
-            if self.scene.host is not None:
-                warnings.warn("Host cube not implemented.")
+        if "host" not in switch_off and self.scene.has_element("host"):
+            if as_oversampled:
+                raise NotImplementedError("host not available for oversampled cubes.")
+            cube += self.spectrograph.generate_structured_background(self._get_host_cube_(lbda),
+                                                            psf_profile=psf_profile,
+                                                            oversampling=oversampling,
+                                                            apply_lsf=False, # applied once, at the end
+                                                            **kwargs)
 
-        if "background" not in switch_off:
+        if "background" not in switch_off and self.scene.has_element("background"):
             background_spec = self.scene.background.get_spectrum(lbda)[1]
             cube += self.spectrograph.generate_background(background_spec,
                                                           oversampling=None if not as_oversampled else oversampling,
@@ -1013,6 +1027,28 @@ class Simulation:
             self._cube_cached = cube
 
         return cube  # (nlbda, ny, nx) | [ph/s] or [erg/cm²/Å/s]
+
+    def _get_host_cube_(self, lbda):
+        """Render the host on the spaxel grid, before the PSF.
+
+        Parameters
+        ----------
+        lbda : array_like
+            Wavelength array in Angstrom.
+
+        Returns
+        -------
+        array
+            (nlbda, ny, nx) host flux per spaxel [erg/s/cm²/Å].
+        """
+        # like the PSF, the host is rendered on spx_shape using
+        # spx_spatial_scale along both axes.
+        if np.ndim(self.spectrograph.spx_spatial_scale) != 0:
+            raise NotImplementedError("host requires a scalar spatial_scale.")
+
+        ny, nx = self.spectrograph.spx_shape
+        return self.scene.host.get_cube(lbda, shape=(nx, ny), # host shape is (nx, ny)
+                                        pixel_scale=self.spectrograph.spx_spatial_scale)[1]
 
     def get_cube(self, switch_off=[], psf_profile="default",
                      as_oversampled=False, oversampling=None,

@@ -359,7 +359,7 @@ class Spectrograph:
                      "spatial_psf": psf,
                      "optics": optics,
                      "dispersion_resolution": input_config.get("dispersion_resolution", 2),
-                     "meta": input_config, }
+                     "meta": input_config}
 
         return init_prop, input_config
 
@@ -606,8 +606,51 @@ class Spectrograph:
 
         return lbda
 
+    def get_fieldname(self):
+        """Get the name of the field matching the spaxel configuration.
+
+        The field is inferred from the current `spatial_shape` and
+        `spatial_scale` of the spectrograph (see `meta`).
+
+        Returns
+        -------
+        str
+            Field name (e.g. "narrow" or "wide" for Lazuli), or "unknown" if
+            the configuration does not match any known field.
+
+        Raises
+        ------
+        NotImplementedError
+            If the spectrograph is not Lazuli (see `name`).
+        """
+        if self.name.lower() == "lazuli":
+            from .lazuli import spectroconfig_to_fieldname
+            field_name = spectroconfig_to_fieldname(spatial_shape = self.meta["spatial_shape"],
+                                              spatial_scale = self.meta["spatial_scale"])
+
+        else:
+            raise NotImplementedError(f"get_fieldname() is not implemented for {self.name} spectrograph.")
+
+        return field_name
+
     def get_throughput(self, lbda=None, **kwargs):
         """Get the spectrograph throughput.
+
+        When the throughput is wavelength dependent (e.g. `OpticsThroughput`),
+        the throughput curve used is set by `which`:
+
+        - `meta["which_throughput"]` if given (see `update`);
+        - otherwise, for Lazuli, the current field name (see `get_fieldname`);
+        - otherwise None, i.e. the product of all throughput curves.
+
+        Parameters
+        ----------
+        lbda : array_like, optional
+            Wavelength array in Angstrom. If None, `self.lbda` is used.
+            Ignored if the throughput is a constant. Default is None.
+        **kwargs
+            Goes to the throughput call (e.g. `OpticsThroughput.get_throughput`).
+            A given `which` overrides the one described above.
 
         Returns
         -------
@@ -616,6 +659,9 @@ class Spectrograph:
         """
         # internal tool
         which_throughput = {"which": self.meta.get("which_throughput", None)}
+        if which_throughput["which"] is None and (self.name.lower() == "lazuli"):
+            # throughput requires the fieldname.
+            which_throughput = {"which" : self.get_fieldname()}
 
         if callable(self.throughput):
             if lbda is None:
@@ -1479,18 +1525,51 @@ class Spectrograph:
         return bkgd_cube
 
     # Structured background
-    def generate_structured_background(self, *args, apply_lsf=True, **kwargs):
+    def generate_structured_background(self, cube, psf_profile="default",
+                                       apply_lsf=True, **kwargs):
         """Generate a photon flux cube from a structured background scene.
 
-        Raises
-        ------
-        NotImplementedError
-            This method is not yet implemented.
-        """
-        # this will require the PSF
-        # => self.get_spatial_psf()
+        The input cube is converted into photons and convolved, wavelength
+        per wavelength, by the spatial PSF (see `get_spatial_psf`).
 
-        raise NotImplementedError("generate_structured_background() has not been implemented.")
+        Parameters
+        ----------
+        cube : array_like
+            (nlbda, ny, nx) structured background (e.g. host) flux per
+            spaxel in erg/s/cm²/Å, on the spaxel grid (see `spx_shape`).
+        psf_profile : str, optional
+            PSF profile to use. Default is "default".
+        apply_lsf : bool, optional
+            If True, apply the line spread function. Default is True.
+        **kwargs
+            Goes to `get_spatial_psf`.
+
+        Returns
+        -------
+        array_like
+            Photon flux cube (nlbda, ny, nx) in ph/s/spx.
+        """
+        from scipy.signal import fftconvolve
+
+        # PSF kernel centered on the pixel fftconvolve(mode="same") uses as
+        # origin, i.e. index (n-1)//2, which is offset by -0.5 spaxel from the
+        # grid center for even-sized axes.
+        ny, nx = self.spx_shape
+        kernel_center = ((nx - 1) // 2 - (nx - 1) / 2,
+                         (ny - 1) // 2 - (ny - 1) / 2) # (x, y) [spaxels]
+        psf = self.get_spatial_psf(profile=psf_profile, position=kernel_center,
+                                   **kwargs)  # (nlbda, ny, nx)
+
+        # erg/s/cm²/Å / erg/ph * cm² * Å = ph/s
+        flux = cube * self.flambda2photon[:, np.newaxis, np.newaxis]
+        # This means each wavelengthes are independent.
+        host_cube = fftconvolve(flux, psf, mode="same", axes=(-2, -1))
+        host_cube = np.clip(host_cube, 0, None) # remove fft numerical noise (<0)
+
+        if apply_lsf:
+            host_cube = self.apply_line_spread_function(host_cube)
+
+        return host_cube
 
     # Themal (pre-dispersor)
     def _get_optics_dispersed_signal(self, lbda_bin):
@@ -2327,6 +2406,8 @@ class OpticsThroughput:
         List of mutable parameters.
     """
     mutable_parameters = ["noptics"]
+    _ELEMENTS_ADDUP = None
+
     def __init__(self, curves, noptics=None, meta={}):
         """Initialize the OpticsThroughput object.
 

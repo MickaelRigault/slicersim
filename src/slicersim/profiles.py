@@ -125,12 +125,13 @@ def build_pixels(shape, oversampling=10):
 
 
     ny, nx = np.asarray(shape, dtype=int)
-    x = np.linspace(1, nx, (nx)*oversampling_x) - nx/2. -0.5 # centered
-    y = np.linspace(1, ny, (ny)*oversampling_y) - ny/2. -0.5 # centered
-    pixel_sizex = x[1]-x[0]
-    pixel_sizey = y[1]-y[0]
-    x_edges = np.append(x, x[-1]+pixel_sizex) - pixel_sizex/2
-    y_edges = np.append(y, y[-1]+pixel_sizex) - pixel_sizey/2
+    x = (np.arange(nx * oversampling_x) + 0.5) / oversampling_x - nx / 2
+    y = (np.arange(ny * oversampling_y) + 0.5) / oversampling_y - ny / 2
+    pixel_sizex = 1 / oversampling_x
+    pixel_sizey = 1 / oversampling_y
+    x_edges = np.arange(nx * oversampling_x + 1) / oversampling_x - nx / 2
+    y_edges = np.arange(ny * oversampling_y + 1) / oversampling_y - ny / 2
+
     return {"centroids":(x[None,:], y[:,None]),
             "edges": (x_edges[None,:], y_edges[:,None]),
             "shape": shape,

@@ -49,6 +49,42 @@ SPECTROGRAPH_FIELD = {"narrow": {'spatial_shape': [58, 58], 'spatial_scale': 0.0
                         }
 
 
+def spectroconfig_to_fieldname(spatial_shape, spatial_scale, default = "unknown"):
+    """Get the Lazuli field name matching a spectrograph spaxel configuration.
+
+    Parameters
+    ----------
+    spatial_shape : list or tuple of int
+        Spaxel grid shape (ny, nx).
+    spatial_scale : float
+        Spaxel size in arcsec.
+    default : str, optional
+        Name returned if no field of `SPECTROGRAPH_FIELD` matches the input
+        configuration. Default is "unknown".
+
+    Returns
+    -------
+    str
+        Name of the matching field (e.g. "narrow" or "wide"), `default`
+        otherwise.
+
+    See Also
+    --------
+    VirtualLazuliTarget.get_spectrograph_field : field of a Lazuli target.
+    Spectrograph.get_fieldname : field of a spectrograph.
+    """
+    field = default
+    for this_field, this_config in SPECTROGRAPH_FIELD.items():
+        if not isinstance(this_config, dict): # e.g. hspace
+            continue
+
+        if list(this_config["spatial_shape"]) == list(spatial_shape) and \
+            this_config["spatial_scale"] == spatial_scale:
+            field = this_field
+            break
+
+    return field
+
 
 def lazuli_sn_etc(model, redshift, snr, per_resolution=True,
                 phase=0,
@@ -263,6 +299,7 @@ class VirtualLazuliTarget:
         from .iotools import read_config
         if which == "eol":
             config = read_config("lazuli_eol.toml")
+
         elif which in ["bol","cbe"]:
             config = read_config("lazuli_cbe.toml")
 
@@ -326,27 +363,22 @@ class VirtualLazuliTarget:
         """
         return self.get_properties(["nmd", "nramps"])
 
+
     def get_spectrograph_field(self):
         """Get the current spectrograph field configuration.
-
 
         Returns
         -------
         str
-            The name of the field mode if it exists, otherwise "manual".
+            The name of the field mode if it exists, otherwise "unknown"
+            (see `spectroconfig_to_fieldname`).
         dict
             The configuration of the field.
 
         """
         keys_to_check = ["spatial_shape", "spatial_scale"]
         current_config = self.get_properties(keys_to_check)
-        field = "manual"
-        for this_field, this_config in SPECTROGRAPH_FIELD.items():
-            field_config = {k: this_config.get(k, None) for k in keys_to_check}
-            if field_config == current_config:
-                field = this_field
-                break
-
+        field = spectroconfig_to_fieldname(**current_config)
         return field, current_config
 
     def get_cube(self, which="both", **kwargs):
