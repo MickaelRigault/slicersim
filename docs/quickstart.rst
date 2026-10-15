@@ -178,4 +178,6 @@ Next steps
 
 - :doc:`concepts` explains how ``slicersim`` is organised, so you know
   where to look when you need more control.
+- :doc:`instrument` lists what the Lazuli model assumes (fields,
+  detector, throughput) and how to switch to end-of-life performance.
 - The :doc:`tutorials` cover each topic in depth.

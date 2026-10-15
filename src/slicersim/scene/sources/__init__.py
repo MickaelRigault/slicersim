@@ -1,4 +1,4 @@
-""" Sources: spectral models feeding the scene elements.
+"""Sources: spectral models feeding the scene elements.
 
 This sub-package gathers the spectral models (the ``model_func`` of a
 `~slicersim.scene.base.SceneElement`) that can be used to feed a scene.
@@ -9,6 +9,7 @@ Each module implements one family of sources:
 - `~slicersim.scene.sources.kilonova`: kilonova models (POSSIS, Bulla 2019
   and 2023) with a viewing angle dependency.
 - `~slicersim.scene.sources.blackbody`: blackbody continuum sources.
+- `~slicersim.scene.sources.generic`: generic analytic sources (power law).
 - `~slicersim.scene.sources.calspec`: HST CalSpec spectrophotometric standards.
 - `~slicersim.scene.sources.stars`: point sources built from stellar spectra
   (e.g. CalSpec stars).
@@ -27,12 +28,14 @@ def source_to_modelfunc(source):
     Parameters
     ----------
     source : str
-        Name of the source model.
+        Name of the source model:
 
-        - "salt" (or any name containing "salt", e.g. "salt2-extended")
-        - "twins-embedding"
-        - "blackbody"
-        - "bulla19" or "bulla23" (kilonova POSSIS models)
+        - any name containing ``"salt"`` (e.g. ``"salt2-extended"``): SALT
+          model.
+        - ``"twins-embedding"``: Twins Embedding model.
+        - any name containing ``"blackbody"``: blackbody.
+        - any name containing ``"bulla19"`` or ``"bulla23"``: kilonova POSSIS
+          models.
 
     Returns
     -------
@@ -54,6 +57,7 @@ def source_to_modelfunc(source):
 
     Examples
     --------
+    >>> import numpy as np
     >>> model_func = source_to_modelfunc("salt2-extended")
     >>> flux = model_func(np.linspace(4000, 9000, 100), phase=0)
     >>> model_func = source_to_modelfunc("bulla23")

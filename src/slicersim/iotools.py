@@ -1,4 +1,8 @@
-"""Access package data files."""
+"""Read configuration and data files.
+
+Files given without a directory are looked for in the package configuration
+directory ``PACKAGE_PATH`` (``slicersim/config``).
+"""
 
 import os
 import warnings
@@ -20,8 +24,8 @@ PACKAGE_PATH = files("slicersim.config")     #: Path to data & config files.
 def expand_path(filename):
     """Get the full file path, including the config path if necessary.
 
-    If the input filename does not specifically include a path, it will be
-    looked for in the default :data:`PACKAGE_PATH` directory.
+    If the input filename does not specifically include a directory, it is
+    looked for in the default ``PACKAGE_PATH`` directory.
 
     Parameters
     ----------
@@ -30,8 +34,9 @@ def expand_path(filename):
 
     Returns
     -------
-    str
-        Filename including the default path if needed.
+    str or pathlib.Path
+        ``filename`` itself if it includes a directory, otherwise the path to
+        ``filename`` in ``PACKAGE_PATH``.
     """
 
     if os.path.dirname(filename):  # filename includes a path
@@ -42,9 +47,10 @@ def expand_path(filename):
     return fname
 
 def merge_dicts(d1, d2):
-    """Recursively merge d2 into a copy of d1 and return the result.
+    """Recursively merge ``d2`` into a copy of ``d1``.
 
-    Values in d2 will override values in d1 in case of conflicts.
+    Values in ``d2`` override values in ``d1`` in case of conflicts; nested
+    dictionaries are merged recursively. ``d1`` is not modified.
 
     Parameters
     ----------
@@ -74,13 +80,14 @@ def merge_dicts(d1, d2):
 
 
 def get_config(scene="supernova.toml", instrument="lazuli_cbe.toml"):
-    """Read configuration files.
+    """Read the scene and instrument configuration files.
 
     The final configuration has the following structure::
 
         {'scene': {'pointsource': {...},
-                   'zodi': {...}
+                   'background': {...}
                   },
+         'telescope': {...},
          'spectrograph': {...},
          'detector': {...},
          'extraction': {...},
@@ -88,19 +95,24 @@ def get_config(scene="supernova.toml", instrument="lazuli_cbe.toml"):
 
     Parameters
     ----------
-    scene : str or dict, optional
-        Filename of the scene, or a dictionary of filenames.
-        For example, `scene="supernovae"` or
-        `{"pointsource": "supernovae", "background": "zodi"}`.
-        Default is "supernova.toml".
-    instrument : str or dict, optional
-        Filename defining the instrument, or a dictionary giving details.
-        Default is "lazuli_cbe.toml".
+    scene : str, list or dict, optional
+        Scene configuration, as accepted by `read_config`: a filename (e.g.
+        ``"supernova"``), a list of filenames and/or dictionaries merged from
+        left to right, or a configuration dictionary.
+        Default is ``"supernova.toml"``.
+    instrument : str, list or dict, optional
+        Instrument configuration, as accepted by `read_config`.
+        Default is ``"lazuli_cbe.toml"``.
 
     Returns
     -------
     dict
         Configuration dictionary.
+
+    Notes
+    -----
+    The scene and instrument configurations are combined with a shallow
+    merge: a top-level key present in both is taken from ``instrument``.
     """
     return read_config(scene) | read_config(instrument)
 
@@ -108,27 +120,29 @@ def get_config(scene="supernova.toml", instrument="lazuli_cbe.toml"):
 def read_config(filename, verbose=False):
     """Read a single configuration file.
 
-    - If the input filename does not specifically include a path, it will be
-      looked for in the default :data:`PACKAGE_PATH` directory.
-    - Currently, only `.toml` configuration files are supported.
+    - If the input filename does not specifically include a directory, it is
+      looked for in the default ``PACKAGE_PATH`` directory.
+    - Currently, only ``.toml`` configuration files are supported.
 
     Parameters
     ----------
-    filename : str or list
+    filename : str, list or dict
         Filename of the configuration file. If no extension is provided,
-        `.toml` is assumed. `filename="supernova"` is equivalent to
-        `filename="supernova.toml"`.
+        ``.toml`` is assumed: ``filename="supernova"`` is equivalent to
+        ``filename="supernova.toml"``. A dict is returned as is.
 
-        `filename` can also be a list of names or a mix of names and dicts.
-        These nested dictionaries are merged from left to right, such that for
-        `filename = ["supernova", "zodi"]`, the configuration from "zodi" will
-        overwrite the corresponding (nested) entry from "supernova".
-        If an element of the list is a dict, it will be assumed to be a config.
-        For example, `["supernova", {"scene": {"pointsource": {"source":
-        [lbda_ref, flux_ref]}}}]` will overwrite the `scene.pointsource.source`
-        from the "supernova" configuration.
+        ``filename`` can also be a list of names, dicts, or a mix of both.
+        These nested dictionaries are merged from left to right, such that
+        for ``filename = ["supernova", "zodi"]``, the configuration from
+        ``"zodi"`` overwrites the corresponding (nested) entries from
+        ``"supernova"``. A dict element is assumed to be a configuration.
+        For example,
+        ``["supernova", {"scene": {"pointsource": {"source": [lbda_ref, flux_ref]}}}]``
+        overwrites the ``scene.pointsource.source`` entry of the
+        ``"supernova"`` configuration.
     verbose : bool, optional
-        Verbose mode. Default is False.
+        If True, print the name of the file being read (not propagated to the
+        elements of a list). Default is False.
 
     Returns
     -------
@@ -184,14 +198,21 @@ def override_config(cfg, copy=False, **kwargs):
     cfg : dict
         Nested dictionary configuration.
     copy : bool, optional
-        Return a modified deep copy (original left untouched). Default is False.
-    **kwargs : dict
-        Override values, e.g., `{'key1.key2.key3': newval}`.
+        If True, return a modified deep copy (original left untouched);
+        otherwise ``cfg`` is modified in place. Default is False.
+    **kwargs
+        Override values, with keys in dot notation, e.g.
+        ``**{'key1.key2.key3': newval}``.
 
     Returns
     -------
     dict
-        Modified (copy of) configuration.
+        Modified configuration (``cfg`` itself, or its copy if ``copy``).
+
+    Raises
+    ------
+    KeyError
+        If a key does not already exist in ``cfg``.
 
     Examples
     --------
@@ -203,8 +224,7 @@ def override_config(cfg, copy=False, **kwargs):
     ...
     KeyError: "Unknown key 'b.e'."
 
-    .. note::
-        Multi-key override is supported:
+    A whole sub-dictionary can be overridden at once:
 
     >>> override_config(cfg, **{'b': dict(c=3, d=4)})
     {'a': 1, 'b': {'c': 3, 'd': 4}}
@@ -236,16 +256,24 @@ def read_ecsv(filename, colnames=None, description=''):
     ----------
     filename : str
         ECSV file name.
-    colnames : list, optional
-        List of requested column names. If None, all columns are returned.
+    colnames : list of str or None, optional
+        Requested column names. If None, all columns are returned.
         Default is None.
     description : str, optional
-        Description string (used as a verbose flag). Default is ''.
+        Description of the file; if not empty, information about the file is
+        printed. Default is ``''``.
 
     Returns
     -------
     astropy.table.Table
         File content as a table.
+
+    Raises
+    ------
+    NotImplementedError
+        If the file extension is not ``.ecsv``.
+    KeyError
+        If a requested column does not exist.
     """
 
     fname = expand_path(filename)
@@ -283,25 +311,35 @@ def read_calspec(filename, url=CALSPEC_URL, wrange=[3_990, 17_010],
     Parameters
     ----------
     filename : str
-        Name of the reference flux file.
+        Name of the reference flux file. If it is not found locally (or in
+        ``PACKAGE_PATH``), it is read from ``url``.
     url : str, optional
-        URL to the reference flux file. Default is `CALSPEC_URL`.
-    wrange : list, optional
-        Wavelength domain in Angstroms. Default is `[3_990, 17_010]`.
+        Base URL of the remote CalSpec repository. Default is
+        ``CALSPEC_URL``.
+    wrange : list of float, optional
+        ``[min, max]`` wavelength domain to keep (inclusive), in Angstrom.
+        Default is ``[3_990, 17_010]``.
     description : str, optional
-        Description string (used as a verbose flag). Default is ''.
+        Description of the file; if not empty, the file name is printed.
+        Default is ``''``.
 
     Returns
     -------
     astropy.table.Table
-        File content as a table with columns `["wavelength", "flux"]`.
+        File content as a table with columns ``"wavelength"`` (Angstrom)
+        and ``"flux"`` (erg/s/cm^2/A).
+
+    Raises
+    ------
+    AssertionError
+        If the file units are not ``ANGSTROMS`` and ``FLAM``.
 
     Examples
     --------
     >>> tab = read_calspec('gd71_mod_012.fits',
     ...                    description='GD71') # doctest: +ELLIPSIS
     Reading GD71 CalSpec file 'https://archive.stsci.edu/...
-    >>> tab.info()
+    >>> tab.info()  # doctest: +NORMALIZE_WHITESPACE
     <Table length=43735>
        name     dtype           unit           format
     ---------- ------- ---------------------- --------
@@ -335,19 +373,25 @@ def chromatic_interpolator(wavelength, quantity,
                            k=3, ext='raise', inverse=False):
     """Build a chromatic interpolator.
 
+    The interpolator is an interpolating spline (no smoothing, ``s=0``).
+
     Parameters
     ----------
     wavelength : array_like
-        Wavelength array in interpolated units.
+        Wavelengths, in the unit expected by the interpolator.
     quantity : array_like
         Quantity to be interpolated.
     k : int, optional
-        Degree of the smoothing spline. Default is 3.
-    ext : str, optional
-        Extrapolation mode ('extrapolate', 'zeros', 'raise', 'const').
-        Default is 'raise'.
+        Degree of the spline. Default is 3.
+    ext : str or int, optional
+        Extrapolation mode (``'extrapolate'``, ``'zeros'``, ``'raise'``,
+        ``'const'``), see `scipy.interpolate.UnivariateSpline`.
+        Default is ``'raise'``.
     inverse : bool, optional
-        Inverse interpolation (e.g., wavelength solution). Default is False.
+        If True, interpolate wavelength as a function of ``quantity`` (e.g.
+        wavelength solution); otherwise ``quantity`` as a function of
+        wavelength. In the inverse case, ``quantity`` must be increasing.
+        Default is False.
 
     Returns
     -------

@@ -1,4 +1,4 @@
-""" Scene: base module.
+"""Scene: base module.
 
 `SceneElement` is the base class of every scene component (point source,
 background, host). It wraps a ``model_func(lbda, ...)`` returning a spectrum,
@@ -11,22 +11,27 @@ from ..utils import inspect_func
 from copy import deepcopy
 
 class SceneElement:
-    """Base class for scene elements."""
+    """Base class for scene elements.
+
+    A scene element wraps a model function ``model_func(lbda, ...)`` that
+    returns the element spectrum. The parameters of ``model_func`` (but
+    ``lbda``) are read from the element `meta` when the spectrum is computed,
+    falling back to the function defaults, and can be changed with `update`.
+
+    Parameters
+    ----------
+    model_func : callable
+        Function that returns the spectrum of the element.
+        It must take the wavelength (``lbda``) as first argument.
+    lbda : array_like, optional
+        Default wavelength array in Angstrom. Default is None.
+    meta : dict, optional
+        Parameters of ``model_func`` (and any other metadata). It is
+        deep-copied. Default is an empty dict.
+    """
 
     def __init__(self, model_func, lbda=None, meta={}):
-        """Initialize the SceneElement.
-
-        Parameters
-        ----------
-        model_func : callable
-            Function that returns the spectrum of the element.
-            It must take `lbda` as first argument.
-        lbda : array_like, optional
-            Wavelength array in Angstrom. Default is None.
-        meta : dict, optional
-            Dictionary of parameters for the `model_func`.
-            Default is {}.
-        """
+        """Initialize the SceneElement."""
         self._model_func = model_func
         self._meta = deepcopy(meta)
         self._meta_in = deepcopy(meta)
@@ -34,7 +39,9 @@ class SceneElement:
 
     @classmethod
     def from_config(cls, config):
-        """Build the class from a configuration file.
+        """Build the class from a configuration dictionary.
+
+        Must be implemented by subclasses.
 
         Parameters
         ----------
@@ -45,6 +52,11 @@ class SceneElement:
         -------
         SceneElement
             An instance of the class.
+
+        Raises
+        ------
+        NotImplementedError
+            Always, for the base class.
         """
         raise NotImplementedError("No from_config implemented")
 
@@ -57,10 +69,16 @@ class SceneElement:
         Parameters
         ----------
         reset_others : bool, optional
-            If True, parameters not given in `kwargs` are reset to their
+            If True, parameters not given in ``kwargs`` are reset to their
             initial values. Default is False.
         **kwargs
-            Parameters to update. See `self.mutable_parameters`.
+            Parameters to update, see `mutable_parameters`. ``lbda`` updates
+            the default wavelength array. None values are skipped.
+
+        Warns
+        -----
+        UserWarning
+            If a given parameter is not mutable (it is then ignored).
         """
         model_update = {}
         for k, v in kwargs.items():
@@ -90,15 +108,22 @@ class SceneElement:
         Parameters
         ----------
         lbda : array_like, optional
-            Wavelength array in Angstrom. If None, `self.lbda` is used.
-            Default is None.
+            Wavelength array in Angstrom. If None, `lbda` (the property) is
+            used. Default is None.
 
         Returns
         -------
         lbda : array_like
             Wavelength array in Angstrom.
-        flux : array_like
-            Flux of the scene element. Unit depends on the model_func.
+        flux : numpy.ndarray
+            Flux of the scene element. Unit depends on ``model_func``
+            (typically erg/s/cm^2/A, or erg/s/cm^2/A/arcsec^2 for
+            backgrounds).
+
+        Raises
+        ------
+        ValueError
+            If ``lbda`` is None and no default wavelength is set.
         """
         if lbda is None:
             lbda = self._lbda
@@ -111,12 +136,12 @@ class SceneElement:
         return lbda, flux
 
     def _parse_model_kwargs_(self):
-        """Get default `model_func` parameters updated by current meta.
+        """Get default ``model_func`` parameters updated by current meta.
 
         Returns
         -------
         dict
-            Dictionary of parameters for `model_func`.
+            Dictionary of parameters for ``model_func``.
         """
         # get default
         list_parameters, default_param = inspect_func(self.model_func)
@@ -140,17 +165,17 @@ class SceneElement:
 
     @property
     def meta(self):
-        """Meta parameters of the object."""
+        """Meta parameters of the object (parameters of `model_func` and metadata)."""
         return self._meta
 
     @property
     def lbda(self):
-        """Wavelength of definition in Angstrom."""
+        """Default wavelength array in Angstrom."""
         return self._lbda
 
     @property
     def mutable_parameters(self):
-        """List of mutable parameters."""
+        """List of mutable parameters (the arguments of `model_func`, including ``lbda``)."""
         # no extra so far
         return self._model_mutables
 

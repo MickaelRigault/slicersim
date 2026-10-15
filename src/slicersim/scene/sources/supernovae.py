@@ -1,4 +1,15 @@
-""" This module handles Supernovae sources """
+"""This module handles type Ia supernova sources.
+
+Two spectral models are available: SALT (through ``sncosmo``, see
+`get_saltmodel_flux`) and the Twins Embedding model (requires the optional
+``twins_embedding`` package, see `get_twins_embedding_flux`).
+
+References
+----------
+- Guy, J. et al. 2007, A&A, 466, 11 (SALT2).
+- Kenworthy, W. D. et al. 2021, ApJ, 923, 265 (SALT3).
+- Boone, K. et al. 2021, ApJ, 912, 70 (Twins Embedding).
+"""
 
 import warnings
 
@@ -22,22 +33,29 @@ def get_snia_pointsource(source=None, **kwargs):
     source : str, optional
         Name of the SN Ia model to use. If None the default is used.
 
-        - "salt" [default]
-        - any sncosmo salt source name.
-        - "twin"
+        - ``"salt"`` [default]: equivalent to ``"salt2-extended"``.
+        - any ``sncosmo`` SALT source name (containing ``"salt"``).
+        - any name containing ``"twin"``: Twins Embedding model.
     **kwargs
-        Additional parameters to update the configuration.
+        Additional parameters to update the configuration (any parameter
+        of the model function, e.g. ``redshift``, ``phase``, ``x1``, ``c``,
+        or ``position``).
 
     Returns
     -------
     dict
         Configuration dictionary for a SN Ia point source, ready to be passed
-        to `~slicersim.scene.pointsource.PointSource.from_config`.
+        to `~slicersim.scene.pointsource.PointSource.from_config`. Default
+        entries are ``name="SN Ia"``, ``redshift=1.5``, ``phase=0`` and
+        ``position=[1, 0.5]``, plus ``source``, ``MBmax=-19.3``, ``c=0`` and
+        ``x1=0`` for SALT, or ``magnitude=0``, ``color=0`` and
+        ``coordinates=(0, 0, 0)`` for Twins Embedding.
 
     Raises
     ------
     NotImplementedError
-        If ``source`` matches neither the "salt" nor the "twin" family.
+        If ``source`` matches neither the ``"salt"`` nor the ``"twin"``
+        family.
 
     See Also
     --------
@@ -70,10 +88,11 @@ def get_snia_pointsource(source=None, **kwargs):
 def get_saltmodel(redshift=0.1,
                   MBmax=-19.3, source="salt2-extended", cosmo=cosmology,
                   x1=0, c=0, alpha=-0.14, beta=3.15):
-    """Get a sncosmo SALT2 SN Ia model.
+    """Get a ``sncosmo`` SALT SN Ia model.
 
-    The returned model is monkey-patched with an additional method `get_flux`
-    which returns null fluxes outside the valid spectral domain of the model.
+    The returned model is monkey-patched with an additional method
+    ``get_flux`` which returns null fluxes outside the valid spectral domain
+    of the model.
 
     Parameters
     ----------
@@ -82,28 +101,33 @@ def get_saltmodel(redshift=0.1,
     MBmax : float, optional
         Peak absolute Bessell-B AB-magnitude. Default is -19.3.
     source : str, optional
-        Model source name (see `sncosmo`). Default is "salt2-extended".
+        Model source name (see ``sncosmo``). Default is ``"salt2-extended"``.
     cosmo : astropy.cosmology.Cosmology, optional
-        Cosmology model. Default is `astropy.cosmology.Planck18`.
+        Cosmology model. Default is ``astropy.cosmology.Planck18``.
     x1 : float, optional
-        SALT2 stretch parameter. Default is 0.
+        SALT stretch parameter. Default is 0.
     c : float, optional
-        SALT2 color parameter. Default is 0.
+        SALT color parameter. Default is 0.
     alpha : float, optional
-        Stretch standardization factor. Default is -0.14.
+        Stretch standardization coefficient. Default is -0.14.
     beta : float, optional
-        Color standardization factor. Default is 3.15.
+        Color standardization coefficient. Default is 3.15.
 
     Returns
     -------
     sncosmo.Model
-        A monkey-patched `sncosmo.Model` instance, carrying an extra
-        ``get_flux(wave, time)`` method.
+        A monkey-patched `sncosmo.Model` instance (with ``t0=0``), carrying
+        an extra ``get_flux(wave, time)`` method.
 
     Notes
     -----
-    The peak absolute magnitude is standardised following the Tripp relation,
+    The peak absolute magnitude is standardized following the Tripp relation,
     ``eff_mbmax = MBmax + x1 * alpha + c * beta``, without environmental bias.
+
+    References
+    ----------
+    - Guy, J. et al. 2007, A&A, 466, 11.
+    - Kenworthy, W. D. et al. 2021, ApJ, 923, 265.
     """
     import sncosmo
 
@@ -123,7 +147,8 @@ def get_saltmodel(redshift=0.1,
         wave : array_like
             Wavelengths in Angstroms at which to evaluate the flux.
         time : float
-            Rest-frame phase in days relative to peak brightness.
+            Observer-frame time in days relative to peak brightness
+            (``t0=0``).
 
         Returns
         -------
@@ -153,28 +178,30 @@ def get_saltmodel_flux(lbda, phase,
     Parameters
     ----------
     lbda : array_like
-        Wavelength array in Angstrom.
+        Observer-frame wavelength array in Angstrom.
     phase : float
-        Phase of the SN Ia.
+        Observer-frame time in days relative to B-band maximum.
     abmag : float, optional
-        Apparent magnitude. If given, `redshift` is ignored and derived from `abmag`.
+        Apparent peak magnitude. If given, ``redshift`` is ignored and
+        derived from ``abmag`` and ``MBmax`` (distance modulus only, see
+        `~slicersim.scene.sources.utils.obsmag_to_redshift`).
         Default is None.
     redshift : float, optional
         Redshift of the SN Ia. Default is 0.1.
     MBmax : float, optional
         Peak absolute Bessell-B AB-magnitude. Default is -19.3.
     source : str, optional
-        Model source name (see `sncosmo`). Default is "salt2-extended".
+        Model source name (see ``sncosmo``). Default is ``"salt2-extended"``.
     cosmo : astropy.cosmology.Cosmology, optional
-        Cosmology model. Default is `astropy.cosmology.Planck18`.
+        Cosmology model. Default is ``astropy.cosmology.Planck18``.
     x1 : float, optional
-        SALT2 stretch parameter. Default is 0.
+        SALT stretch parameter. Default is 0.
     c : float, optional
-        SALT2 color parameter. Default is 0.
+        SALT color parameter. Default is 0.
     alpha : float, optional
-        Stretch standardization factor. Default is -0.14.
+        Stretch standardization coefficient. Default is -0.14.
     beta : float, optional
-        Color standardization factor. Default is 3.15.
+        Color standardization coefficient. Default is 3.15.
 
     Returns
     -------
@@ -185,12 +212,18 @@ def get_saltmodel_flux(lbda, phase,
     Warns
     -----
     UserWarning
-        If both ``abmag`` and ``redshift`` are given, since ``redshift`` is
-        then ignored and re-derived from ``abmag``.
+        If both ``abmag`` and ``redshift`` are not None, since ``redshift``
+        is then ignored and re-derived from ``abmag``.
 
     See Also
     --------
     get_saltmodel : The underlying `sncosmo.Model`.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> lbda = np.linspace(4000, 9000, 100)
+    >>> flux = get_saltmodel_flux(lbda, phase=0, redshift=0.1, x1=1)
     """
     if abmag is not None:
         if redshift is not None:
@@ -209,35 +242,41 @@ def get_twins_embedding_flux(lbda, phase, redshift=0.05,
                              magnitude=0., color=0., coordinates=(0., 0., 0.),
                              cosmo=cosmology, ref_redshift=0.05,
                              norm=1e-15):
-    """Get a SN Ia spectrum assuming the Twin Embedding model.
+    """Get a SN Ia spectrum assuming the Twins Embedding model.
+
+    The rest-frame model spectrum is redshifted, then scaled by the
+    luminosity distance ratio and the ``(1 + z)`` flux dilution relative to
+    ``ref_redshift``.
 
     Parameters
     ----------
     lbda : array_like
-        Wavelength array in Angstrom.
+        Observer-frame wavelength array in Angstrom.
     phase : float
         Rest-frame phase in days.
     redshift : float, optional
         Redshift of the simulated flux. Default is 0.05.
     magnitude : float, optional
-        Magnitude offset for the twin model (dmag). Default is 0.
+        Magnitude offset of the Twins Embedding model (dmag). Default is 0.
     color : float, optional
-        Color term of the twin model (Av). Default is 0.
-    coordinates : tuple, optional
-        Embedding parameters for the twin model (xi). Default is (0., 0., 0.).
+        Color term of the Twins Embedding model (Av). Default is 0.
+    coordinates : tuple of float, optional
+        Coordinates in the embedding space (xi). Default is ``(0., 0., 0.)``.
     cosmo : astropy.cosmology.Cosmology, optional
-        Cosmology to be used to redshift the simulated target.
-        Default is `astropy.cosmology.Planck18`.
+        Cosmology used to compute luminosity distances.
+        Default is ``astropy.cosmology.Planck18``.
     ref_redshift : float, optional
-        Reference redshift. Default is 0.05.
+        Reference redshift at which the model flux, times ``norm``, is
+        defined. Default is 0.05.
     norm : float, optional
-        Normalization of the output flux. Default is 1e-15.
+        Normalization of the model flux at ``ref_redshift``.
+        Default is 1e-15.
 
     Returns
     -------
     numpy.ndarray
-        The Twin Embedding model flux in erg/s/cm^2/A, interpolated onto
-        ``lbda``. Values outside the model wavelength coverage are `numpy.nan`.
+        The Twins Embedding model flux in erg/s/cm^2/A, interpolated onto
+        ``lbda``. Values outside the model wavelength coverage are NaN.
 
     Raises
     ------
@@ -248,6 +287,10 @@ def get_twins_embedding_flux(lbda, phase, redshift=0.05,
     -----
     ``twins_embedding`` is an optional dependency, it is imported at module
     load time and silently ignored if missing.
+
+    References
+    ----------
+    - Boone, K. et al. 2021, ApJ, 912, 70.
     """
     if twins_embedding_model is None:
         raise ImportError("The 'twins_embedding' module is not available.")

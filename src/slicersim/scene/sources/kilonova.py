@@ -1,4 +1,4 @@
-""" This module handles Kilonova sources.
+"""This module handles kilonova sources.
 
 Kilonova spectra are computed from POSSIS radiative transfer models
 (`Bulla 2019 <https://arxiv.org/abs/1906.04205>`_, Bulla 2023). These models provide a
@@ -46,18 +46,20 @@ def get_kilonova_pointsource(source=None, **kwargs):
         Name of the kilonova model (see `get_kilonova_flux`).
         If None the default is used.
 
-        - "bulla23" [default]
-        - "bulla19"
+        - ``"bulla23"`` [default]
+        - ``"bulla19"``
     **kwargs
         Additional parameters to update the configuration, i.e. any
-        parameter of `get_kilonova_flux` (e.g. redshift, phase, theta,
-        magabs, magobs, band) or ``position``.
+        parameter of `get_kilonova_flux` (e.g. ``redshift``, ``phase``,
+        ``theta``, ``magabs``, ``magobs``, ``band``) or ``position``.
 
     Returns
     -------
     dict
         Configuration dictionary for a kilonova point source, ready to be
         passed to `~slicersim.scene.pointsource.PointSource.from_config`.
+        Default entries are ``name="kilonova"``, ``redshift=0.2``,
+        ``phase=1.4`` (days since merger) and ``position=[1, 0.5]``.
 
     See Also
     --------
@@ -104,36 +106,29 @@ class AngularTimeSeriesSource(sncosmo.Source):
 
     Parameters
     ----------
-    phase : `~numpy.ndarray`
+    phase : numpy.ndarray
         Phases in days.
-
-    wave : `~numpy.ndarray`
-        Wavelengths in Angstroms.
-
-    cos_theta : `~numpy.ndarray`
+    wave : numpy.ndarray
+        Wavelengths in Angstrom.
+    cos_theta : numpy.ndarray
         Cosine of the viewing angles of the grid.
-
-    flux : `~numpy.ndarray`
+    flux : numpy.ndarray
         Model spectral flux density in arbitrary units.
         Must have shape ``(num_phases, num_waves, num_cos_theta)``.
         Negative values are set to 0 and null values to a small positive
         value (1e-10 after normalization) to allow log-interpolation.
-
     zero_before : bool, optional
         If True, flux at phases before minimum phase will be zeroed. The
         default is False, in which case the flux at such phases will be equal
         to the flux at the minimum phase (``flux[0, :]`` in the input array).
-
     zero_after : bool, optional
-        If True, flux at phases after minimum phase will be zeroed. The
+        If True, flux at phases after maximum phase will be zeroed. The
         default is False, in which case the flux at such phases will be equal
         to the flux at the maximum phase (``flux[-1, :]`` in the input array).
-
     name : str, optional
-        Name of the model. Default is `None`.
-
+        Name of the model. Default is None.
     version : str, optional
-        Version of the model. Default is `None`.
+        Version of the model. Default is None.
 
     See Also
     --------
@@ -193,7 +188,7 @@ class AngularTimeSeriesSource(sncosmo.Source):
         phase : array_like
             Phases in days.
         wave : array_like
-            Wavelengths in Angstroms.
+            Wavelengths in Angstrom.
 
         Returns
         -------
@@ -219,7 +214,7 @@ class AngularTimeSeriesSource(sncosmo.Source):
 #   POSSIS MODEL   #
 # ================ #
 def read_possis_fits(fitsfile):
-    """Read in a POSSIS spectral model stored as a fits file.
+    """Read a POSSIS spectral model stored as a fits file.
 
     The fits file must contain the "MODEL", "PHASE", "LBDA" and "COSTHETA"
     extensions, with MODEL of shape ``(num_cos_theta, num_phases, num_waves)``.
@@ -232,13 +227,13 @@ def read_possis_fits(fitsfile):
 
     Returns
     -------
-    phase : `~numpy.ndarray`
+    phase : numpy.ndarray
         Phases in days.
-    wave : `~numpy.ndarray`
+    wave : numpy.ndarray
         Wavelengths in Angstroms.
-    cos_theta : `~numpy.ndarray`
+    cos_theta : numpy.ndarray
         Cosine of viewing angle.
-    flux : `~numpy.ndarray`
+    flux : numpy.ndarray
         Model spectral flux density in arbitrary units, of shape
         ``(num_phases, num_waves, num_cos_theta)``.
 
@@ -260,10 +255,10 @@ def read_possis_fits(fitsfile):
 
 @lru_cache
 def read_possis_file(filename):
-    """Read in a spectral model created by POSSIS (1906.04205).
+    """Read a spectral model created by POSSIS (Bulla 2019).
 
-    This is as appropriate for injestion as an `AngularTimeSeriesSource`.
-    Model grids can be found here: https://github.com/mbulla/kilonova_models.
+    The output is appropriate for ingestion as an `AngularTimeSeriesSource`.
+    Model grids can be found at https://github.com/mbulla/kilonova_models.
 
     Results are cached (per filename) so a model is only read (or
     downloaded) once per session; the returned arrays must hence not be
@@ -272,17 +267,17 @@ def read_possis_file(filename):
     Parameters
     ----------
     filename : str
-        Path or url (https) to the POSSIS file (.txt or .fits)
+        Path or url (https) to the POSSIS file (.txt, .fits or .fits.gz).
 
     Returns
     -------
-    phase : `~numpy.ndarray`
+    phase : numpy.ndarray
         Phases in days.
-    wave : `~numpy.ndarray`
+    wave : numpy.ndarray
         Wavelengths in Angstroms.
-    cos_theta : `~numpy.ndarray`
+    cos_theta : numpy.ndarray
         Cosine of viewing angle.
-    flux : `~numpy.ndarray`
+    flux : numpy.ndarray
         Model spectral flux density in arbitrary units, of shape
         ``(num_phases, num_waves, num_cos_theta)``.
 
@@ -335,8 +330,8 @@ def get_kilonova_model(filename=None,
     ----------
     filename : str
         Path or url of the POSSIS file (.txt or .fits),
-        see `read_possis_file`.
-    effects : list of `sncosmo.PropagationEffect`, optional
+        see `read_possis_file`. Despite its default, it is required.
+    effects : list of sncosmo.PropagationEffect, optional
         Propagation effects (e.g. dust), see `sncosmo.Model`.
         Default is None.
     effect_names : list of str, optional
@@ -374,36 +369,38 @@ def get_kilonova_flux(lbda, phase=0,
     lbda : array_like
         Observer-frame wavelength array in Angstrom.
     phase : float, optional
-        Time since the merger in days (observer-frame). Default is 0.
+        Observer-frame time since the merger in days. Default is 0.
     redshift : float, optional
         Redshift of the kilonova. Default is 0.1.
     theta : float, optional
         Viewing angle in degrees (0 is pole-on, 90 is edge-on).
         Default is 0.
     magobs : float, optional
-        Peak observed magnitude in `band`. If given, `magabs` is ignored.
+        Peak apparent magnitude in ``band``, set with
+        ``sncosmo.Model.set_source_peakmag`` (i.e. evaluated on the rest-frame
+        source spectrum). If given, ``magabs`` is ignored.
         Default is None.
     magabs : float, optional
-        Peak absolute magnitude (rest-frame) in `band`, converted to an
-        observed magnitude using `cosmo`. Ignored if `magobs` is given.
+        Peak absolute magnitude in rest-frame ``band``, converted to an
+        apparent magnitude using ``cosmo``. Ignored if ``magobs`` is given.
         If both are None the model is not normalized.
         Default is -15.8.
     band : str, optional
-        Name of the bandpass (must be known by `sncosmo`) used for the
-        normalization. Default is "sdssr".
+        Name of the bandpass (must be known by ``sncosmo``) used for the
+        normalization. Default is ``"sdssr"``.
     magsys : str, optional
-        Name of the magnitude system (see `sncosmo`). Default is "ab".
+        Name of the magnitude system (see ``sncosmo``). Default is ``"ab"``.
     source : str, optional
         Kilonova model to use. Either a path to a POSSIS file or a shortcut
         name:
 
-        - "bulla19": Bulla (2019) model.
-        - "bulla23": Bulla (2023) model.
+        - ``"bulla19"``: Bulla (2019) model.
+        - ``"bulla23"``: Bulla (2023) model.
 
-        Default is "bulla19".
+        Default is ``"bulla19"``.
     cosmo : astropy.cosmology.Cosmology, optional
-        Cosmology used to convert `magabs` into an observed magnitude.
-        Default is Planck18.
+        Cosmology used to convert ``magabs`` into an apparent magnitude.
+        Default is ``astropy.cosmology.Planck18``.
 
     Returns
     -------
@@ -418,11 +415,16 @@ def get_kilonova_flux(lbda, phase=0,
     Warns
     -----
     UserWarning
-        If both `magobs` and `magabs` are given.
+        If both ``magobs`` and ``magabs`` are not None.
 
     See Also
     --------
     get_kilonova_model : The underlying `sncosmo.Model`.
+
+    References
+    ----------
+    - Bulla, M. 2019, MNRAS, 489, 5037.
+    - Bulla, M. 2023, MNRAS, 520, 2558.
 
     Examples
     --------

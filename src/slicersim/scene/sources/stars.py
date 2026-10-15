@@ -16,25 +16,27 @@ def get_calspec_pointsource(source, **kwargs):
     Parameters
     ----------
     source : str
-        Name of the CalSpec star (e.g. "gd71", "p177d", "bd_17").
-        The start of the name is enough as long as it is not ambiguous,
-        e.g. "bd_17" for "bd_17d4708".
+        Name of the CalSpec star (e.g. ``"gd71"``, ``"p177d"``,
+        ``"bd_17"``). The start of the name is enough as long as it is not
+        ambiguous, e.g. ``"bd_17"`` for ``"bd_17d4708"``.
     **kwargs
-        Additional parameters of the point source configuration, for instance:
+        Additional parameters of the point source configuration, for
+        instance:
 
-        - mag: magnitude of the star in `band`. If not given, the measured
-          CalSpec flux level is used.
-        - band: bandpass (from sncosmo) in which `mag` is defined
-          (default "bessellb").
-        - position: position of the point source in spaxels.
+        - ``mag``: AB magnitude of the star in ``band``. If not given, the
+          measured CalSpec flux level is used.
+        - ``band``: bandpass (must be known by ``sncosmo``) in which ``mag``
+          is defined (default ``"bessellb"``).
+        - ``position``: position of the point source ``(x, y)``, in spaxels.
 
     Returns
     -------
     dict
         Configuration dictionary for the point source, ready to be passed
         to `~slicersim.scene.pointsource.PointSource.from_config`. Its
-        ``"source"`` entry is the ``[lbda, flux]`` spectrum of the star,
-        with ``lbda`` in Angstrom and ``flux`` in erg/s/cm^2/A.
+        ``"source"`` entry is the ``[lbda, flux]`` spectrum of the star
+        (restricted to 3000-20000 A), with ``lbda`` in Angstrom and ``flux``
+        in erg/s/cm^2/A.
 
     See Also
     --------

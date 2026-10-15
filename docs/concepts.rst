@@ -46,6 +46,9 @@ methods:
    * - `~slicersim.lazuli.VirtualLazuliTarget.change_spectrograph`
      - switch between the ``"narrow"`` (40 mas) and ``"wide"`` (80 mas) fields;
        the field also sets the throughput curve used.
+   * - `~slicersim.lazuli.VirtualLazuliTarget.change_configuration`
+     - switch between the current best estimate (``"cbe"``, default) and
+       end-of-life (``"eol"``) instrument performance.
    * - `~slicersim.target.VirtualTarget.setup_to_snr`
      - find the read-out mode that reaches a requested signal-to-noise.
    * - `~slicersim.target.VirtualTarget.get_exposure_time`
@@ -55,7 +58,7 @@ methods:
    * - `~slicersim.target.VirtualTarget.get_variance_contribution`
      - the variance broken down by noise source.
    * - `~slicersim.lazuli.VirtualLazuliTarget.get_cube`
-     - the simulated 3D data cube(s).
+     - the simulated 3D data cubes of both fields.
 
 Every target holds its `~slicersim.simulation.Simulation` in
 ``target.simulation``, so you can always drop to the next layer.
@@ -75,7 +78,7 @@ A `~slicersim.simulation.Simulation` chains four components:
 - **Detector**: QE, dark current, read-out noise and MACC read-out mode.
 
 It is built from a configuration dictionary, read from TOML files shipped
-with the package:
+with the package (see :doc:`instrument` for the default values):
 
 .. code-block:: python
 

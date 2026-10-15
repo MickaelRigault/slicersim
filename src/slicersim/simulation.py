@@ -30,39 +30,44 @@ COLORS = {# detector
 class Simulation:
     """Main class to simulate an observation.
 
-    This class is the main entry point to the simulation. It contains all the
-    necessary information to simulate an observation, from the scene to the
-    detector.
+    This class is the main entry point to the simulation. It combines a
+    scene (point source, background, host), a telescope, a spectrograph and
+    a detector, together with extraction parameters (e.g. ``nramps``), to
+    simulate the observed cube and the extracted spectrum with its variance.
+
+    Instances are usually created with one of the class methods
+    `Simulation.from_scene`, `Simulation.from_source` or
+    `Simulation.from_config` rather than directly.
 
     Parameters
     ----------
-    scene : slicersim.Scene, optional
+    scene : `~slicersim.scene.scene.Scene`, optional
         The scene to observe. Default is None.
-    spectrograph : slicersim.Spectrograph, optional
+    spectrograph : `~slicersim.spectrograph.Spectrograph`, optional
         The spectrograph used for the observation. Default is None.
-    detector : slicersim.Detector, optional
+    detector : `~slicersim.detector.Detector`, optional
         The detector used for the observation. Default is None.
-    telescope : slicersim.Telescope, optional
+    telescope : `~slicersim.telescope.Telescope`, optional
         The telescope used for the observation. Default is None.
     extraction : dict, optional
-        A dictionary of parameters for the extraction. Default is {}.
+        Extraction parameters (e.g. ``nramps``, ``aperture_radius``).
+        Default is ``{}``.
     meta : dict, optional
-        A dictionary of metadata. Default is {}.
+        Input configuration, used by `Simulation.reset` to restore the
+        initial state of each element. Default is ``{}``.
 
     Attributes
     ----------
-    scene : slicersim.Scene
+    scene : `~slicersim.scene.scene.Scene`
         The scene to observe.
-    spectrograph : slicersim.Spectrograph
+    spectrograph : `~slicersim.spectrograph.Spectrograph`
         The spectrograph used for the observation.
-    detector : slicersim.Detector
+    detector : `~slicersim.detector.Detector`
         The detector used for the observation.
-    telescope : slicersim.Telescope
+    telescope : `~slicersim.telescope.Telescope`
         The telescope used for the observation.
     extraction : dict
-        A dictionary of parameters for the extraction.
-    meta : dict
-        A dictionary of metadata.
+        Extraction parameters.
 
     """
     VARIANCE_SOURCES = ["dark", "roic_glow", "thermal_dark", "ron",
@@ -76,24 +81,7 @@ class Simulation:
                  telescope=None,
                  extraction={},
                  meta={}):
-        """Initialize the simulation.
-
-        Parameters
-        ----------
-        scene : slicersim.Scene, optional
-            The scene to observe. Default is None.
-        spectrograph : slicersim.Spectrograph, optional
-            The spectrograph used for the observation. Default is None.
-        detector : slicersim.Detector, optional
-            The detector used for the observation. Default is None.
-        telescope : slicersim.Telescope, optional
-            The telescope used for the observation. Default is None.
-        extraction : dict, optional
-            A dictionary of parameters for the extraction. Default is {}.
-        meta : dict, optional
-            A dictionary of metadata. Default is {}.
-
-        """
+        """Initialize the simulation (see `Simulation` for parameters)."""
         self.scene = scene                #: Scene instance
         self.spectrograph = spectrograph  #: Spectrograph instance
         self.detector = detector          #: Detector instance
@@ -114,41 +102,51 @@ class Simulation:
 
         Parameters
         ----------
-        lbda : array
-            (High resolution) wavelength of the source (in Angstrom).
-        flux : array
-            Flux of the input source.
+        lbda : array_like
+            (High resolution) wavelength of the source [Angstrom].
+        flux : array_like
+            Flux of the input source [erg/s/cm^2/A].
         mag : float, optional
-            Requested magnitude of the source (overwrite flux's amplitude).
-            Default is None.
+            Requested magnitude of the source (rescales the ``flux``
+            amplitude). If None, ``flux`` is used as is. Default is None.
         band : str, optional
             Name of the band used to compute the magnitude (should be known by
-            sncosmo). Default is "bessellb".
-        position : tuple, optional
-            Location of the pointsource within the IFU. Default is (0, 0).
-        instrument : str, dict, list, optional
-            Configuration of the instrument. Default is "lazuli_cbe.toml".
-        background : str, dict, list, optional
-            Configuration of the (spatially flat) scene background (e.g.
-            "zodi"). Default is "zodi".
-        host : str, dict, list, optional
-            Configuration of the (spatially structured) scene background (e.g.
-            "zodi"). Default is None.
-        snr : float, optional
-            If not None, the simulation will try to reach this SNR per
-            wavelength element while loading. Default is None.
-        lbda_range : list, optional
-            Wavelength range for averaging to SNR. Ignored if `snr` is None.
-            Default is [4000, 6800].
+            ``sncosmo``). Default is ``"bessellb"``.
+        position : tuple of float, optional
+            Location of the point source within the IFU, ``(x, y)`` in
+            spaxels.
+            Default is ``(0, 0)``.
+        instrument : str, dict or list, optional
+            Configuration of the instrument (see
+            `~slicersim.iotools.get_config`). Default is ``"lazuli_cbe.toml"``.
+        background : str, dict, list or None, optional
+            Configuration of the (spatially flat) scene background.
+            If None, no background is added. Default is ``"zodi"``.
+        host : str, dict, list or None, optional
+            Configuration of the (spatially structured) host component of the
+            scene. If None, no host is added. Default is None.
+        snr : float or None, optional
+            If not None, the simulation is set up (see
+            `Simulation.fetch_snr`) to reach this average SNR per wavelength
+            bin over ``lbda_range``. Default is None.
+        lbda_range : list of float, optional
+            (wmin, wmax) wavelength range used to average the SNR
+            [Angstrom]. Ignored if ``snr`` is None. Default is
+            ``[4000, 6800]``.
         frame : str, optional
-            Frame of the `lbda_range` ('obs' or 'rest'). Ignored if `snr` is
-            None. Default is 'obs'.
+            Frame of ``lbda_range`` (``"obs"`` or ``"rest"``). Ignored if
+            ``snr`` is None. Default is ``"obs"``.
         **kwargs
-            Goes to :meth:`update`.
+            Goes to `Simulation.update`.
 
         Returns
         -------
         Simulation
+            The loaded simulation.
+
+        See Also
+        --------
+        Simulation.from_scene : load a simulation from a scene configuration.
 
         """
         # build the scene config
@@ -180,34 +178,44 @@ class Simulation:
                        instrument='lazuli_cbe.toml',
                        slicer=True,
                        **kwargs):
-        """Load the simulation setting the config to acquire the pointed
-        pointsource.
+        """Load the simulation from scene and instrument configurations.
+
+        The exposure configuration (``nmd`` and ``nramps``) is then set to
+        reach the requested SNR on the pointsource, unless ``snr`` is None.
 
         Parameters
         ----------
-        redshift : float, optional
-            Redshift of the pointsource. Default is None.
-        snr : float, optional
-            Targeted average SNR per wavelength bin. (See `lbda_range` and
-            `frame`). If None, no parameter update to reach a SNR. Default is
-            20.
-        lbda_range : list, optional
-            (wmin, wmax) wavelength range where the SNR will be estimated [Å].
-            Default is [4000, 6800].
+        redshift : float or None, optional
+            Redshift of the pointsource. If None, the one from the scene
+            configuration is used. Default is None.
+        snr : float or None, optional
+            Targeted average SNR per wavelength bin (see ``lbda_range`` and
+            ``frame``), reached using `Simulation.fetch_snr`. If None, the
+            exposure configuration is not changed. Default is 20.
+        lbda_range : list of float, optional
+            (wmin, wmax) wavelength range where the SNR is estimated
+            [Angstrom]. Default is ``[4000, 6800]``.
         frame : str, optional
-            Wavelength frame ('obs', 'rest'). Default is 'rest'.
-        scene : str, optional
-            Scene configuration file. Default is 'supernova.toml'.
-        instrument : str, optional
-            Instrument configuration file. Default is 'lazuli_cbe.toml'.
+            Wavelength frame of ``lbda_range`` (``"obs"`` or ``"rest"``).
+            Default is ``"rest"``.
+        scene : str, dict or list, optional
+            Scene configuration (see `~slicersim.iotools.get_config`).
+            Default is ``"supernova.toml"``.
+        instrument : str, dict or list, optional
+            Instrument configuration (see `~slicersim.iotools.get_config`).
+            Default is ``"lazuli_cbe.toml"``.
         slicer : bool, optional
-            If True, use a slicer spectrograph. Default is True.
+            If True, use a `~slicersim.spectrograph.SlicerSpectrograph`,
+            otherwise a `~slicersim.spectrograph.MLASpectrograph`.
+            Default is True.
         **kwargs
-            Goes to :meth:`update` to change any default configuration.
+            Goes to `Simulation.update` to change any default configuration
+            (applied before the SNR optimisation).
 
         Returns
         -------
         Simulation
+            The loaded simulation.
 
         """
 
@@ -233,22 +241,27 @@ class Simulation:
 
     @classmethod
     def from_scene_and_instconfig(cls, scene, config, slicer=True):
-        """Load the simulation setting the scene and instrument configuration.
+        """Load the simulation from a scene and an instrument configuration.
 
         Parameters
         ----------
-        scene : slicersim.Scene or dict
-            The scene to observe. Can be a Scene object or a scene configuration dict.
-        config : dict
-            Configuration dictionary containing configurations for telescope, spectrograph,
-            detector and extraction parameters.
+        scene : `~slicersim.scene.scene.Scene` or dict
+            The scene to observe, either as a scene object or as a scene
+            configuration dictionary.
+        config : dict or str
+            Instrument configuration containing the ``"telescope"``,
+            ``"spectrograph"``, ``"detector"`` and ``"extraction"`` entries.
+            If a str, it is loaded with `~slicersim.iotools.get_config`.
         slicer : bool, optional
-            If True, use a slicer spectrograph. Default is True.
+            If True, use a `~slicersim.spectrograph.SlicerSpectrograph`,
+            otherwise a `~slicersim.spectrograph.MLASpectrograph`.
+            Default is True.
 
         Returns
         -------
         Simulation
-            A Simulation instance with the given scene and configuration.
+            A simulation with the given scene and configuration.
+
         """
         if type(config) is str:
             from .iotools import get_config
@@ -265,20 +278,27 @@ class Simulation:
 
     @classmethod
     def from_config(cls, config, slicer=True):
-        """Initiate simulation from config nested dictionary.
+        """Initialize the simulation from a nested configuration dictionary.
 
         Parameters
         ----------
         config : dict
-            Top level configuration containing configurations for scene,
-            spectrograph, detector and extraction parameters (by default: use
-            default config from :func:`mlaperf.iotools.get_config`).
+            Top level configuration (e.g. as returned by
+            `~slicersim.iotools.get_config`). It must contain the
+            ``"telescope"``, ``"spectrograph"``, ``"detector"`` and
+            ``"extraction"`` entries, and may contain a ``"scene"`` entry
+            (otherwise the scene is None). It is stored as the reference
+            configuration used by `Simulation.reset`.
         slicer : bool, optional
-            If True, use a slicer spectrograph. Default is True.
+            If True, use a `~slicersim.spectrograph.SlicerSpectrograph`,
+            otherwise a `~slicersim.spectrograph.MLASpectrograph`.
+            Default is True.
 
         Returns
         -------
         Simulation
+            The loaded simulation.
+
         """
 
         # First initialize spectrograph to set wavelengths, then other elements
@@ -345,7 +365,7 @@ class Simulation:
 
         Parameters
         ----------
-        pointsource : slicersim.PointSource
+        pointsource : `~slicersim.scene.pointsource.PointSource`
             New pointsource to be used.
 
         Returns
@@ -359,9 +379,11 @@ class Simulation:
         """Change the spectrograph's spectral resolution.
 
         This updates the spectrograph dispersion configuration
-        (`dispersion_scale`, `dispersion_resolution` and `spotsize`) so
-        that the resulting resolving power matches the requested `rmin`,
-        given a reference configuration of resolution 2 for rmin=100.
+        (``dispersion_scale``, ``dispersion_resolution`` and ``spotsize``)
+        so that the resulting minimal resolving power scales with ``rmin``.
+        The reference is a dispersion resolution of 2 pixels for
+        ``rmin=100``, such that
+        ``dispersion_scale = 1.3 * (rmin / 100) * (spotsize / 2)``.
 
         Parameters
         ----------
@@ -374,7 +396,8 @@ class Simulation:
         Returns
         -------
         None
-            Updates the simulation in place (see :meth:`update`).
+            Updates the simulation in place (see `Simulation.update`).
+
         """
 
         reference_rmin = 100
@@ -391,14 +414,20 @@ class Simulation:
         Parameters
         ----------
         config : dict
-            Dictionary of configurations, keyed by element name ("scene",
-            "telescope", "spectrograph", "detector", "extraction"). Each
-            value is passed as keyword arguments to the corresponding
-            element's `update` method (or merged into `extraction`).
+            Dictionary of configurations, keyed by element name
+            (``"scene"``, ``"telescope"``, ``"spectrograph"``,
+            ``"detector"``, ``"extraction"``). Each value is passed as
+            keyword arguments to the corresponding element's ``update``
+            method (or merged into ``extraction``).
 
         Returns
         -------
         None
+
+        Warns
+        -----
+        UserWarning
+            If a key of ``config`` is not an element name (it is ignored).
 
         """
 
@@ -424,27 +453,35 @@ class Simulation:
     def update(self, reset_others=False, **kwargs):
         """Update any mutable parameter of the simulation.
 
-        For convinience, the update method respects the django ``__`` format,
+        For convenience, the update method respects the django ``__`` format,
         such that, e.g. ``pointsource__phase`` is understood as
         ``pointsource.phase``. This way, one can do:
 
-        >>> self.update(pointsource__phase = -1)  # doctest: +SKIP
+        >>> sim.update(pointsource__phase=-1)  # doctest: +SKIP
 
-        For convinience, you can specify a shorten name, like "phase". If the
-        correspondance to a mutable_parameters is uniquen this will accept it.
+        You can also specify a short name, like ``phase``. If it matches a
+        single entry of `Simulation.mutable_parameters`, it is accepted.
 
-        >>> self.update(phase = -1)  # doctest: +SKIP
+        >>> sim.update(phase=-1)  # doctest: +SKIP
 
-        For convenience and backward compatiblity, you can use ``target__`` in
-        place of ``pointsource__``.
+        For convenience and backward compatibility, you can use ``target__``
+        in place of ``pointsource__``.
 
         Parameters
         ----------
         reset_others : bool, optional
-            If True, reset other parameters to their default values. Default is
-            False.
+            If True, the scene, spectrograph and detector parameters that are
+            not given are reset to their default values. Default is False.
         **kwargs
-            Parameters to update.
+            Parameters to update, as ``name=value``. Parameters set to None
+            are ignored. Parameters not belonging to the scene, the
+            spectrograph or the detector update ``extraction``.
+
+        Warns
+        -----
+        UserWarning
+            If a parameter is not mutable or if a short name is ambiguous
+            (matches several mutable parameters); it is then ignored.
 
         """
         updates_scene = {"reset_others": reset_others}
@@ -515,15 +552,23 @@ class Simulation:
         # Do NOT update meta, so reset still works as expected.
 
     def reset(self, which="*"):
-        """Reset the simulation element at their initial config value.
+        """Reset simulation elements to their initial configuration.
 
-        Careful, this creates a new element element and erases the current one.
+        The initial configuration is the one given as ``meta`` when loading
+        the simulation (see `Simulation.from_config`). Careful, this creates
+        a new element and erases the current one.
 
         Parameters
         ----------
-        which : str, list, optional
-            Element to reset. could be '*'/'all' or a key of
-            :attr:`Simulation._elements`. Default is "*".
+        which : str, optional
+            Element to reset: ``"*"`` or ``"all"`` for every element, or one
+            of ``"scene"``, ``"telescope"``, ``"spectrograph"``,
+            ``"detector"`` or ``"extraction"``. Default is ``"*"``.
+
+        Raises
+        ------
+        ValueError
+            If ``which`` is not a known element.
 
         """
 
@@ -557,31 +602,40 @@ class Simulation:
     #  GETTER  #
     # -------- #
     def get_lbda(self):
-        """ Get the wavelength array
+        """Get the wavelength array.
 
-        This is a shortcut to self.spectrograph.lbda
+        This is a shortcut to ``self.spectrograph.lbda``.
+
+        Returns
+        -------
+        numpy.ndarray
+            Wavelength of the spectral bins [Angstrom].
+
         """
         return self.spectrograph.lbda
 
     def get_input_spectrum(self, which="pointsource"):
-        """Get the input spectrum.
+        """Get the input spectrum of a scene element.
 
-        This is a shortcut to self.scene.get_element_spectrum
+        This is a shortcut to ``self.scene.get_element_spectrum``.
 
         Parameters
         ----------
         which : str, optional
-            Which input do you want:
-            - individual elements: 'pointsource', 'background', 'host'
-            - all merged: 'stacked'
-            Default is "pointsource".
+            Which input spectrum to return:
+
+            - individual elements: ``"pointsource"``, ``"background"``,
+              ``"host"``;
+            - all elements summed: ``"stacked"``.
+
+            Default is ``"pointsource"``.
 
         Returns
         -------
-        lbda : array
-            Wavelength in Angstrom.
-        flux : array
-            Input flux (erg/s/cm^2/A).
+        lbda : numpy.ndarray
+            Wavelength [Angstrom].
+        flux : numpy.ndarray
+            Input flux [erg/s/cm^2/A].
 
         """
         if which == "stacked":
@@ -593,55 +647,63 @@ class Simulation:
         return lbda, flux
 
     def get_effective_transmission(self):
-        """Effective total transmission of the spectrograph.
+        """Get the effective total transmission of the instrument.
 
-        Product of the spectroscopic throughput: spectrograph.flambda2photon
-        and the detector efficiency: detector.photonflux_to_adu
+        Product of the spectroscopic throughput
+        (``spectrograph.flambda2photon``) and the detector efficiency
+        (``detector.photonflux_to_adu``), for a single ramp.
 
         Returns
         -------
-        lbda : array
-            Wavelength in Angstrom.
-        throughput : array
-            Effective throughput (ADU/ (erg/s/cm^2/A)).
+        lbda : numpy.ndarray
+            Wavelength [Angstrom].
+        throughput : numpy.ndarray
+            Effective throughput, i.e. conversion from flux to signal
+            [ADU / (erg/s/cm^2/A)].
 
         """
         lbda = self.spectrograph.lbda # make sure it is up to date.
         return lbda, self.spectrograph.flambda2photon * self.detector.photonflux_to_adu(lbda)
 
     def get_resolving_power(self):
-        r""" resolving power (R)
+        r"""Get the spectral resolving power :math:`R`.
 
-        R &= \frac{2}{n \delta\lambda} \\
-        with
-        \delta\lambda &= \max(1, \sigma) \times \Delta\lambda
-        and
-        `\Delta\lambda` the spectral step [Å]
-        and
-        `\sigma` is the spectral resolution [px].
+        This is a shortcut to
+        `~slicersim.spectrograph.Spectrograph.get_resolving_power`:
+
+        .. math::
+
+            R = \frac{\lambda}{\Delta\lambda \, \sigma}
+
+        with :math:`\Delta\lambda` the spectral step [Angstrom] and
+        :math:`\sigma` the dispersion resolution [pixel].
 
         Returns
         -------
-        lbda : array
-            Wavelength in Angstrom.
-        waveresolution : array
-            Effective wavelength resolution.
+        lbda : numpy.ndarray
+            Wavelength [Angstrom].
+        resolving_power : numpy.ndarray
+            Resolving power :math:`R` (dimensionless).
 
         """
         return self.spectrograph.lbda, self.spectrograph.get_resolving_power()
 
     def get_pixel_variance(self, flux=0, **kwargs):
-        """Get the variance associated with a single pixel on the detector.
+        """Get the variance associated with a single detector pixel.
+
+        The variance includes all ``nramps`` ramps.
 
         Parameters
         ----------
-        flux : float, optional
-            The flux in the pixel in ADU. Default is 0.
+        flux : float or array_like, optional
+            Incident flux on the pixel [ph/s]. Default is 0.
+        **kwargs
+            Goes to `~slicersim.detector.Detector.estimate_pixel_signal`.
 
         Returns
         -------
-        float
-            The variance of the pixel in ADU^2.
+        float or numpy.ndarray
+            Variance of the pixel [ADU^2].
 
         """
         lbda = self.spectrograph.lbda
@@ -657,16 +719,16 @@ class Simulation:
         Parameters
         ----------
         nea_spatial : float or array_like, optional
-            The spatial NEA in spaxels^2. If None, it is computed.
+            The spatial NEA [spaxel^2]. If None, it is computed.
             Default is None.
         nea_pixels : float or array_like, optional
-            The pixel NEA in pixels. If None, it is computed.
+            The pixel NEA [pixel]. If None, it is computed.
             Default is None.
 
         Returns
         -------
-        float or array_like
-            The total NEA.
+        float or numpy.ndarray
+            The total NEA [pixel].
 
         """
         return self.spectrograph.get_nea(position = self.scene.pointsource.position,
@@ -677,19 +739,27 @@ class Simulation:
 
         Parameters
         ----------
-        spectrum : array_like, optional
-            The input spectrum in erg/s/cm^2/A. Default is None.
+        spectrum : array_like or None, optional
+            The input spectrum [erg/s/cm^2/A]. If given, its Poisson
+            variance is added (approximation). Default is None.
         nea_spatial : float or array_like, optional
-            The spatial NEA in spaxels^2. If None, it is computed.
+            The spatial NEA [spaxel^2]. If None, it is computed.
             Default is None.
         nea_pixels : float or array_like, optional
-            The pixel NEA in pixels. If None, it is computed.
+            The pixel NEA [pixel]. If None, it is computed.
             Default is None.
 
         Returns
         -------
-        float or array_like
-            The estimated variance.
+        float or numpy.ndarray
+            The estimated variance [ADU^2].
+
+        Warns
+        -----
+        UserWarning
+            If ``spectrum`` is given and the configuration differs from the
+            validated one (``spatial_scale=0.04``,
+            ``psf_sigma_spectral=0.03``).
 
         """
         nea = self.get_nea(nea_spatial=nea_spatial, nea_pixels=nea_pixels)
@@ -715,24 +785,32 @@ class Simulation:
         return variance_pixels + var_source
 
     def get_parameter(self, which=None, default=None, as_dict=True):
-        """Shortcut to get simulation parameter(s).
+        """Get simulation parameter(s).
 
-        Should be an attribute of one of the element of the simulation,
-        e.g. `gain` from `Simulation.detector.gain`.
+        The parameter should be an extraction parameter or an attribute (or
+        ``meta`` entry) of one of the elements of the simulation, e.g.
+        ``gain`` for ``Simulation.detector.gain``. The ``element__name``
+        format is also accepted: ``element`` is first looked for as an
+        attribute of the simulation (e.g. ``detector__gain``), then as a
+        sub-element of the scene, spectrograph or detector (e.g.
+        ``optics__emissivity`` for ``Simulation.spectrograph.optics``).
 
         Parameters
         ----------
-        which : str or list of str, optional
-            Parameter name (or list of). Default is None (get all).
-        default : any, optional
-            Default value. Default is None.
+        which : str, list of str or None, optional
+            Parameter name (or list of). If None, all parameters are
+            returned. Default is None.
+        default : object, optional
+            Value returned if the parameter is not found. Default is None.
         as_dict : bool, optional
-            Return `{which: value}` rather than `value`. Default is True.
+            If the parameter is not found, return ``{which: default}``
+            rather than ``default``. Default is True.
 
         Returns
         -------
-        any
-            Parameter value.
+        object or dict
+            Parameter value. If ``which`` is a list, a dict
+            ``{name: value}`` is returned.
 
         """
         if which is None:       # Get all of them
@@ -760,12 +838,13 @@ class Simulation:
 
         # Generic source__value term
         if "__" in which:
-            try:
-                source, value = which.split("__")
-                instance = getattr(self, source)
-                return getattr(instance, value)
-            except: # noqa: E722
-                warnings.warn(f"failed to parse {which=}")
+            # you provide a self.source.value as source__value
+            if len(source_and_value := which.split("__")) == 2:
+                source, value = source_and_value
+                if hasattr(self, source):
+                    instance = getattr(self, source)
+                    if hasattr(instance, value):
+                        return getattr(instance, value)
 
         # Otherwise, look at individual elements
         elements = ["scene", "spectrograph", "detector"]
@@ -792,25 +871,32 @@ class Simulation:
         return {which: default} if as_dict else default
 
     def get_background_spectrum(self, unit="adu", skyarea=None, per_ramp=False, apply_lsf=True):
-        """Get the (flat) background flux.
+        """Get the (flat) background flux within a given sky area.
 
         Parameters
         ----------
         unit : str, optional
-            Unit of the output flux. Can be "adu", "flambda", "ph", "photon",
-            "photons". Default is "adu".
-        skyarea : float, optional
-            Sky area in arcsec^2. If None, it is computed from the
-            spectrograph spaxel scale. Default is None.
+            Unit of the output flux: ``"adu"`` (total signal),
+            ``"flambda"`` [erg/s/cm^2/A] or ``"ph"``, ``"photon"``,
+            ``"photons"`` [ph/s]. Default is ``"adu"``.
+        skyarea : float or None, optional
+            Sky area [arcsec^2]. If None, the area of one spaxel is used.
+            Default is None.
         per_ramp : bool, optional
-            If True, return the flux per ramp. Default is False.
+            If True, the flux is not multiplied by ``nramps`` (for single
+            ramp). Default is False.
         apply_lsf : bool, optional
             If True, apply the line spread function. Default is True.
 
         Returns
         -------
-        array
-            Background flux.
+        numpy.ndarray
+            Background flux per wavelength bin, shape (nlbda,).
+
+        Raises
+        ------
+        ValueError
+            If ``unit`` is unknown.
 
         """
         if skyarea is None:
@@ -843,32 +929,46 @@ class Simulation:
                             as_oversampled=False, oversampling=None,
                             as_dict=True, per_ramp=False, apply_lsf=True,
                             **kwargs):
-        """Get the scene cubes.
+        """Get the cubes of each scene component (noise free).
 
         Parameters
         ----------
         unit : str, optional
-            Unit of the output flux. Can be "adu", "flambda", "ph", "photon",
-            "photons". Default is "adu".
+            Unit of the output flux: ``"adu"`` (or ``"default"``),
+            ``"flambda"`` [erg/s/cm^2/A] or ``"ph"``, ``"photon"``,
+            ``"photons"`` [ph/s]. Default is ``"adu"``.
         psf_profile : str, optional
-            PSF profile to use. Default is "default".
+            PSF profile to use. Default is ``"default"``.
         as_oversampled : bool, optional
-            If True, return the oversampled cube. Default is False.
-        oversampling : int, optional
+            If True, return the oversampled pointsource cube. Default is
+            False.
+        oversampling : int or None, optional
             Oversampling factor. Default is None.
         as_dict : bool, optional
             If True, return a dictionary of cubes. Default is True.
         per_ramp : bool, optional
-            If True, return the flux per ramp. Default is False.
+            If True, the cubes are not multiplied by ``nramps`` (for single
+            ramp). Default is False.
         apply_lsf : bool, optional
             If True, apply the line spread function. Default is True.
         **kwargs
-            Goes to :meth:`spectrograph.generate_pointsource`.
+            Goes to the spectrograph ``generate_pointsource`` and
+            ``generate_structured_background`` methods.
 
         Returns
         -------
-        dict or array
-            Dictionary of cubes or stacked array of cubes.
+        dict or numpy.ndarray
+            If ``as_dict``, a dictionary with keys ``"pointsource"``,
+            ``"background"``, ``"host_cube"`` and ``"thermal_cube"``, each a
+            (nlbda, ny, nx) cube. Otherwise, these four cubes stacked in a
+            (4, nlbda, ny, nx) array.
+
+        Raises
+        ------
+        ValueError
+            If ``unit`` is unknown.
+        NotImplementedError
+            If the scene has a host and ``as_oversampled`` is True.
 
         """
         # by default spectrograph. give flux in ph/s.
@@ -939,31 +1039,45 @@ class Simulation:
                                 as_oversampled=False, oversampling=None,
                                 apply_lsf=True, cached=False,
                                 **kwargs):
-        """Project the scene through spectrograph and get flux cube [ph or
-        flambda].
+        """Project the scene through the spectrograph and get the flux cube.
+
+        The cube is the noise-free incident flux per spaxel, including the
+        pointsource, host, background and thermal contributions (unless
+        switched off).
 
         Parameters
         ----------
         in_photons : bool, optional
-            If True, return the cube in photons/s. Default is True (flambda).
-        switch_off : list, optional
-            List of discarded scene elements (pointsource, host, background) +
-            thermal. Default is [].
+            If True, return the cube in [ph/s], otherwise in
+            [erg/s/cm^2/A]. Default is True.
+        switch_off : list of str, optional
+            Components to discard: any of ``"pointsource"``, ``"host"``,
+            ``"background"`` and ``"thermal"``. Default is ``[]``.
         psf_profile : str, optional
-            PSF profile to use. Default is "default".
+            PSF profile to use. Default is ``"default"``.
         as_oversampled : bool, optional
             If True, return the oversampled cube. Default is False.
-        oversampling : int, optional
-            Oversampling factor. Default is None.
+        oversampling : int or None, optional
+            Oversampling factor. If None, 3 is used. Default is None.
         apply_lsf : bool, optional
             If True, apply the line spread function. Default is True.
+        cached : bool, optional
+            If True, return the cube stored by a previous call made with
+            ``cached=True`` (if any), otherwise compute and store it. The
+            other arguments are then ignored. Default is False.
         **kwargs
-            Goes to :meth:`spectrograph.generate_pointsource`.
+            Goes to the spectrograph ``generate_pointsource`` and
+            ``generate_structured_background`` methods.
 
         Returns
         -------
-        array
-            (nlbda, ny, nx) cube.
+        numpy.ndarray
+            (nlbda, ny, nx) cube in [ph/s] or [erg/s/cm^2/A].
+
+        Raises
+        ------
+        NotImplementedError
+            If the host is included and ``as_oversampled`` is True.
 
         """
         # should this be recomputed ?
@@ -1038,7 +1152,7 @@ class Simulation:
 
         Returns
         -------
-        array
+        numpy.ndarray
             (nlbda, ny, nx) host flux per spaxel [erg/s/cm²/Å].
         """
         # like the PSF, the host is rendered on spx_shape using
@@ -1054,30 +1168,51 @@ class Simulation:
                      as_oversampled=False, oversampling=None,
                      per_ramp=False, apply_lsf=True, cached=False,
                      **kwargs):
-        """Get data cube as extracted from exposure [ADU].
+        """Get the signal and variance cubes as extracted from the exposure.
 
         Parameters
         ----------
-        switch_off : list, optional
-            Name of variance sources to switch off. (dark, ron, pointsource,
-            host, background, thermal). Default is [].
+        switch_off : str or list of str, optional
+            Name of the variance sources to switch off, any of
+            `Simulation.variance_sources` (``"dark"``, ``"roic_glow"``,
+            ``"thermal_dark"``, ``"ron"``, ``"pointsource"``,
+            ``"background"``, ``"host"``, ``"thermal"``) or
+            ``"effective_dark"`` (``"dark"`` and ``"thermal_dark"``).
+            Detector effects are only switched off during the computation.
+            Default is ``[]``.
         psf_profile : str, optional
-            PSF profile to use. Default is "default".
+            PSF profile to use. Default is ``"default"``.
         as_oversampled : bool, optional
             If True, return the oversampled cube. Default is False.
-        oversampling : int, optional
+        oversampling : int or None, optional
             Oversampling factor. Default is None.
         per_ramp : bool, optional
-            If True, return the flux per ramp. Default is False.
+            If True, the cubes are not multiplied by ``nramps`` (for single
+            ramp). Default is False.
         apply_lsf : bool, optional
             If True, apply the line spread function. Default is True.
+        cached : bool, optional
+            If True, use (or store) the cached projected scene and thermal
+            signal (see `Simulation.get_projected_scene`). Default is False.
         **kwargs
-            Goes to :meth:`_get_mla_cube_` or :meth:`_get_slicer_cube_`.
+            Goes to `Simulation.get_projected_scene`.
 
         Returns
         -------
-        cube_signal, cube_variance
-            (nlbda, ny, nx) in [ADU].
+        cube_signal : numpy.ndarray
+            (nlbda, ny, nx) signal cube [ADU].
+        cube_variance : numpy.ndarray
+            (nlbda, ny, nx) variance cube [ADU^2].
+
+        Raises
+        ------
+        ValueError
+            If the spectrograph type is neither MLA nor slicer.
+
+        Warns
+        -----
+        UserWarning
+            If an entry of ``switch_off`` is unknown.
 
         """
 
@@ -1192,17 +1327,18 @@ class Simulation:
             Oversampling factor. Default is None.
         as_oversampled : bool, optional
             If True, return the oversampled cube. Default is False.
-        per_ramp : bool, optional
-            If True, return the flux per ramp. Default is False.
         apply_lsf : bool, optional
             If True, apply the line spread function. Default is True.
+        cached : bool, optional
+            If True, use cached projected scene and thermal signal.
+            Default is False.
         **kwargs
-            Goes to :meth:`get_projected_scene`.
+            Goes to `Simulation.get_projected_scene`.
 
         Returns
         -------
-        sig_cube, var_cube
-            (nlbda, ny, nx) in [ADU] (so ADU/voxel)
+        sig_cube, var_cube : numpy.ndarray
+            (nlbda, ny, nx) signal [ADU] and variance [ADU^2], per ramp.
 
         """
         # scene split per slices
@@ -1240,17 +1376,17 @@ class Simulation:
             If True, return the oversampled cube. Default is False.
         oversampling : int, optional
             Oversampling factor. Default is None.
-        per_ramp : bool, optional
-            If True, return the flux per ramp. Default is False.
         apply_lsf : bool, optional
             If True, apply the line spread function. Default is True.
+        cached : bool, optional
+            If True, use the cached projected scene. Default is False.
         **kwargs
-            Goes to :meth:`get_projected_scene`.
+            Goes to `Simulation.get_projected_scene`.
 
         Returns
         -------
-        sig_cube, var_cube
-            (nlbda, ny, nx) in [ADU, ADU^2].
+        sig_cube, var_cube : numpy.ndarray
+            (nlbda, ny, nx) signal [ADU] and variance [ADU^2], per ramp.
 
         """
 
@@ -1289,38 +1425,50 @@ class Simulation:
                   as_oversampled=False, oversampling=None,
                   apply_lsf=True, cached=False,
                   **kwargs):
-        """Get slices of the cube.
+        """Get images of the cube summed over wavelength ranges.
 
         Parameters
         ----------
-        lbda_range : tuple or list of tuples
-            (lbda_min, lbda_max) to use [n-slice=1] or ((lbda_min, lbda_max),
-            (lbda_min, lbda_max), ...) [n-slice]. Unit: that of
-            self.spectrograph.lbda.
+        lbda_range : tuple of float or list of tuple
+            (lbda_min, lbda_max) for a single slice, or
+            ((lbda_min, lbda_max), (lbda_min, lbda_max), ...) for several
+            slices [Angstrom].
         frame : str, optional
-            Wavelength frame ('obs' or 'rest'). Default is "obs".
-        switch_off : list, optional
-            List of discarded scene elements (pointsource, host, background) +
-            thermal. Default is [].
+            Wavelength frame of ``lbda_range`` (``"obs"`` or ``"rest"``).
+            Default is ``"obs"``.
+        switch_off : list of str, optional
+            Variance sources to switch off (see `Simulation.get_cube`).
+            Default is ``[]``.
         incl_error : bool, optional
-            If True, include error in the plot. Default is False.
+            If True, the signal is randomly scattered following its
+            (Gaussian) error. Default is False.
         squeeze : bool, optional
-            If True, squeeze the output array. Default is False.
+            If True, squeeze the output arrays. Default is False.
         psf_profile : str, optional
-            PSF profile to use. Default is "default".
+            PSF profile to use. Default is ``"default"``.
         as_oversampled : bool, optional
-            If True, return the oversampled cube. Default is False.
-        oversampling : int, optional
+            If True, use the oversampled cube. Default is False.
+        oversampling : int or None, optional
             Oversampling factor. Default is None.
         apply_lsf : bool, optional
             If True, apply the line spread function. Default is True.
+        cached : bool, optional
+            If True, use cached intermediate products (see
+            `Simulation.get_cube`). Default is False.
         **kwargs
-            Goes to :meth:`get_cube`.
+            Goes to `Simulation.get_cube`.
 
         Returns
         -------
-        signal, variance
-            (nslice, ny, nx) signal [ADU] and variance [ADU^2].
+        signal : numpy.ndarray
+            (nslice, ny, nx) signal [ADU].
+        variance : numpy.ndarray
+            (nslice, ny, nx) variance [ADU^2].
+
+        Raises
+        ------
+        ValueError
+            If ``frame`` is neither ``"obs"`` nor ``"rest"``.
 
         """
         lbda_range = np.atleast_2d(lbda_range) # [[wmin, wmax]]
@@ -1350,24 +1498,36 @@ class Simulation:
     def get_spectrum(self, switch_off=[], incl_error=False,
                          psf_profile="default",
                          apply_lsf=True, cached=False):
-        """Get the pointsource signal and variance [ADU].
+        """Get the extracted pointsource spectrum and its variance.
+
+        The pointsource signal is assumed to be perfectly extracted, while
+        its variance is computed from the variance cube within the
+        extraction aperture. Both include all ``nramps`` ramps.
 
         Parameters
         ----------
-        switch_off : list, optional
-            List of discarded scene elements (pointsource, host, background) +
-            thermal. Default is [].
+        switch_off : list of str, optional
+            Variance sources to switch off (see `Simulation.get_cube`).
+            Default is ``[]``.
         incl_error : bool, optional
-            If True, scatter the signal by the error. Default is False.
+            If True, the signal is randomly scattered following its
+            (Gaussian) error. Default is False.
         psf_profile : str, optional
-            PSF profile to use. Default is "default".
+            PSF profile to use. Default is ``"default"``.
         apply_lsf : bool, optional
             If True, apply the line spread function. Default is True.
+        cached : bool, optional
+            If True, use cached intermediate products (see
+            `Simulation.get_cube`). Default is False.
 
         Returns
         -------
-        lbda, signal, variance
-            (nlbda,) signal and variance [ADU, ADU**2].
+        lbda : numpy.ndarray
+            (nlbda,) wavelength [Angstrom].
+        signal : numpy.ndarray
+            (nlbda,) signal [ADU].
+        variance : numpy.ndarray
+            (nlbda,) variance [ADU^2].
 
         """
         # (lbda, nx, ny) [ADU]
@@ -1413,14 +1573,20 @@ class Simulation:
         return self.spectrograph.lbda, spec_signal, spec_variance  # (nlbda,) [ADU, ADU²]
 
     def get_snr(self, switch_off=[]):
-        """Get signal to noise spectrum.
+        """Get the signal-to-noise ratio spectrum.
 
-        See :meth:`get_spectrum`.
+        See `Simulation.get_spectrum`.
+
+        Parameters
+        ----------
+        switch_off : list of str, optional
+            Variance sources to switch off (see `Simulation.get_cube`).
+            Default is ``[]``.
 
         Returns
         -------
-        array
-            Signal to noise ratio spectrum.
+        numpy.ndarray
+            (nlbda,) signal-to-noise ratio per wavelength bin.
 
         """
         _, signal, variance = self.get_spectrum(switch_off=switch_off)
@@ -1429,7 +1595,7 @@ class Simulation:
     def get_band_flux(self, lbda_range, frame="obs",
                         statistic=np.nanmean,
                         squeeze=True, **kwargs):
-        """Estimate mean signal and variance over a spectral domain.
+        """Estimate the mean signal and variance over a spectral domain.
 
         The photometry is computed assuming a top-hat filter and simply
         considering wavelength bins within the spectral domain (no
@@ -1437,21 +1603,32 @@ class Simulation:
 
         Parameters
         ----------
-        lbda_range : tuple or list of tuples
-            (wmin, wmax) test wavelength range [Å] (or list of).
+        lbda_range : tuple of float or list of tuple
+            (wmin, wmax) test wavelength range (or list of) [Angstrom].
         frame : str, optional
-            Wavelength frame ('obs' or 'rest'). Default is "obs".
-        statistic : function, optional
-            Numpy function to apply on test domain. Default is `np.nanmean`.
+            Wavelength frame of ``lbda_range`` (``"obs"`` or ``"rest"``).
+            Default is ``"obs"``.
+        statistic : callable, optional
+            Function applied on the signal and variance of the wavelength
+            bins within the test domain (called with ``axis=0``).
+            Default is `numpy.nanmean`.
         squeeze : bool, optional
-            Squeeze final df (for single-band). Default is True.
+            If True and a single range is given, return floats rather than
+            arrays. Default is True.
         **kwargs
-            Goes to :meth:`get_spectrum` (e.g. `switch_off`).
+            Goes to `Simulation.get_spectrum` (e.g. ``switch_off``).
 
         Returns
         -------
-        signal, variance
-            Signal and variance [ADU, ADU^2].
+        signal : float or numpy.ndarray
+            Signal per band [ADU].
+        variance : float or numpy.ndarray
+            Variance per band [ADU^2].
+
+        Raises
+        ------
+        ValueError
+            If ``frame`` is neither ``"obs"`` nor ``"rest"``.
 
         """
         # accepts multiple ranges
@@ -1483,25 +1660,32 @@ class Simulation:
                      statistic=np.nanmean,
                      at_saturation=np.inf,
                      **kwargs):
-        """Compute mean signal to noise ratio over a spectral domain.
-        (see get_band_flux)
+        """Compute the signal-to-noise ratio over a spectral domain.
+
+        The SNR is the band signal over the square root of the band
+        variance, as computed by `Simulation.get_band_flux`.
 
         Parameters
         ----------
-        lbda_range : tuple or list of tuples
-            (wmin, wmax) test wavelength range [Å] (or list of).
+        lbda_range : tuple of float or list of tuple
+            (wmin, wmax) test wavelength range (or list of) [Angstrom].
         frame : str, optional
-            Wavelength frame ('obs' or 'rest'). Default is "obs".
-        statistic : function, optional
-            Numpy function to apply on test domain. Default is `np.nanmean`.
+            Wavelength frame of ``lbda_range`` (``"obs"`` or ``"rest"``).
+            Default is ``"obs"``.
+        statistic : callable, optional
+            Function applied on the test domain (see
+            `Simulation.get_band_flux`). Default is `numpy.nanmean`.
+        at_saturation : float, optional
+            Value returned if any detector pixel is saturated.
+            Default is ``numpy.inf``.
         **kwargs
-            Goes to :meth:`get_band_flux` -> :meth:`get_spectrum` (e.g.
-            `switch_off`).
+            Goes to `Simulation.get_band_flux`, then to
+            `Simulation.get_spectrum` (e.g. ``switch_off``).
 
         Returns
         -------
-        float or array
-            Signal to noise ratio (depending of `lbda_range` input).
+        float or numpy.ndarray
+            Signal-to-noise ratio (array if several ranges are given).
 
         """
         signal, variance = self.get_band_flux(lbda_range, frame,
@@ -1513,12 +1697,15 @@ class Simulation:
         return signal / variance**0.5
 
     def get_times(self):
-        """Dict of the simulation detector times [in sec].
+        """Get the detector times of the simulation.
 
         Returns
         -------
         dict
-            Dictionary of times.
+            Times [s], with keys ``"integration_time"``,
+            ``"exposure_time"``, ``"tframe"``, ``"tgroup"`` (detector,
+            per ramp) and ``"total_exptime"`` (see
+            `Simulation.observing_time`).
 
         """
         # detector ones
@@ -1529,25 +1716,31 @@ class Simulation:
 
     def get_band_variance_contribution(self, lbda_range, frame="rest",
                                        statistic=np.nanmean):
-        """Estimate different contributions to total variance.
+        """Estimate the contributions to the total variance over a band.
 
-        Loops over dark and RoN (for detector), background and pointsource
-        (scene) and thermal to estimate their relative contribution of the total
-        observed variance.
+        Loops over `Simulation.variance_sources` (detector effects, scene
+        elements and thermal emission), switching each off in turn, to
+        estimate its contribution to the total band variance.
 
         Parameters
         ----------
-        lbda_range : tuple or list of tuples
-            Test wavelength domain [Å].
+        lbda_range : tuple of float or list of tuple
+            (wmin, wmax) test wavelength range (or list of) [Angstrom].
         frame : str, optional
-            Wavelength frame ('obs' or 'rest'). Default is "rest".
-        statistic : function, optional
-            Numpy function to apply on test domain. Default is `np.nanmean`.
+            Wavelength frame of ``lbda_range`` (``"obs"`` or ``"rest"``).
+            Default is ``"rest"``.
+        statistic : callable, optional
+            Function applied on the test domain (see
+            `Simulation.get_band_flux`). Default is `numpy.nanmean`.
 
         Returns
         -------
         dict
-            Fractional variance contribution.
+            Dictionary with keys ``"snr"``, ``"exptime"`` and ``"inttime"``
+            (per ramp) and ``"obstime"`` (total) [s], ``"signal"`` [ADU],
+            ``"variance"`` [ADU^2], and for each variance source ``source``,
+            its variance contribution (key ``source``, [ADU^2]) and its
+            fraction of the total variance (key ``frac_<source>``).
 
         """
 
@@ -1575,17 +1768,23 @@ class Simulation:
 
 
     def get_variance_contribution(self, as_dataframe=True):
-        """Estimate different noise contributions to the total variance.
+        """Estimate the noise contributions to the total spectrum variance.
+
+        Each source of `Simulation.variance_sources` is switched off in turn
+        to estimate its contribution per wavelength bin.
 
         Parameters
         ----------
         as_dataframe : bool, optional
-            If True, return a pandas DataFrame. Default is True.
+            If True, return a `pandas.DataFrame`, otherwise a dict.
+            Default is True.
 
         Returns
         -------
         pandas.DataFrame or dict
-            DataFrame or dictionary with the variance contributions.
+            Columns ``"lbda"`` [Angstrom], ``"flux"`` [ADU],
+            ``"variance"`` [ADU^2] and one column per variance source
+            (variance contribution [ADU^2]).
 
         """
         lbda, flux, variance = self.get_spectrum()
@@ -1606,13 +1805,13 @@ class Simulation:
         Parameters
         ----------
         units : str, optional
-            Units of the data volume (e.g. "GB", "MB"). Default is "GB".
+            Units of the data volume (e.g. ``"GB"``, ``"MB"``). Default is ``"GB"``.
         per_ramp : bool, optional
             If True, return the data volume per ramp instead of the total
             data volume (i.e., not multiplied by the number of ramps).
             Default is False.
         **kwargs
-            Goes to :meth:`detector.get_data_volume`.
+            Goes to `~slicersim.detector.Detector.get_data_volume`.
 
         Returns
         -------
@@ -1632,15 +1831,15 @@ class Simulation:
     #  Conversion #
     # ----------- #
     def convert_units(self, units_in, units_out, flux_in=1):
-        """Convert units.
+        """Convert flux units.
 
-        Units:
-        - adu [total integrated on detector]
-        <=>
-        - flambda [erg/s/a/cm2]
-        - rate [adu/s]
-        - framerate [adu/frame]
-        - fphoton [ph/s]
+        Conversions are only implemented between ``"adu"`` (total signal
+        integrated on the detector, over all ramps) and one of:
+
+        - ``"flambda"`` (or ``"erg/s/a/cm2"``) [erg/s/cm^2/A];
+        - ``"rate"`` (or ``"adu/s"``) [ADU/s];
+        - ``"framerate"`` (or ``"adu/frame"``) [ADU/frame];
+        - ``"fphoton"`` (or ``"ph/s"``) [ph/s].
 
         Parameters
         ----------
@@ -1648,13 +1847,19 @@ class Simulation:
             Input units.
         units_out : str
             Output units.
-        flux_in : float, optional
-            Input flux. Default is 1.
+        flux_in : float or array_like, optional
+            Input flux. Default is 1 (returns the conversion factor).
 
         Returns
         -------
-        float
-            Converted flux.
+        float or numpy.ndarray
+            Converted flux (wavelength dependent, shape (nlbda,), for the
+            ``"flambda"`` and ``"fphoton"`` conversions).
+
+        Raises
+        ------
+        NotImplementedError
+            If the requested conversion is not implemented.
 
         """
         NAME_CONVERTION = {"ph/s": "fphoton",
@@ -1721,50 +1926,85 @@ class Simulation:
                       statistic=np.nanmean,
                       reset_param=True,
                       maxiter=30, tol=0.5, iterstep=1):
-        """Vary the free_parameter to reach the target SNR.
+        """Find the exposure configuration reaching a target SNR.
+
+        The read-out configuration ``nmd`` (number of groups, frames per
+        group, dropped frames) and the number of ramps ``nramps`` are
+        varied to reach ``target_snr`` (see `Simulation.get_band_snr`):
+
+        - if a single ramp with ``max_group`` groups is enough, a single
+          ramp is used and its number of groups is optimised (using
+          ``nframe_per_group_small`` frames per group, or even single-frame
+          groups, for bright targets);
+        - otherwise, full ramps of ``max_group`` groups are used and the
+          number of ramps (at least 2) is optimised. If
+          ``allow_smaller_ramps``, the number of groups is then fine-tuned
+          for that number of ramps.
 
         Parameters
         ----------
         target_snr : float
-            Target signal to noise ratio.
-        max_group : int, optional
-            Ignored if `free_parameter` is not 'default'. Larger number of
-            group accepted. Default is None.
-        nframe_per_group : int, optional
-            Number of frames per group. Default is None.
-        allow_smaller_ramps: bool, optional
-            If N+1 ramps is too large (see too_large) but N ramp is not enough,
-            can this reduce the number of groups for N+1 ramp to reach the optimal snr ?
-        too_large: float, optional
-            how much larger than the target_snr should allow to trigger the reduction of
-            group per frame ? (Ignored if allow_smaller_ramps is False).
-        ndrop : int, optional
-            Number of dropped frames. Default is None.
-        fitter : str, optional
-            Fitter to use ("native" or "scipy"). Default is "native".
-        lbda_range : list, optional
-            (wmin, wmax) test wavelength range [Å]. Default is [4000, 6800].
+            Target signal-to-noise ratio.
+        max_group : int or None, optional
+            Maximum number of groups per ramp. If None,
+            ``detector.max_group`` is used. Default is None.
+        nframe_per_group : int or None, optional
+            Number of frames per group for full ramps. If None, the current
+            one is used. Default is None.
+        nframe_per_group_small : int, optional
+            Number of frames per group used for single short ramps (bright
+            targets). Default is 4.
+        small_ngroup_range : list of int, optional
+            Range of number of groups tested for single short ramps.
+            Default is ``[32, 8]``.
+        allow_smaller_ramps : bool, optional
+            If N+1 ramps give a too large SNR (see ``too_large``) while N
+            ramps are not enough, reduce the number of groups of the
+            N+1 ramps to reach the target SNR. Default is True.
+        too_large : float, optional
+            SNR excess (absolute) above ``target_snr`` triggering the
+            reduction of the number of groups. Ignored if
+            ``allow_smaller_ramps`` is False. Default is 1.
+        ndrop : int or None, optional
+            Number of dropped frames. If None, the current one is used.
+            Default is None.
+        guess : int or None, optional
+            Initial guess for the free parameter (number of groups or of
+            ramps). If None, a default guess is used. Default is None.
+        use_cache : bool, optional
+            If True, cache the projected scene while iterating (only the
+            read-out configuration changes). The cache is cleared at the
+            end. Default is True.
+        lbda_range : list of float, optional
+            (wmin, wmax) test wavelength range [Angstrom].
+            Default is ``[4000, 6800]``.
         frame : str, optional
-            Wavelength frame ('obs' or 'rest'). Default is "rest".
-        statistic : function, optional
-            Function to apply on test domain to compute the snr. Default is
-            `np.nanmean`.
+            Wavelength frame of ``lbda_range`` (``"obs"`` or ``"rest"``).
+            Default is ``"rest"``.
+        statistic : callable, optional
+            Function applied on the test domain to compute the SNR (see
+            `Simulation.get_band_flux`). Default is `numpy.nanmean`.
         reset_param : bool, optional
-            If True, the input simulation is back to initial value. If False,
-            it is that of the reached snr. Default is True.
+            If True, the simulation is set back to its input ``nmd`` and
+            ``nramps``. If False, it keeps the configuration reaching the
+            SNR. Default is True.
         maxiter : int, optional
             Maximum number of iterations. Default is 30.
         tol : float, optional
-            Tolerance for the SNR. Default is 0.5.
+            Tolerance on the SNR. Default is 0.5.
         iterstep : int, optional
-            Step for the iteration. Default is 1.
+            Initial step of the iteration. Default is 1.
 
         Returns
         -------
-        int, float, float
-            - Number of frame/group (see free_parameter)
-            - Reached SNR.
-            - Integration_time
+        config : dict
+            Configuration reaching the SNR, with keys ``"nmd"`` and
+            ``"nramps"`` (to be given to `Simulation.update`).
+        snr : float
+            Reached SNR.
+        observing_time : float
+            Total observing time of this configuration [s] (see
+            `Simulation.observing_time`).
 
         """
         if max_group is None:
@@ -1892,7 +2132,8 @@ class Simulation:
                    maxiter=100, tol=0.5, iterstep=1):
         """Vary the free_parameter to reach the target SNR.
 
-        = internal function that has fixed free_parameters; see self.fetch_snr() =
+        Internal function with a fixed free parameter; see
+        `Simulation.fetch_snr`.
 
         Parameters
         ----------
@@ -1904,9 +2145,11 @@ class Simulation:
             (wmin, wmax) test wavelength range [Å]. Default is [4000, 6800].
         frame : str, optional
             Wavelength frame ('obs' or 'rest'). Default is "rest".
-        statistic : function, optional
+        statistic : callable, optional
             Function to apply on test domain to compute the snr. Default is
-            `np.nanmean`.
+            `numpy.nanmean`.
+        use_cache : bool, optional
+            If True, use the cached projected scene. Default is False.
         min_value : int, optional
             Minimum value for the free parameter. Default is None.
         max_value : int, optional
@@ -1920,9 +2163,12 @@ class Simulation:
 
         Returns
         -------
-        int, float
-            - Number of frame/group (see free_parameter)
-            - Reached SNR.
+        config : dict
+            Reached configuration (``"nmd"`` and ``"nramps"`` keys).
+        snr : float
+            Reached SNR.
+        observing_time : float
+            Total observing time [s].
 
         """
         # minimal values (including these)
@@ -2024,18 +2270,20 @@ class Simulation:
 
         Parameters
         ----------
-        axes : tuple of matplotlib.Axes, optional
-            (axr, axt) axes for resolving power and throughput. Default is
-            None.
-        lbda_units : str, optional
-            Units to convert wavelength to. Default is None.
-        colors : list, optional
-            Colors used for the plot. Default is ["#194D80", "#A8B7C7"].
+        axes : tuple of matplotlib.axes.Axes or None, optional
+            (axr, axt) axes for the resolving power and the throughput. If
+            None, a new figure is created. Default is None.
+        lbda_units : str or None, optional
+            Units (understood by `astropy.units`) to convert the wavelength
+            to. If None, Angstrom is used. Default is None.
+        colors : list of str, optional
+            Colors used for the plot. Default is ``["#194D80", "#A8B7C7"]``.
 
         Returns
         -------
         matplotlib.figure.Figure
             Figure.
+
         """
 
         if axes is None:
@@ -2085,24 +2333,25 @@ class Simulation:
         return fig
 
     def show_spectrum(self, ax=None, switch_off=[], snr=False, **kwargs): # pragma: no cover
-        """Plot the detected spectrum.
+        """Plot the detected spectrum and its error.
 
         Parameters
         ----------
-        ax : matplotlib.Axes, optional
-            Axes. Default is None.
-        switch_off : list, optional
-            List of discarded scene elements (pointsource, host, background).
-            Default is [].
+        ax : matplotlib.axes.Axes or None, optional
+            Axes to plot on. If None, a new figure is created.
+            Default is None.
+        switch_off : list of str, optional
+            Variance sources to switch off (see `Simulation.get_cube`).
+            Default is ``[]``.
         snr : bool, optional
-            Add SNR curve on top. Default is False.
+            If True, add the SNR curve on a twin y-axis. Default is False.
         **kwargs
-            Propagated to plotting function.
+            Goes to `matplotlib.axes.Axes.plot`.
 
         Returns
         -------
-        matplotlib.Axes
-            Axes.
+        matplotlib.figure.Figure
+            Figure.
 
         """
 
@@ -2136,25 +2385,30 @@ class Simulation:
 
     def show_cube(self, in_photons=True, switch_off=[], spec_prop={},
                       psf_profile="default", cached=False, **kwargs): # pragma: no cover
-        """Display the cube generated by :meth:`get_projected_scene`.
+        """Display the cube generated by `Simulation.get_projected_scene`.
 
         The figure has two panels:
-        - left: total spectrum (cube summed over spaxels)
-        - right: white image (cube summed over wavelengthes)
+
+        - left: total spectrum (cube summed over spaxels);
+        - right: white image (cube summed over wavelengths).
 
         Parameters
         ----------
         in_photons : bool, optional
-            Cube in photon/s (default: flambda). Default is True.
-        switch_off : list, optional
-            List of discarded scene elements (pointsource, host, background) +
-            thermal. Default is [].
+            If True, the cube is in [ph/s], otherwise in [erg/s/cm^2/A].
+            Default is True.
+        switch_off : list of str, optional
+            Components to discard (see `Simulation.get_projected_scene`).
+            Default is ``[]``.
         spec_prop : dict, optional
-            Spectrum plot options. Default is {}.
+            Spectrum plot options (goes to `matplotlib.axes.Axes.plot`).
+            Default is ``{}``.
         psf_profile : str, optional
-            PSF profile to use. Default is "default".
+            PSF profile to use. Default is ``"default"``.
+        cached : bool, optional
+            If True, use the cached projected scene. Default is False.
         **kwargs
-            Cube `imshow` options.
+            Goes to `matplotlib.axes.Axes.imshow` (image panel).
 
         Returns
         -------
@@ -2196,27 +2450,35 @@ class Simulation:
                    obs_lbda_ranges = [[4000, 6000], [9000, 11_000], [14_000, 16_000]],
                    psf_profile="default", oversampling=None, prop_slice={},
                   **kwargs): # pragma: no cover
-        """Show the scene.
+        """Show images of the observed scene.
+
+        The top panel shows the image in a rest-frame wavelength range, the
+        bottom panels the images in observed-frame wavelength ranges (see
+        `Simulation.get_slice`).
 
         Parameters
         ----------
         incl_error : bool, optional
-            If True, include error in the plot. Default is True.
-        fig : matplotlib.figure.Figure, optional
-            Figure. Default is None.
-        rest_lbda_range : list, optional
-            Rest-frame wavelength range. Default is [4000, 7000].
-        obs_lbda_ranges : list, optional
-            Observed-frame wavelength ranges. Default is [[4000, 6000],
-            [9000, 11_000], [14_000, 16_000]].
+            If True, the images are randomly scattered following their
+            errors. Default is True.
+        fig : matplotlib.figure.Figure or None, optional
+            Figure to draw on. If None, a new one is created.
+            Default is None.
+        rest_lbda_range : list of float, optional
+            Rest-frame wavelength range [Angstrom].
+            Default is ``[4000, 7000]``.
+        obs_lbda_ranges : list of list of float, optional
+            Observed-frame wavelength ranges [Angstrom] (at most 3).
+            Default is ``[[4000, 6000], [9000, 11_000], [14_000, 16_000]]``.
         psf_profile : str, optional
-            PSF profile to use. Default is "default".
-        oversampling : int, optional
-            Oversampling factor. Default is None.
+            PSF profile to use. Default is ``"default"``.
+        oversampling : int or None, optional
+            If given, show oversampled images with this oversampling factor.
+            Default is None.
         prop_slice : dict, optional
-            Properties for the slice. Default is {}.
+            Goes to `Simulation.get_slice`. Default is ``{}``.
         **kwargs
-            Goes to `imshow`.
+            Goes to `matplotlib.axes.Axes.imshow`.
 
         Returns
         -------
@@ -2272,11 +2534,11 @@ class Simulation:
 
 
     def show_nea_fwhm(self, figsize=(4,7)): # pragma: no cover
-        """Show NEA and FWHM.
+        """Show the noise equivalent areas (NEA) and the FWHM.
 
         Parameters
         ----------
-        figsize : tuple, optional
+        figsize : tuple of float, optional
             Figure size. Default is (4, 7).
 
         Returns
@@ -2306,19 +2568,26 @@ class Simulation:
 
         Parameters
         ----------
-        variance_contrib : pandas.DataFrame, optional
-            DataFrame containing the variance contributions.
-            `variance_contrib = self.get_variance_contribution(as_dataframe=True)`
-            If None, this grabs it. Default is None.
+        variance_contrib : pandas.DataFrame or None, optional
+            Variance contributions, as returned by
+            ``self.get_variance_contribution(as_dataframe=True)``
+            (see `Simulation.get_variance_contribution`). If None, it is
+            computed. Default is None.
         flux_calibrated : bool, optional
-            If True, show spectra flux calibrated. Default is True.
+            If True, show the flux-calibrated spectrum [erg/s/cm^2/A],
+            otherwise in [ADU]. Default is True.
+        normalize_variances : bool, optional
+            If True, the variance contributions are normalised by their sum
+            (fractions summing to 1), otherwise by the total variance.
+            Default is True.
         lbda_nm : bool, optional
-            If True, show wavelength in nanometers and not in Angstroms.
-            Default is False (Angstroms).
-        figsize : tuple, optional
+            If True, show wavelength in nanometers, otherwise in Angstrom.
+            Default is False.
+        figsize : tuple of float, optional
             Figure size. Default is (7, 7).
         gridspec : dict, optional
-            GridSpec keywords. Default is {}.
+            Goes to ``gridspec_kw`` of `matplotlib.pyplot.subplots`.
+            Default is ``{}``.
 
         Returns
         -------
@@ -2432,7 +2701,7 @@ class Simulation:
     # ================= #
     @property
     def meta(self):
-        """Concatenation of all element configurations (aka. meta)."""
+        """Configuration of all elements (aka. meta), as a dict."""
         return self._in_meta | {"scene": self.scene.meta,
                                 "telescope": self.telescope.meta,
                                 "spectrograph": self.spectrograph.meta,
@@ -2446,12 +2715,12 @@ class Simulation:
 
     @property
     def observing_time(self):
-        """Total observing time, i.e. `exptime * nramps`."""
+        """Total observing time [s], i.e. ``exposure_time * nramps``."""
         return self.detector.exposure_time * self.extraction["nramps"]
 
     @property
     def mutable_parameters(self):
-        """List of mutable parameters."""
+        """List of the parameter names accepted by `Simulation.update`."""
         extra = [] + list(self.extraction.keys())
         scene_ = self.scene.mutable_parameters
         telescope_ = self.telescope.mutable_parameters
@@ -2471,5 +2740,5 @@ class Simulation:
 
     @property
     def variance_sources(self):
-        """List of variance sources."""
+        """List of the variance source names (see `Simulation.get_cube`)."""
         return self.VARIANCE_SOURCES

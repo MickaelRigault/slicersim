@@ -1,4 +1,16 @@
-"""Functions to manage PSF profiles at the lenses/slicer and at the detector."""
+r"""Noise Equivalent Area (NEA) of PSF profiles.
+
+The NEA of a PSF sampled on pixels :math:`p_i` is
+
+.. math::
+
+    \mathrm{NEA} = \frac{\left(\sum_i p_i\right)^2}{\sum_i p_i^2}
+    \times \Delta,
+
+where :math:`\Delta` is the pixel area (or size in 1D) when the result is
+normalized by the sampling step, such that it does not depend on the
+sampling of the PSF.
+"""
 
 import warnings
 
@@ -12,45 +24,48 @@ import numpy as np
 # ========================= #
 def get_2dpsf_nea(name, xx="-7:7:15j", yy="-7:7:15j", norm_by_step=True,
                       position=(0, 0), **kwargs): # pragma: no cover 
-    """Get the Noise Equivalent Area (NEA) of a PSF model.
+    """Get the Noise Equivalent Area (NEA) of an astropy 2D PSF model.
 
     Parameters
     ----------
     name : str
-        Name of the 2D PSF model from astropy.
-        Shortcuts:
+        Name of the 2D PSF model from astropy, see
+        `~slicersim.profiles.get_profilemodel`. Shortcuts:
 
-        - "airy", "airydisk": "AiryDisk2D"
-        - "gaussian", "gauss", "normal": "Gaussian2D"
-        - "moffat": "Moffat2D"
-        - "sersic": "Sersic2D"
-        - "ricker", "mexican", "mexicanhat": "RickerWavelet2D"
-        - "lorentz": "Lorentz2D"
+        - ``"airy"``, ``"airydisk"``: ``"AiryDisk2D"``
+        - ``"gaussian"``, ``"gauss"``, ``"normal"``: ``"Gaussian2D"``
+        - ``"moffat"``: ``"Moffat2D"``
+        - ``"sersic"``: ``"Sersic2D"``
+        - ``"ricker"``, ``"mexican"``, ``"mexicanhat"``: ``"RickerWavelet2D"``
+        - ``"lorentz"``: ``"Lorentz2D"``
     xx, yy : str or array_like, optional
-        Coordinates where the PSF is evaluated. Default is "-7:7:15j".
+        Coordinates where the PSF is evaluated. A string is interpreted as a
+        `numpy.r_` slice expression. Default is ``"-7:7:15j"``.
     norm_by_step : bool, optional
-        Should the xx binning be accounted for? If so, xx binning should be
-        linearly increasing such that `bin_step = x[1] - x[0]`.
-        If True, `get_1d_nea(func, xx="-9:9:0.5")` and
-        `get_1d_nea(func, xx="-9:9:0.05")` are equal. Default is True.
-    position : tuple, optional
-        Location of the PSF centroid. Default is (0, 0).
+        If True, multiply the NEA by the pixel area
+        ``(xx[1] - xx[0]) * (yy[1] - yy[0])`` (``xx`` and ``yy`` must then be
+        regularly spaced), such that the result does not depend on the
+        sampling. Default is True.
+    position : tuple of float, optional
+        ``(x, y)`` location of the PSF centroid. Default is (0, 0).
     **kwargs
-        Goes to the corresponding astropy model init.
-        See https://docs.astropy.org/en/latest/modeling/predef_models2D.html
-        All have amplitude=1 and:
-
-        - AiryDisk2D: radius=1
-        - Gaussian2D: x_stddev=None, y_stddev=None, theta=None, cov_matrix=None
-        - Moffat2D: gamma=1, alpha=1
-        - Sersic2D: r_eff=1, n=4, ellip=0, theta=0.0, ...
-        - RickerWavelet2D: sigma=1
-        - Lorentz2D: fwhm=1
+        Goes to `~slicersim.profiles.get_profilemodel`, and from there to the
+        astropy model initializer, see
+        https://docs.astropy.org/en/latest/modeling/predef_models2D.html.
+        Models other than ``AiryDisk2D`` and ``Gaussian2D`` require
+        ``normalized=False`` (the NEA does not depend on the amplitude).
 
     Returns
     -------
-    float or array_like
-        Noise equivalent area given the PSF model (`name`) and parameters (`kwargs`).
+    numpy.ndarray
+        Noise equivalent area, in units of ``xx`` squared if
+        ``norm_by_step`` (in pixels of the sampling grid otherwise).
+
+    Notes
+    -----
+    The model must be evaluated on a stack of PSFs (see Notes of
+    `get_2d_nea`), e.g. by giving its size parameter as an array of shape
+    ``(n, 1, 1)``.
     """
     from .profiles import get_profilemodel
     psfmodel = get_profilemodel(name, position=position, **kwargs)
@@ -62,24 +77,35 @@ def get_2dpsf_nea(name, xx="-7:7:15j", yy="-7:7:15j", norm_by_step=True,
 #                           #
 # ========================= #
 def pixels_to_nea(pixels, norm=1): # pragma: no cover 
-    """Apply the NEA calculation on input pixels.
+    r"""Compute the Noise Equivalent Area (NEA) from sampled pixels.
 
-    `nea = sum(pixel)**2 / sum(pixel**2)`
+    .. math::
 
-    The sum is done on the last dimension (ndim=2) or the last 2 dimensions
-    (ndim>=3).
+        \mathrm{NEA} = \mathrm{norm} \times
+        \frac{\left(\sum p\right)^2}{\sum p^2}
+
+    The sums ignore NaNs and are done over the last axis if
+    ``pixels.ndim == 2`` (1D profiles), or over the last 2 axes otherwise
+    (2D profiles).
 
     Parameters
     ----------
-    pixels : array_like
-        Input pixels.
+    pixels : numpy.ndarray
+        Input pixels, of shape ``(n, nx)`` (1D profiles) or
+        ``(..., ny, nx)`` (2D profiles).
     norm : float, optional
-        Normalization factor. Default is 1.
+        Normalization factor, typically the pixel size (1D) or area (2D).
+        Default is 1.
 
     Returns
     -------
-    array_like
+    numpy.ndarray
         Noise Equivalent Area.
+
+    Warns
+    -----
+    UserWarning
+        If ``pixels`` has more than 3 dimensions.
     """
     if np.ndim(pixels) == 2:
         nea = np.nansum(pixels, axis=1)**2 / np.nansum(pixels**2, axis=1) * norm
@@ -97,21 +123,24 @@ def get_1d_nea(func, xx="-7:7:15j", norm_by_step=True, **kwargs): # pragma: no c
     Parameters
     ----------
     func : callable
-        1D PSF function such that `pixels = func(xx, **kwargs)`.
+        1D PSF function such that ``pixels = func(xx, **kwargs)`` is an
+        array of shape ``(n, len(xx))``.
     xx : str or array_like, optional
-        Coordinates where the PSF is evaluated. Default is "-7:7:15j".
+        Coordinates where the PSF is evaluated. A string is interpreted as a
+        `numpy.r_` slice expression. Default is ``"-7:7:15j"``.
     norm_by_step : bool, optional
-        Should the xx binning be accounted for? If so, xx binning should be
-        linearly increasing such that `bin_step = x[1] - x[0]`.
-        If True, `get_1d_nea(func, xx="-9:9:0.5")` and
-        `get_1d_nea(func, xx="-9:9:0.05")` are equal. Default is True.
+        If True, multiply the NEA by the step ``xx[1] - xx[0]`` (``xx`` must
+        then be regularly spaced), such that the result does not depend on
+        the sampling: ``get_1d_nea(func, xx="-9:9:0.5")`` and
+        ``get_1d_nea(func, xx="-9:9:0.05")`` are then equal.
+        Default is True.
     **kwargs
-        Goes to `func`.
+        Goes to ``func``.
 
     Returns
     -------
-    array_like
-        NEA integrated over xx.
+    numpy.ndarray
+        NEA (integrated over ``xx``), of shape ``(n,)``.
     """
     if type(xx) is str:
         xx = eval(f"np.r_[{xx}]")
@@ -126,28 +155,36 @@ def get_1d_nea(func, xx="-7:7:15j", norm_by_step=True, **kwargs): # pragma: no c
 
 def get_2d_nea(func, xx="-7:7:15j", yy="-7:7:15j",
                   norm_by_step=True, **kwargs): # pragma: no cover 
-    """ get the noise equivalent area of a 2d function
+    """Get the Noise Equivalent Area (NEA) of a 2D function.
 
     Parameters
     ----------
-    func: func
-        2D PSF function such that: ``pixels = func(xx, yy, **kwargs)``
-        where xx and yy are (N,) and (M,) centroid 1d arrays. 
-        returning in pixels as a (..., M, N,) array. 
-        
-    xx, yy: str, array
-        coordinate where the PSF is evaluated
-
-    norm_by_step: bool
-        should the xx binning be accounted for ? 
-        if so, xx binning should be linearly increasing such that 
-        bin_step = x[1]-x[0].
-        if true, then get_1d_nea(func, xx="-9:9:0.5") and 
-        get_1d_nea(func, xx="-9:9:0.05") are equal.
+    func : callable
+        2D PSF function such that ``pixels = func(x, y, **kwargs)``, where
+        ``x`` and ``y`` are the open mesh-grid ``xx[None, :]`` (shape
+        ``(1, N)``) and ``yy[:, None]`` (shape ``(M, 1)``), returns an array
+        of shape ``(..., M, N)``.
+    xx, yy : str or array_like, optional
+        Coordinates where the PSF is evaluated. A string is interpreted as a
+        `numpy.r_` slice expression. Default is ``"-7:7:15j"``.
+    norm_by_step : bool, optional
+        If True, multiply the NEA by the pixel area
+        ``(xx[1] - xx[0]) * (yy[1] - yy[0])`` (``xx`` and ``yy`` must then be
+        regularly spaced), such that the result does not depend on the
+        sampling. Default is True.
+    **kwargs
+        Goes to ``func``.
 
     Returns
     -------
-    nea (dim: integrated over xx and yy)
+    numpy.ndarray
+        NEA (integrated over ``xx`` and ``yy``), of shape ``(...)``.
+
+    Notes
+    -----
+    `pixels_to_nea` treats 2D inputs as a set of 1D profiles: ``func`` must
+    return an array with at least one leading axis, i.e. of shape
+    ``(n, M, N)``, for the NEA to be computed over the 2D images.
     """
     if type(xx) is str:
         xx = eval(f"np.r_[{xx}]")
@@ -169,21 +206,24 @@ def get_2d_nea(func, xx="-7:7:15j", yy="-7:7:15j",
 def get_1dnorm_nea(sigma, xx="-7:7:15j", mean=0): # pragma: no cover 
     """Get the Noise Equivalent Area (NEA) of a 1D Gaussian.
 
-    This is a shortcut for `get_1d_nea` with `func=get_gaussian1d`.
+    This is a shortcut for `get_1d_nea` with
+    ``func=get_gaussian1d`` (see `~slicersim.profiles.get_gaussian1d`) and
+    ``norm_by_step=True``.
 
     Parameters
     ----------
-    sigma : float
-        Standard deviation of the Gaussian.
+    sigma : float or numpy.ndarray
+        Standard deviation(s) of the Gaussian, in units of ``xx``.
     xx : str or array_like, optional
-        Coordinates where the PSF is evaluated. Default is "-7:7:15j".
+        Coordinates where the PSF is evaluated. A string is interpreted as a
+        `numpy.r_` slice expression. Default is ``"-7:7:15j"``.
     mean : float, optional
         Mean of the Gaussian. Default is 0.
 
     Returns
     -------
-    array_like
-        NEA integrated over xx.
+    numpy.ndarray
+        NEA (integrated over ``xx``), in units of ``xx``, one per ``sigma``.
     """
     from .profiles import get_gaussian1d
     return get_1d_nea(get_gaussian1d, xx=xx, sigma=sigma, mean=mean)
@@ -192,25 +232,29 @@ def get_2dnorm_nea(sigma, xx="-7:7:15j", yy="-7:7:15j", mean=(0,0),
                   norm_by_step = True): # pragma: no cover 
     """Get the Noise Equivalent Area (NEA) of a 2D Gaussian.
 
-    This is a shortcut for `get_2d_nea` with `func=get_gaussian2d`.
+    This is a shortcut for `get_2d_nea` with ``func=get_gaussian2d`` (see
+    `~slicersim.profiles.get_gaussian2d`).
 
     Parameters
     ----------
-    sigma : float or tuple
-        Standard deviation of the Gaussian. If a float, the same sigma is
-        used for both x and y. If a tuple, it's (sigma_x, sigma_y).
+    sigma : array_like
+        Standard deviations of the Gaussian, in units of ``xx``, of shape
+        ``(n, 1, 2)`` with the last axis being ``(sigma_y, sigma_x)`` (see
+        Notes of `get_2d_nea`).
     xx, yy : str or array_like, optional
-        Coordinates where the PSF is evaluated. Default is "-7:7:15j".
-    mean : tuple, optional
-        Mean of the Gaussian (mean_x, mean_y). Default is (0, 0).
+        Coordinates where the PSF is evaluated. A string is interpreted as a
+        `numpy.r_` slice expression. Default is ``"-7:7:15j"``.
+    mean : tuple of float, optional
+        ``(x, y)`` center of the Gaussian. Default is (0, 0).
     norm_by_step : bool, optional
-        Should the xx, yy binning be accounted for? If so, binning should be
-        linearly increasing. Default is True.
+        Currently ignored: the NEA is always normalized by the pixel area
+        (as with ``norm_by_step=True`` in `get_2d_nea`). Default is True.
 
     Returns
     -------
-    array_like
-        NEA integrated over xx and yy.
+    numpy.ndarray
+        NEA (integrated over ``xx`` and ``yy``), in units of ``xx`` squared,
+        of shape ``(n,)``.
     """
     from .profiles import get_gaussian2d
     return get_2d_nea( get_gaussian2d, xx=xx, yy=yy, norm_by_step=True,

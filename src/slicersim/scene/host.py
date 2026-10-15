@@ -1,6 +1,6 @@
-""" Scene: host module.
+"""Scene: host module.
 
-`Host` is the `SceneElement` describing the host galaxy of the observed
+`Host` is the `~slicersim.scene.base.SceneElement` describing the host galaxy of the observed
 target: a spatially extended source whose spectrum (reference spectrum
 rescaled to a given magnitude) is modulated by a Sersic surface-brightness
 profile, see `get_sersic_profile`.
@@ -33,15 +33,15 @@ def get_sersic_profile(r_eff, n=1.0, ellip=0.0, theta=0.0, flux=1,
         Default is 0.0.
     flux : float, optional
         Total integrated flux of the profile (integrated to infinity, so
-        the part falling outside of `shape` is lost). Default is 1.
+        the part falling outside of the grid is lost). Default is 1.
     pixel_scale : float, optional
         Arcsec per pixel of the output grid. Default is 0.1.
-    shape : (int, int), optional
-        Output image shape as (nx, ny). Default is (10, 10).
-    position : (float, float), optional
-        Centroid offset (dx, dy) in pixels relative to the geometric center of
-        `shape`, where positive dx moves right and positive dy moves down.
-        Default is None, i.e. (0, 0).
+    shape : tuple of int, optional
+        Output image shape as ``(nx, ny)``. Default is ``(10, 10)``.
+    position : tuple of float, optional
+        Centroid offset ``(dx, dy)`` in pixels relative to the geometric
+        center of the grid, where positive ``dx`` increases the column index
+        and positive ``dy`` the row index. Default is None, i.e. ``(0, 0)``.
     oversample : int, optional
         Oversampling factor per axis, for approximating pixel integration.
         Default is 4.
@@ -49,8 +49,8 @@ def get_sersic_profile(r_eff, n=1.0, ellip=0.0, theta=0.0, flux=1,
     Returns
     -------
     numpy.ndarray
-        2D image, shape (ny, nx), flux per pixel. It sums to `flux` only if
-        the profile is fully contained in `shape`.
+        2D image of shape ``(ny, nx)``, flux per pixel. It sums to ``flux``
+        only if the profile is fully contained in the grid.
     """
     from scipy.special import gamma, gammaincinv
     nx, ny = shape
@@ -99,7 +99,7 @@ class Host(SceneElement):
     Its model function returns a datacube of shape (nlbda, ny, nx): a
     reference spectrum, rescaled to a given magnitude, multiplied by a
     Sersic profile (see `get_sersic_profile`).
-    In a `~slicersim.Simulation`, the host is rendered on the spaxel grid
+    In a `~slicersim.simulation.Simulation`, the host is rendered on the spaxel grid
     (see `get_cube`) and convolved by the spatial PSF.
 
     Use `from_config` or `from_sersic_and_spectrum` to build it.
@@ -117,20 +117,20 @@ class Host(SceneElement):
         config : dict
             Configuration dictionary. All entries are optional:
 
-            - refmodel: str, optional (default "blackbody-5000").
-              Reference spectrum, either "blackbody-<temperature>" (in K)
-              or "brown-<galname>" (Brown et al. galaxy template, requires
-              ``wcc_etc``).
-            - mag: float, optional (default 20). Magnitude of the host in
-              `band` (see `from_sersic_and_spectrum`).
-            - r_kpc: float, optional. Effective radius in kpc. If given,
-              ``redshift`` is used to convert it into ``r_eff`` (arcsec),
-              overriding any ``r_eff`` entry.
-            - redshift: float, optional. Needed if ``r_kpc`` is given.
+            - ``refmodel``: str, optional (default ``"blackbody-5000"``).
+              Reference spectrum, either ``"blackbody-<temperature>"`` (in
+              K) or ``"brown-<galname>"`` (Brown et al. galaxy template,
+              requires ``wcc_etc``).
+            - ``mag``: float, optional (default 20). AB magnitude of the host
+              in ``band`` (see `from_sersic_and_spectrum`).
+            - ``r_kpc``: float, optional. Effective radius in kpc. If given,
+              ``redshift`` is used to convert it into ``r_eff`` (arcsec,
+              Planck18 cosmology), overriding any ``r_eff`` entry.
+            - ``redshift``: float, optional. Needed if ``r_kpc`` is given.
 
             Any other entry is passed to `from_sersic_and_spectrum` (e.g.
-            band, r_eff, n, ellip, theta, pixel_scale, shape, position,
-            oversample).
+            ``band``, ``redshift``, ``r_eff``, ``n``, ``ellip``, ``theta``,
+            ``pixel_scale``, ``shape``, ``position``, ``oversample``).
             The input dict is not modified.
 
         Returns
@@ -138,9 +138,15 @@ class Host(SceneElement):
         Host
             An instance of the `Host` class.
 
+        Warns
+        -----
+        UserWarning
+            If ``r_kpc`` is given without ``redshift`` (``r_kpc`` is then
+            ignored), or together with ``r_eff`` (``r_eff`` is then ignored).
+
         See Also
         --------
-        from_sersic_and_spectrum : build a `Host` from a spectrum and a
+        from_sersic_and_spectrum : Build a `Host` from a spectrum and a
             Sersic profile.
 
         Examples
@@ -193,7 +199,8 @@ class Host(SceneElement):
         """Build a `Host` from a Sersic surface-brightness profile and a reference spectrum.
 
         The host's spectral shape is taken from a reference spectrum
-        (`lbda`, `flux`), rescaled to match `mag` in `band`, and its spatial
+        (``lbda``, ``flux``), redshifted by ``redshift`` and rescaled to
+        match ``mag`` in ``band``, and its spatial
         shape is a Sersic profile rendered onto a pixel grid (see
         `get_sersic_profile`). The resulting model function returns a
         datacube, i.e. the spectrum modulated by the spatial profile at
@@ -203,18 +210,21 @@ class Host(SceneElement):
         ----------
         lbda : array_like
             Wavelength array of the reference spectrum, in Angstrom
-            (rest-frame, i.e. before applying `redshift`).
+            (rest-frame, i.e. before applying ``redshift``).
         flux : array_like
-            Flux of the reference spectrum, sampled at `lbda`.
+            Flux of the reference spectrum, sampled at ``lbda``, in
+            erg/s/cm^2/A.
         mag : float or None, optional
-            Target magnitude of the host in `band`. If None, the reference
-            spectrum is used as-is (no rescaling). Default is None.
+            Total observer-frame AB magnitude of the host in ``band``. If
+            None, the reference spectrum is used as is (no rescaling).
+            Default is None.
         band : str, optional
-            Bandpass name (must be known by sncosmo) used to normalize `mag`.
-            Default is "sdssr".
+            Bandpass name (must be known by ``sncosmo``) in which ``mag`` is
+            defined. Default is ``"sdssr"``.
         redshift : float, optional
-            Redshift applied to the reference spectrum wavelength axis.
-            Default is 0.
+            Redshift applied to the reference spectrum wavelength axis (no
+            flux dimming). It is fixed at construction and is not a mutable
+            parameter. Default is 0.
         r_eff : float, optional
             Effective (half-light) radius of the Sersic profile, in arcsec.
             Default is 0.1.
@@ -228,11 +238,11 @@ class Host(SceneElement):
             convention: from +x axis, counterclockwise). Default is 0.0.
         pixel_scale : float, optional
             Arcsec per pixel of the output grid. Default is 0.1.
-        shape : (int, int), optional
-            Output cube spatial shape as (nx, ny). Default is (10, 10).
-        position : (float, float), optional
-            Centroid offset (dx, dy) in pixels relative to the geometric
-            center of `shape`. Default is None, i.e. (0, 0).
+        shape : tuple of int, optional
+            Output cube spatial shape as ``(nx, ny)``. Default is ``(10, 10)``.
+        position : tuple of float, optional
+            Centroid offset ``(dx, dy)`` in pixels relative to the geometric
+            center of the grid. Default is None, i.e. ``(0, 0)``.
         oversample : int, optional
             Oversampling factor per axis used to render the Sersic profile.
             Default is 4.
@@ -242,7 +252,10 @@ class Host(SceneElement):
         Returns
         -------
         Host
-            An instance of the `Host` class.
+            An instance of the `Host` class. Its mutable parameters are
+            ``lbda``, ``mag``, ``band``, ``r_eff``, ``n``, ``ellip``,
+            ``theta``, ``pixel_scale``, ``shape``, ``position`` and
+            ``oversample``.
         """
         from sncosmo import Spectrum
         meta = {}
@@ -289,17 +302,17 @@ class Host(SceneElement):
                 Position angle, in degrees. Default is 0.0.
             pixel_scale : float, optional
                 Arcsec per pixel of the output grid. Default is 0.1.
-            shape : (int, int), optional
-                Output cube spatial shape as (nx, ny). Default is (10, 10).
-            position : (float, float), optional
-                Centroid offset (dx, dy) in pixels. Default is None.
+            shape : tuple of int, optional
+                Output cube spatial shape as ``(nx, ny)``. Default is ``(10, 10)``.
+            position : tuple of float, optional
+                Centroid offset ``(dx, dy)`` in pixels. Default is None.
             oversample : int, optional
                 Oversampling factor per axis. Default is 4.
 
             Returns
             -------
             numpy.ndarray
-                3D datacube of shape (len(lbda), ny, nx): the flux at each
+                3D datacube of shape ``(len(lbda), ny, nx)``: the flux at each
                 wavelength scaled by the (flux-normalized) Sersic profile.
             """
             if mag is None:
@@ -330,8 +343,8 @@ class Host(SceneElement):
         Parameters
         ----------
         lbda : array_like, optional
-            Wavelength array in Angstrom. If None, `self.lbda` is used.
-            Default is None.
+            Wavelength array in Angstrom. If None, the default wavelength
+            (``lbda`` attribute) is used. Default is None.
         **kwargs
             Overwrite the current model parameters for this call only,
             typically the grid the host is rendered on (``shape`` and
@@ -342,7 +355,13 @@ class Host(SceneElement):
         lbda : array_like
             Wavelength array in Angstrom.
         cube : numpy.ndarray
-            (nlbda, ny, nx) datacube, flux per pixel in erg/s/cm²/Å.
+            Datacube of shape ``(nlbda, ny, nx)``, flux per pixel in
+            erg/s/cm^2/A.
+
+        Raises
+        ------
+        ValueError
+            If ``lbda`` is None and no default wavelength is set.
 
         Examples
         --------
@@ -367,15 +386,15 @@ class Host(SceneElement):
         Parameters
         ----------
         lbda : array_like, optional
-            Wavelength array in Angstrom. If None, `self.lbda` is used.
-            Default is None.
+            Wavelength array in Angstrom. If None, the default wavelength
+            (``lbda`` attribute) is used. Default is None.
 
         Returns
         -------
         lbda : array_like
             Wavelength array in Angstrom.
-        flux : array_like
-            Flux in erg/s/cm²/Å.
+        flux : numpy.ndarray
+            Flux in erg/s/cm^2/A.
         """
         lbda, cube = self.get_cube(lbda)
         return lbda, np.sum(cube, axis=(-2, -1))

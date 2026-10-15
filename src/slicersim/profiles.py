@@ -1,4 +1,9 @@
+"""2D PSF profiles (Airy disk, Gaussian) and pixel grids to sample them.
 
+Coordinates and sizes are given in "shape units", i.e. in units of the
+(non-oversampled) pixels of the image the profiles are evaluated on, with
+(0, 0) at the image center.
+"""
 
 import numpy as np
 from astropy.modeling import functional_models
@@ -18,37 +23,47 @@ def _center_to_edge_(xx):
 
     Parameters
     ----------
-    xx : ndarray
-        Array of center coordinates.
+    xx : numpy.ndarray
+        Regularly spaced center coordinates.
 
     Returns
     -------
-    ndarray
-        Array of edge coordinates with length len(xx) + 1.
+    numpy.ndarray
+        Edge coordinates, of length ``len(xx) + 1``.
     """
     step_ = xx[1]-xx[0]
     return np.append(xx, xx[-1]+step_) - step_/2
 
 def airyradius_to_gaussiansigma(radius, on="fwhm"):
-    """Convert Airy disk radius to equivalent Gaussian sigma.
+    r"""Convert an Airy disk radius into an equivalent Gaussian sigma.
+
+    The conversion matches the FWHM of both profiles:
+
+    .. math::
+
+        \sigma = r \times 0.8 / 2.35
 
     Parameters
     ----------
-    radius : float or ndarray
-        Radius of the Airy disk.
+    radius : float or numpy.ndarray
+        Radius of the first dark ring of the Airy disk (any unit).
     on : str, optional
-        Parameter type to convert from. Only "fwhm" is implemented.
-        Default is "fwhm".
+        Quantity matched between the two profiles. Only ``"fwhm"`` is
+        implemented. Default is ``"fwhm"``.
 
     Returns
     -------
-    float or ndarray
-        Equivalent Gaussian sigma.
+    float or numpy.ndarray
+        Equivalent Gaussian sigma, in the same unit as ``radius``.
 
     Raises
     ------
     NotImplementedError
-        If on is not "fwhm".
+        If ``on`` is not ``"fwhm"``.
+
+    See Also
+    --------
+    gaussiansigma_to_airyradius : The inverse conversion.
     """
     if on.lower() == "fwhm":
         ratio = 2.35/0.8
@@ -58,25 +73,35 @@ def airyradius_to_gaussiansigma(radius, on="fwhm"):
     return radius / ratio
 
 def gaussiansigma_to_airyradius(sigma, on="fwhm"):
-    """Convert Gaussian sigma to equivalent Airy disk radius.
+    r"""Convert a Gaussian sigma into an equivalent Airy disk radius.
+
+    The conversion matches the FWHM of both profiles:
+
+    .. math::
+
+        r = \sigma \times 2.35 / 0.8
 
     Parameters
     ----------
-    sigma : float or ndarray
-        Standard deviation of the Gaussian.
+    sigma : float or numpy.ndarray
+        Standard deviation of the Gaussian (any unit).
     on : str, optional
-        Parameter type to convert to. Only "fwhm" is implemented.
-        Default is "fwhm".
+        Quantity matched between the two profiles. Only ``"fwhm"`` is
+        implemented. Default is ``"fwhm"``.
 
     Returns
     -------
-    float or ndarray
-        Equivalent Airy disk radius.
+    float or numpy.ndarray
+        Equivalent Airy disk radius, in the same unit as ``sigma``.
 
     Raises
     ------
     NotImplementedError
-        If on is not "fwhm".
+        If ``on`` is not ``"fwhm"``.
+
+    See Also
+    --------
+    airyradius_to_gaussiansigma : The inverse conversion.
     """
     if on.lower() == "fwhm":
         ratio = 0.8/2.35
@@ -86,30 +111,33 @@ def gaussiansigma_to_airyradius(sigma, on="fwhm"):
     return sigma / ratio
 
 def build_pixels(shape, oversampling=10):
-    """Build pixel coordinate system with optional oversampling.
+    """Build a pixel coordinate system with optional oversampling.
 
-    Creates a dictionary containing centroids, edges, and pixel information
-    for a given image shape with optional oversampling for sub-pixel accuracy.
+    Coordinates are in units of the (non-oversampled) pixels, with (0, 0) at
+    the center of the image.
 
     Parameters
     ----------
     shape : tuple of int
-        Shape (ny, nx) of the image.
-    oversampling : int or list of int, optional
-        Oversampling factor. Can be a single integer for symmetric oversampling
-        or a list [oversampling_y, oversampling_x] for asymmetric oversampling.
-        Default is 10.
+        Shape ``(ny, nx)`` of the image.
+    oversampling : int or list of int or None, optional
+        Oversampling factor: a single integer for symmetric oversampling, or
+        ``[oversampling_y, oversampling_x]`` for asymmetric oversampling.
+        None means 1. Default is 10.
 
     Returns
     -------
     dict
-        Dictionary containing:
-        - "centroids": tuple of (x_centroids, y_centroids) ndarrays
-        - "edges": tuple of (x_edges, y_edges) ndarrays
-        - "shape": original shape
-        - "pixelarea": area of a single oversampled pixel
-        - "fullshape": shape after oversampling
-        - "oversampling": the oversampling factor(s) used
+        Dictionary with keys:
+
+        - ``"centroids"``: ``(x, y)`` pixel centers, as an open mesh-grid of
+          shapes ``(1, nx * oversampling_x)`` and ``(ny * oversampling_y, 1)``;
+        - ``"edges"``: ``(x_edges, y_edges)`` pixel edges, as an open
+          mesh-grid (one more element than ``"centroids"`` along each axis);
+        - ``"shape"``: the input ``shape``;
+        - ``"pixelarea"``: area of a single oversampled pixel;
+        - ``"fullshape"``: shape of the oversampled image;
+        - ``"oversampling"``: the oversampling factor(s) used.
     """
     if oversampling is None:
         oversampling = 1
@@ -144,21 +172,25 @@ def build_pixels(shape, oversampling=10):
 #  Generic    #
 # =========== #
 def psfimage_to_encircledenergy(psfimage, radius, position=(0,0)):
-    """Calculate encircled energy within a given radius.
+    """Calculate the encircled energy within given radii.
+
+    This uses ``sep.sum_circle`` (requires the ``sep`` package).
 
     Parameters
     ----------
-    psfimage : ndarray
+    psfimage : numpy.ndarray
         2D PSF image.
-    radius : float or ndarray
-        Radius or radii for encircled energy calculation.
+    radius : float or numpy.ndarray
+        Aperture radius or radii, in pixels of ``psfimage``.
     position : tuple of float, optional
-        (x, y) position of the PSF center in pixels. Default is (0, 0).
+        ``(x, y)`` position of the aperture center, in pixels of
+        ``psfimage`` (``(0, 0)`` being the center of the first pixel).
+        Default is (0, 0).
 
     Returns
     -------
-    ndarray
-        Encircled energy within the specified radius/radii.
+    numpy.ndarray
+        Sum of ``psfimage`` within each radius.
     """
     import sep
     r = np.atleast_1d(radius)
@@ -167,44 +199,56 @@ def psfimage_to_encircledenergy(psfimage, radius, position=(0,0)):
 def get_profilepsf(profile, shape=(10, 10), oversampling=10,
                    position=(0, 0), normal_scatter=None,
                    norm_pixels=False, **kwargs):
-    """Compute the 2D PSF image for a given profile.
+    """Compute the oversampled 2D PSF image for a given profile.
 
     Parameters
     ----------
     profile : str
         Name of the profile:
-        - "airy": Airy disk
-        - "gaussian", "gauss", "normal": Gaussian profile
 
+        - ``"airy"``: Airy disk (see `get_profilemodel`);
+        - ``"gaussian"``, ``"gauss"``, ``"normal"``: Gaussian profile
+          integrated over pixels (see `~slicersim.utils.integ_gaussian2D_erf`).
     shape : tuple of int, optional
-        Shape (ny, nx) of the output image. Default is (10, 10).
-
+        Shape ``(ny, nx)`` of the (non-oversampled) image. Default is
+        (10, 10).
     oversampling : int, optional
-        Number of sub-pixels per shape-unit. Default is 10.
-
+        Number of sub-pixels per shape-unit along each axis. Default is 10.
     position : tuple of float, optional
-        Coordinate of the PSF with respect to the center of the image
-        in shape-units. Default is (0, 0).
-
+        ``(x, y)`` coordinates of the PSF with respect to the center of the
+        image, in shape-units. Default is (0, 0).
     normal_scatter : float or None, optional
-        Additional normal scattering in shape-units. Default is None.
-
+        Additional Gaussian scattering (standard deviation) in shape-units,
+        applied by convolution. Default is None.
     norm_pixels : bool, optional
-        If True, multiply PSF by pixel area. Default is False.
-
+        If True, multiply the PSF by the pixel area, such that pixel values
+        are the fraction of the flux in the pixel. Otherwise, pixel values
+        are a surface density (per shape-unit squared). Default is False.
     **kwargs
         Additional arguments passed to the profile:
-        - radius: mandatory for profile='airy'
-        - sigma: mandatory for profile='gaussian'
+
+        - ``radius``: mandatory for ``profile="airy"`` (shape-units, float or
+          array_like for several PSFs);
+        - ``sigma``: mandatory for ``profile="gaussian"`` (shape-units).
 
     Returns
     -------
-    psf : ndarray
-        PSF image
-    centroid : ndarray
-        Position of PSF centroid in the units of psf image pixels.
+    psf : numpy.ndarray
+        PSF image(s), of shape ``(ny * oversampling, nx * oversampling)``,
+        or ``(n, ny * oversampling, nx * oversampling)`` for ``n`` radii or
+        sigmas.
+    centroid : numpy.ndarray
+        Position of the PSF centroid, in (oversampled) pixels of ``psf``,
+        computed as ``psf.shape[-2:] / 2 - 0.5 + position * oversampling``.
     pixelarea : float
-        Area of a single pixel.
+        Area of a single oversampled pixel, in shape-units squared.
+
+    Raises
+    ------
+    KeyError
+        If the mandatory ``radius`` or ``sigma`` is not given.
+    NotImplementedError
+        If ``profile`` is not supported.
     """
 
     # build pixels
@@ -247,41 +291,34 @@ def get_profilepsf(profile, shape=(10, 10), oversampling=10,
     return np.squeeze(psf), centroid, pxl["pixelarea"]
 
 def get_profilemodel(name, position=(0,0), normalized=True, **kwargs):
-    """Get a 2D profile model function from astropy.
-
-    PSF models come from astropy.modeling.functional_models and can be used as follows:
-
-    ```python
-    sigmas = 2 # or array of shape (M, 1, 1)
-    airy = get_profilemodel("airy", position=(0.4, 1.2), radius=sigmas)
-    xx = np.r_[-7:7:50j]
-    yy = np.r_[-7:7:49j] # different dim for example
-    psf_stamp = airy(xx[None,:], yy[:,None]) # resulting shape (M, 49, 50)
-    ```
+    """Get a 2D profile model from `astropy.modeling.functional_models`.
 
     Parameters
     ----------
     name : str
-        Name of the 2D PSF model from astropy. Shortcuts:
-        - "airy", "airydisk": "AiryDisk2D"
-        - "gaussian", "gauss", "normal": "Gaussian2D"
-        - "moffat": "Moffat2D"
-        - "sersic": "Sersic2D"
-        - "ricker", "mexican", "mexicanhat": "RickerWavelet2D"
-        - "lorentz": "Lorentz2D"
+        Name of the 2D astropy model. Shortcuts:
 
+        - ``"airy"``, ``"airydisk"``: ``"AiryDisk2D"``
+        - ``"gaussian"``, ``"gauss"``, ``"normal"``: ``"Gaussian2D"``
+        - ``"moffat"``: ``"Moffat2D"``
+        - ``"sersic"``: ``"Sersic2D"``
+        - ``"ricker"``, ``"mexican"``, ``"mexicanhat"``: ``"RickerWavelet2D"``
+        - ``"lorentz"``: ``"Lorentz2D"``
     position : tuple of float, optional
-        Location of the centroid (x_0, y_0). Default is (0, 0).
-
+        Location ``(x, y)`` of the centroid. Default is (0, 0).
     normalized : bool, optional
-        If True, normalize the model amplitude. Default is True.
-
+        If True, set the model amplitude such that the profile integrates to
+        1. Only implemented for ``AiryDisk2D`` and ``Gaussian2D``.
+        Default is True.
     **kwargs
-        Additional arguments passed to the astropy model initializer.
-        See https://docs.astropy.org/en/latest/modeling/predef_models2D.html
-        All models have amplitude=1 and model-specific defaults:
+        Additional arguments passed to the astropy model initializer, see
+        https://docs.astropy.org/en/latest/modeling/predef_models2D.html.
+        Model defaults are amplitude=1 and:
+
         - AiryDisk2D: radius=1
-        - Gaussian2D: x_stddev=None, y_stddev=None, theta=None, cov_matrix=None
+        - Gaussian2D: x_stddev=None, y_stddev=None, theta=None,
+          cov_matrix=None. For convenience, ``sigma`` (or ``radius``) can be
+          given to set both ``x_stddev`` and ``y_stddev``.
         - Moffat2D: gamma=1, alpha=1
         - Sersic2D: r_eff=1, n=4, ellip=0, theta=0.0
         - RickerWavelet2D: sigma=1
@@ -289,8 +326,24 @@ def get_profilemodel(name, position=(0,0), normalized=True, **kwargs):
 
     Returns
     -------
-    func
-        The requested astropy functional model with parameters set.
+    astropy.modeling.Fittable2DModel
+        The requested astropy model with its parameters set; call it as
+        ``model(x, y)``.
+
+    Raises
+    ------
+    ValueError
+        If ``normalized`` is True for a model other than ``AiryDisk2D`` or
+        ``Gaussian2D``.
+
+    Examples
+    --------
+    >>> sigmas = 2  # or array of shape (M, 1, 1)
+    >>> airy = get_profilemodel("airy", position=(0.4, 1.2), radius=sigmas)
+    >>> xx = np.r_[-7:7:50j]
+    >>> yy = np.r_[-7:7:49j]  # different dim for example
+    >>> airy(xx[None, :], yy[:, None]).shape  # (M, 49, 50) for M radii
+    (49, 50)
     """
     SHORT_CUTS = {"airy": "AiryDisk2D",
                   "gaussian": "Gaussian2D",
@@ -346,53 +399,57 @@ def get_profilemodel(name, position=(0,0), normalized=True, **kwargs):
 #  Gaussian   #
 # =========== #
 def get_gaussian1d(xx, sigma, mean=0):
-    """Evaluate 1D Gaussian distribution at given points.
+    """Evaluate a normalized 1D Gaussian at given points.
 
     Parameters
     ----------
-    xx : ndarray
-        Points at which to evaluate the Gaussian.
-    sigma : float or ndarray
-        Standard deviation(s) of the Gaussian. Can be a scalar or array
-        with shape (n,) for multiple Gaussians.
-    mean : float or ndarray, optional
-        Mean(s) of the Gaussian. Default is 0.
+    xx : numpy.ndarray
+        Points at which to evaluate the Gaussian, of shape ``(nx,)``.
+    sigma : float or numpy.ndarray
+        Standard deviation(s) of the Gaussian: a scalar, or an array of
+        shape ``(n,)`` for multiple Gaussians.
+    mean : float, optional
+        Mean of the Gaussian. Default is 0.
 
     Returns
     -------
-    ndarray
-        Probability density at xx. If sigma is array of shape (n,),
-        output has shape (n, len(xx)).
+    numpy.ndarray
+        Probability density at ``xx``, of shape ``(n, nx)`` (``n = 1`` for a
+        scalar ``sigma``).
     """
     sigma = np.atleast_1d(sigma)
     mean = np.atleast_1d(mean)
     return stats.norm.pdf(xx, loc=mean, scale=sigma[:,None])
 
 def get_gaussian2d(xx, yy, sigma, mean=(0,0), **kwargs):
-    """Compute exact 2D Gaussian PSF using pixel edges and error function.
+    """Compute an exact pixel-integrated 2D Gaussian PSF.
 
-    Integrates the Gaussian profile over pixel areas using the error function
-    for accurate PSF representation.
+    The Gaussian profile is integrated over the area of each pixel using the
+    error function (see `~slicersim.utils.integ_gaussian2D_erf`).
 
     Parameters
     ----------
-    xx : ndarray
-        X-coordinates (typically from 1D array).
-    yy : ndarray
-        Y-coordinates (typically from 1D array).
-    sigma : float or ndarray
-        Standard deviation(s) of the Gaussian. Can be scalar or array
-        with shape (m,) for multiple PSFs.
+    xx : numpy.ndarray
+        Regularly spaced x-coordinates of the pixel centers, of shape
+        ``(nx,)`` or ``(1, nx)``.
+    yy : numpy.ndarray
+        Regularly spaced y-coordinates of the pixel centers, of shape
+        ``(ny,)`` or ``(ny, 1)``.
+    sigma : array_like
+        Standard deviations of the Gaussian, in the same units as ``xx``, of
+        shape ``(..., 2)`` with the last axis being ``(sigma_y, sigma_x)``,
+        e.g. ``(m, 1, 2)`` for ``m`` PSFs.
     mean : tuple of float, optional
-        (x_mean, y_mean) center of the Gaussian. Default is (0, 0).
+        ``(x, y)`` center of the Gaussian. Default is (0, 0).
     **kwargs
-        Additional arguments passed to integ_gaussian2D_erf.
+        Additional arguments passed to
+        `~slicersim.utils.integ_gaussian2D_erf`.
 
     Returns
     -------
-    ndarray
-        2D Gaussian PSF pixel values, normalized so that the sum equals 1.
-        If sigma is an array, output shape is (m, len(yy), len(xx)).
+    numpy.ndarray
+        Pixel values, normalized such that the sum over an infinite grid
+        equals 1, of shape ``(ny, nx)`` or ``(m, ny, nx)``.
     """
     from .utils import integ_gaussian2D_erf
 

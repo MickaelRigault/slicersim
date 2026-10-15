@@ -1,4 +1,11 @@
-""" Spectrograph module. """
+"""Spectrograph models: wavelength sampling, spaxels, PSF, LSF and throughput.
+
+This module provides the `Spectrograph` base class and its `SlicerSpectrograph`
+and `MLASpectrograph` flavours, which convert input scene spectra (in
+erg/s/cm²/Å) into photon flux cubes (in ph/s/spaxel) sampled on the
+spectrograph wavelength and spaxel grids. It also provides `OpticsThroughput`,
+which handles the chromatic throughput of the optical elements.
+"""
 
 import warnings
 from copy import deepcopy
@@ -19,23 +26,26 @@ from .utils import recursive_get  # , bin_array
 #                  #
 # ================ #
 def lbda_from_resolution_power(spectral_range, res_power, npx_resolution=2):
-    r"""Compute wavelength ramp for constant n-px resolving power.
+    r"""Compute a wavelength ramp with a constant resolving power.
+
+    The bins are log-uniformly spaced such that a resolution element
+    (:math:`\lambda/\mathcal{R}`) spans ``npx_resolution`` pixels.
 
     Parameters
     ----------
-    spectral_range : tuple
-        Spectral domain (wmin, wmax).
+    spectral_range : tuple of float
+        Spectral domain ``(wmin, wmax)``, in Angstrom.
     res_power : float
-        Resolving power R.
+        Resolving power :math:`\mathcal{R} = \lambda/\Delta\lambda`.
     npx_resolution : float, optional
-        Number of pixels per spectral element. Default is 2.
+        Number of pixels per spectral resolution element. Default is 2.
 
     Returns
     -------
-    lbda : array_like
-        Mid-bin wavelengths.
-    lbda_edges : array_like
-        Bin edge wavelengths.
+    lbda : numpy.ndarray
+        Mid-bin wavelengths (geometric mean of the edges), in Angstrom.
+    lbda_edges : numpy.ndarray
+        Bin edge wavelengths (``len(lbda) + 1`` entries), in Angstrom.
 
     Notes
     -----
@@ -45,7 +55,7 @@ def lbda_from_resolution_power(spectral_range, res_power, npx_resolution=2):
        &= \ln 10\,\Delta\log\lambda \\
        \log\lambda_i^e &= \log\lambda_0 + i\times \Delta\log\lambda
        &\quad\text{(edges)} \\
-       \log\lambda_i &= (\log\lambda_i + \log\lambda_{i+1})/2
+       \log\lambda_i &= (\log\lambda_i^e + \log\lambda_{i+1}^e)/2
        &\quad\text{(center)}
     """
 
@@ -62,30 +72,36 @@ def lbda_from_resolution_power(spectral_range, res_power, npx_resolution=2):
 def build_lbda(spectral_range, spectral_resolution=None,
                    wsol=None, dsol=None,
                    npx_resolution=2):
-    """Set wavelength coordinates.
+    """Build the wavelength coordinates.
 
-    This function sets the mid-bin wavelengths (`lbda`) and the bin edge
-    wavelengths (`lbda_edges`).
+    This computes the mid-bin wavelengths (``lbda``) and the bin edge
+    wavelengths (``lbda_edges``), either from a constant resolving power
+    (if ``wsol`` is None, see `lbda_from_resolution_power`) or from a
+    wavelength/dispersion solution.
 
     Parameters
     ----------
-    spectral_range : tuple
-        Spectral domain (wmin, wmax).
+    spectral_range : tuple of float
+        Spectral domain ``(wmin, wmax)``, in Angstrom.
     spectral_resolution : float, optional
-        Resolving power R. Default is None.
+        Resolving power R. Used (and required) only if ``wsol`` is None.
+        Default is None.
     wsol : callable, optional
-        Wavelength solution (pixel -> wavelength). Default is None.
+        Wavelength solution (pixel -> wavelength in Angstrom).
+        Default is None.
     dsol : callable, optional
-        Dispersion solution (wavelength -> pixel). Default is None.
+        Dispersion solution (wavelength in Angstrom -> pixel). Required if
+        ``wsol`` is given. Default is None.
     npx_resolution : float, optional
-        Number of pixels per spectral element. Default is 2.
+        Number of pixels per spectral resolution element. Only used if
+        ``wsol`` is None. Default is 2.
 
     Returns
     -------
-    lbda : array_like
-        Mid-bin wavelengths.
-    lbda_edges : array_like
-        Bin edge wavelengths.
+    lbda : numpy.ndarray
+        Mid-bin wavelengths, in Angstrom.
+    lbda_edges : numpy.ndarray
+        Bin edge wavelengths, in Angstrom.
     """
     if wsol is None:  # Compute from constant resolving power
         lbda, lbda_edges = lbda_from_resolution_power(np.asarray(spectral_range, dtype="float32"),
@@ -105,20 +121,29 @@ def build_lbda_from_config(config):
     Parameters
     ----------
     config : dict
-        Configuration dictionary.
-        - spectral_range
-        - dispersion_law # is a file
-        - dispersion_scale # float
-        - spectral_resolution
-        - dispersion_resolution
-        -
+        Spectrograph configuration dictionary. The following keys are used:
+
+        - ``"spectral_range"``: ``(wmin, wmax)`` in Angstrom.
+        - ``"dispersion_law"``: ecsv file with ``wavelength`` and ``offset``
+          (in pix) columns. If given, it defines the wavelength solution.
+        - ``"dispersion_scale"``: scaling applied to the dispersion law
+          (default 1).
+        - ``"spectral_resolution"``: resolving power, used if no
+          ``"dispersion_law"`` is given.
+        - ``"dispersion_resolution"``: number of pixels per resolution
+          element (default 2.1).
 
     Returns
     -------
-    lbda : array_like
-        Mid-bin wavelengths.
-    lbda_edges : array_like
-        Bin edge wavelengths.
+    lbda : numpy.ndarray
+        Mid-bin wavelengths, in Angstrom.
+    lbda_edges : numpy.ndarray
+        Bin edge wavelengths, in Angstrom.
+
+    Raises
+    ------
+    ValueError
+        If neither ``"spectral_resolution"`` nor ``"dispersion_law"`` is set.
     """
     spectral_range = config.get("spectral_range", None)
 
@@ -163,12 +188,14 @@ def build_spaxels_from_config(config):
     Parameters
     ----------
     config : dict
-        Configuration dictionary.
+        Configuration dictionary, containing (possibly nested) the
+        ``"spatial_shape"`` and ``"spatial_scale"`` (in arcsec) entries.
 
     Returns
     -------
     dict
-        Dictionary with spaxel information ('shape' and 'spx_scale').
+        Spaxel information, with keys ``"shape"`` (spaxel grid shape) and
+        ``"spx_scale"`` (spaxel size in arcsec).
     """
     # Spaxel spatial scale (size of a single spaxel in arcsec)
     spatial_shape = recursive_get(config, "spatial_shape")
@@ -182,13 +209,23 @@ def build_throughput_from_config(config):
 
     Parameters
     ----------
-    config : dict
-        Configuration dictionary.
+    config : dict or float or str
+        Throughput configuration. If a dict with a ``"throughput"`` key, that
+        entry is used, otherwise the input itself is. The throughput can then
+        be a number (constant throughput), a dict (see
+        `OpticsThroughput.from_config`) or a file name (see
+        `OpticsThroughput.from_filename`).
 
     Returns
     -------
-    float or callable
-        Throughput as a constant value or a function of wavelength.
+    float or OpticsThroughput
+        Constant throughput, or an `OpticsThroughput` instance (callable,
+        function of wavelength in Angstrom).
+
+    Raises
+    ------
+    ValueError
+        If the throughput is None.
     """
     throughput =  config.get("throughput", config)
 
@@ -217,8 +254,43 @@ def build_throughput_from_config(config):
 #  Spectrograph  #
 # ============== #
 class Spectrograph:
-    """ Spectrograph simulation.
+    """Generic integral field spectrograph.
 
+    It holds the wavelength sampling, the spaxel grid, the spatial PSF, the
+    throughput and the internal (thermal) optics of the spectrograph, and
+    converts scene spectra (in erg/s/cm²/Å) into photon flux cubes
+    (in ph/s/spaxel), see e.g. `generate_pointsource`.
+
+    You likely want to create it using the `from_config` constructor.
+
+    Parameters
+    ----------
+    lbda : array_like
+        Mid-bin wavelengths, in Angstrom.
+    telescope : ~slicersim.telescope.Telescope, optional
+        Telescope feeding the spectrograph. Default is None.
+    spaxels : dict, optional
+        Spaxel information, passed to `set_spaxels`:
+        ``{"shape": (ny, nx), "spx_scale": float}`` with ``spx_scale`` in
+        arcsec. Default is ``{}``.
+    throughput : float, callable or OpticsThroughput, optional
+        Throughput of the spectrograph, see `set_throughput`.
+        Default is None.
+    spatial_psf : dict, optional
+        Spatial PSF information, with keys ``"sigma_spectral"`` (chromatic
+        sigma in arcsec at `lbda_ref`), ``"guiding_sigma"`` (in arcsec) and
+        ``"profile"``. Default is ``{}``.
+    lbda_edges : array_like, optional
+        Wavelength bin edges, in Angstrom (``len(lbda) + 1`` entries).
+        Default is None.
+    optics : ~slicersim.thermal.ThermalOptics, optional
+        Internal optics of the spectrograph (thermal emission).
+        Default is ``{}``.
+    dispersion_resolution : float, optional
+        Number of pixels per spectral resolution element (spot size), see
+        `dispersion_resolution`. Default is 2.
+    meta : dict, optional
+        Metadata (typically the input configuration). Default is ``{}``.
     """
     _SPECTROGRAPH_TYPE = "Unknown"
 
@@ -241,30 +313,8 @@ class Spectrograph:
                  meta={}):
         """Initialize the spectrograph.
 
-        You likely want to create it using the .from_config() constructor.
-
-        Parameters
-        ----------
-        lbda : array_like
-            Wavelengths in Angstrom.
-        telescope : slicersim.Telescope, optional
-            Telescope object. Default is None.
-        spaxels : dict, optional
-            Spaxel information: {"shape": (N,M), "spx_scale": float [in arcsec]}.
-            Default is {}.
-        throughput : float or callable, optional
-            Throughput of the spectrograph. If callable, throughput = func(lbda).
-            Default is None.
-        spatial_psf : dict, optional
-            Spatial PSF information. Default is {}.
-        lbda_edges : array_like, optional
-            Wavelength bin edges in Angstrom. Default is None.
-        optics : dict, optional
-            Optics information. Default is {}.
-        dispersion_resolution : int, optional
-            Dispersion resolution. Default is 2.
-        meta : dict, optional
-            Metadata dictionary. Default is {}.
+        See the class docstring for the parameters. You likely want to
+        create it using the `from_config` constructor.
         """
         # wavelength
         self.lbda = lbda
@@ -297,19 +347,23 @@ class Spectrograph:
 
     @classmethod
     def from_config(cls, config, telescope=None):
-        """Create a Spectrograph instance from a configuration dictionary.
+        """Create a spectrograph from a configuration dictionary.
 
         Parameters
         ----------
         config : dict
-            Configuration dictionary.
-        telescope : slicersim.Telescope, optional
-            Telescope object. Default is None.
+            Spectrograph configuration dictionary (e.g. the ``"spectrograph"``
+            entry of `~slicersim.iotools.get_config`). It must contain the
+            ``"throughput"``, ``"optics"`` and ``"psf"`` entries, and the
+            wavelength and spaxel information (see `build_lbda_from_config`
+            and `build_spaxels_from_config`).
+        telescope : ~slicersim.telescope.Telescope, optional
+            Telescope feeding the spectrograph. Default is None.
 
         Returns
         -------
         Spectrograph
-            A Spectrograph instance.
+            An instance of the calling class.
         """
         # spectrograph that inherit Spectrograph simply need to update _parse_config()
         init_prop, _ = cls._parse_config(config)
@@ -327,10 +381,10 @@ class Spectrograph:
 
         Returns
         -------
-        dict
-            Initialization properties.
-        dict
-            Input configuration.
+        init_prop : dict
+            Keyword arguments for the class constructor.
+        input_config : dict
+            Deep copy of the input configuration.
         """
         # make sure the input config is not changed
         input_config = deepcopy(config)
@@ -374,10 +428,14 @@ class Spectrograph:
 
         Returns
         -------
-        lbda : array_like
-            Mid-bin wavelengths.
-        lbda_edges : array_like
-            Bin edge wavelengths.
+        lbda : numpy.ndarray
+            Mid-bin wavelengths, in Angstrom.
+        lbda_edges : numpy.ndarray
+            Bin edge wavelengths, in Angstrom.
+
+        See Also
+        --------
+        slicersim.spectrograph.build_lbda_from_config : The function called.
         """
         return build_lbda_from_config(config)
 
@@ -395,14 +453,29 @@ class Spectrograph:
         - changing ``spotsize`` updates ``self.dispersion_resolution``
           *without* updating ``lbda``, effectively changing the resolving power.
 
-
         Parameters
         ----------
         reset_others : bool, optional
-            If True, reset other parameters to their initial values.
-            Default is False.
+            If True, the parameters not given are reset to their initial
+            values (meta and telescope). Default is False.
         **kwargs
-            Parameters to update.
+            Parameters to update, e.g. any of `mutable_parameters`, or
+            ``telescope.<param>``, ``optics.<param>``, ``throughput.<param>``.
+            ``throughput`` itself replaces the throughput (see
+            `OpticsThroughput.from_config`). None values are ignored.
+
+        Returns
+        -------
+        list of str
+            Names of the components that changed, among ``"telescope"``,
+            ``"optics"``, ``"throughput"``, ``"psf"``, ``"spaxels"``,
+            ``"lbda"`` and ``"meta"``.
+
+        Warns
+        -----
+        UserWarning
+            If a parameter is not mutable or cannot be parsed. It is then
+            ignored.
         """
         NAME_ALT = {"spx_shape": "spatial_shape",
                     "spx_scale": "spatial_scale"}
@@ -522,49 +595,49 @@ class Spectrograph:
         return what_changed
 
     def update_lbda(self, lbda, lbda_edges):
-        """Update wavelength coordinates.
+        """Update the wavelength coordinates.
 
         Parameters
         ----------
         lbda : array_like
-            Mid-bin wavelengths.
+            Mid-bin wavelengths, in Angstrom.
         lbda_edges : array_like
-            Bin edge wavelengths.
+            Bin edge wavelengths, in Angstrom.
         """
         self.lbda = lbda
         self.lbda_edges = lbda_edges
 
     def set_spaxels(self, shape, spx_scale):
-        """Set spaxel information.
+        """Set the spaxel information.
 
         Parameters
         ----------
-        shape : tuple
-            Spaxel grid shape (ny, nx).
-        spx_scale : float
-            Spaxel scale in arcsec.
+        shape : tuple of int
+            Spaxel grid shape ``(ny, nx)``.
+        spx_scale : float or tuple of float
+            Spaxel size in arcsec, either a float or ``(scale_y, scale_x)``.
         """
         self._spaxels = {"shape": shape, "spx_scale": spx_scale}
         self._spaxel_coords = {}
 
     def set_throughput(self, throughput):
-        """ set the throughput of the spectrograph
+        """Set the throughput of the spectrograph.
 
         Parameters
         ----------
-        throughput: pandas.Series, float, array, func, OpticsThroughput
-            The throughput of the system as a function of wavelength (0->1):
+        throughput : float, array_like, callable, pandas.Series, pandas.DataFrame or OpticsThroughput
+            Throughput of the system (between 0 and 1):
 
-            - float: constant throughput
-            - array: must broadcast with self.lbda
-            - func: function that input self.lbda such that throughput_array = throughput(self.lbda)
-            - pandas.Series: throughput with lbda [AA] as index. This is converted input a function
-              using a cubic interpolation.
-            - OpticsThroughput: internal object that handle detailed throughout structure.
-
-        Returns
-        -------
-        None
+            - float: constant throughput.
+            - array_like: must broadcast with ``self.lbda``.
+            - callable: such that ``throughput(lbda)`` returns the throughput
+              at ``lbda`` (in Angstrom).
+            - pandas.Series: throughput with wavelength (in Angstrom) as
+              index. It is converted into a cubic interpolator (zero outside
+              the given range).
+            - pandas.DataFrame: its first column is used as a
+              pandas.Series.
+            - `OpticsThroughput`: detailed per-element throughput.
         """
         if isinstance(throughput, pandas.DataFrame):
             throughput = throughput.iloc[:, 0] # convert as serie
@@ -580,21 +653,20 @@ class Spectrograph:
     #  GETTER   #
     # --------- #
     def get_lbda(self, units=None, oversample=None):
-        """ get the wavelength array
+        """Get the wavelength array.
 
         Parameters
         ----------
-        units: None,string, astropy.units
-            the unit of the returned array.
-            None (default) corresponds to AA (Angstrom).
-
-        oversample: None, int
-            specify if you want to oversample the wavelength binning.
+        units : str or astropy.units.Unit, optional
+            Unit of the returned array. None (default) means Angstrom.
+        oversample : int, optional
+            Oversampling factor of the wavelength binning (linear
+            interpolation between the native wavelengths). Default is None.
 
         Returns
         -------
-        lbda: array
-            wavelength array (see units).
+        numpy.ndarray
+            Wavelength array, in Angstrom unless ``units`` is given.
         """
         lbda = self.lbda.copy() # in AA
         if units is not None:
@@ -609,14 +681,14 @@ class Spectrograph:
     def get_fieldname(self):
         """Get the name of the field matching the spaxel configuration.
 
-        The field is inferred from the current `spatial_shape` and
-        `spatial_scale` of the spectrograph (see `meta`).
+        The field is inferred from the current ``spatial_shape`` and
+        ``spatial_scale`` of the spectrograph (see `meta`).
 
         Returns
         -------
         str
-            Field name (e.g. "narrow" or "wide" for Lazuli), or "unknown" if
-            the configuration does not match any known field.
+            Field name (e.g. ``"narrow"`` or ``"wide"`` for Lazuli), or
+            ``"unknown"`` if the configuration does not match any known field.
 
         Raises
         ------
@@ -636,26 +708,33 @@ class Spectrograph:
     def get_throughput(self, lbda=None, **kwargs):
         """Get the spectrograph throughput.
 
-        When the throughput is wavelength dependent (e.g. `OpticsThroughput`),
-        the throughput curve used is set by `which`:
+        When the throughput is callable (e.g. `OpticsThroughput`), it is
+        called with a ``which`` argument set to:
 
-        - `meta["which_throughput"]` if given (see `update`);
+        - ``meta["which_throughput"]`` if given (see `update`);
         - otherwise, for Lazuli, the current field name (see `get_fieldname`);
         - otherwise None, i.e. the product of all throughput curves.
 
         Parameters
         ----------
         lbda : array_like, optional
-            Wavelength array in Angstrom. If None, `self.lbda` is used.
-            Ignored if the throughput is a constant. Default is None.
+            Wavelength array in Angstrom. If None, ``self.lbda`` is used.
+            Ignored if the throughput is not callable. Default is None.
         **kwargs
-            Goes to the throughput call (e.g. `OpticsThroughput.get_throughput`).
-            A given `which` overrides the one described above.
+            Goes to the throughput call (e.g.
+            `OpticsThroughput.get_throughput`). A given ``which`` overrides
+            the one described above.
 
         Returns
         -------
-        array_like or float
-            Throughput as a function of wavelength or as a constant.
+        numpy.ndarray or float
+            Throughput as a function of wavelength, or the constant
+            throughput.
+
+        Warns
+        -----
+        UserWarning
+            If ``lbda`` is given while the throughput is not callable.
         """
         # internal tool
         which_throughput = {"which": self.meta.get("which_throughput", None)}
@@ -676,17 +755,18 @@ class Spectrograph:
         return self.throughput
 
     def get_spectrograph_shape(self, oversampling=None):
-        """Get the shape of the spectrograph detector.
+        """Get the spatial shape of the spaxel grid.
 
         Parameters
         ----------
         oversampling : int, optional
-            Oversampling factor. Default is None.
+            Spatial oversampling factor. Default is None (no oversampling).
 
         Returns
         -------
-        tuple
-            Shape of the detector (ny, nx).
+        tuple of int or numpy.ndarray
+            Spaxel grid shape ``(ny, nx)``, multiplied by ``oversampling``
+            if given.
         """
         if oversampling is None or oversampling == 1:
             return self.spx_shape
@@ -695,14 +775,15 @@ class Spectrograph:
         return cube_shape
 
     def get_resolving_power(self):
-        r""" this is 'R' such as $\mathcal{R} = \lambda/\Delta\lambda$
+        r"""Get the resolving power :math:`\mathcal{R} = \lambda/\Delta\lambda`.
 
-        it is computed as lbda / np.difflbda_edges) / dispersion_resolution
+        It is computed as ``lbda / np.diff(lbda_edges) / dispersion_resolution``,
+        i.e. the resolution element is ``dispersion_resolution`` pixels wide.
 
         Returns
         -------
-        'R': array
-            the resolving power for shape (nlbda, )
+        numpy.ndarray
+            Resolving power, of shape ``(nlbda,)``.
         """
         return self.lbda / np.diff(self.lbda_edges) / self.get_dispersion_resolution()
 
@@ -712,25 +793,28 @@ class Spectrograph:
         Parameters
         ----------
         which : str, optional
-            Which axis to return.
+            Which axis to return:
+
             - None: the resolution as stored.
-            - "wavelength", "lsf", "wave", "lbda" or "y": the spectral axis.
-            - "spatial", "psf" or "x": the spatial axis.
+            - ``"wavelength"``, ``"lsf"``, ``"wave"``, ``"lbda"`` or ``"y"``:
+              the spectral axis.
+            - ``"spatial"``, ``"psf"`` or ``"x"``: the spatial axis.
+
             Default is None.
 
         Returns
         -------
         float or dict
-            The dispersion resolution in pixels. If `which` is None, the value
-            as stored, which may be a float, a 2-element array or a dict with
-            the "wavelength" and "spatial" entries. Otherwise, the resolution
-            of the requested axis.
+            The dispersion resolution in pixels. If ``which`` is None, the
+            value as stored, which may be a float, a 2-element array or a dict
+            with the ``"wavelength"`` and ``"spatial"`` entries. Otherwise,
+            the resolution of the requested axis.
 
         Raises
         ------
         ValueError
             If the stored dispersion resolution can be parsed neither as a
-            scalar nor as a 2-element array, or if `which` is not one of the
+            scalar nor as a 2-element array, or if ``which`` is not one of the
             accepted names.
 
         Notes
@@ -738,7 +822,7 @@ class Spectrograph:
         2 pixels is optimal: below that the PSF is unresolved, above it the
         PSF is oversampled and adds unnecessary pixel noise.
 
-        When the stored resolution is a 2-element array and `which` is given,
+        When the stored resolution is a 2-element array and ``which`` is given,
         the full ``{"wavelength", "spatial"}`` dict is returned instead of the
         requested axis alone.
         """
@@ -766,21 +850,25 @@ class Spectrograph:
             raise ValueError(f"I cannot parse {which=}")
 
     def get_spaxel_centroids(self, in_arcsec=False, squeeze=False, oversampling=None):
-        """Get the spaxel False.
+        """Get the spaxel centroid coordinates.
 
         Parameters
         ----------
         in_arcsec : bool, optional
-            If True, return centroids in arcsec. Default is False.
+            If True, return centroids in arcsec, otherwise in spaxels.
+            Default is False.
         squeeze : bool, optional
             If True, squeeze the output arrays. Default is False.
-        oversampling : int, optional
-            Oversampling factor. Default is None.
+        oversampling : int or list of int, optional
+            Spatial oversampling factor. Default is None (native grid).
 
         Returns
         -------
-        tuple
-            Tuple containing (x, y) centroid coordinates and the oversampling factor.
+        centroids : tuple of numpy.ndarray
+            ``(x, y)`` centroid coordinates (see
+            `~slicersim.profiles.build_pixels`).
+        oversampling : int or list of int
+            Oversampling factor actually used.
         """
         # numpy and all() test enables to have list/array oversampling (or float/int)
         if oversampling is None or (np.asarray(oversampling) == self.spaxels["oversampling"]).all():
@@ -809,33 +897,35 @@ class Spectrograph:
     def get_psf_sigma_spectral(self, guiding_sigma=None,
                                    incl_telescope=True,
                                    in_spaxels=False, lbda=None):
-        """Get spatial PSF standard deviation (in arcsec or in spaxels).
+        """Get the spatial PSF standard deviation (in arcsec or in spaxels).
 
-        The total (Gaussian) spatial PSF is made of two components:
+        The total (Gaussian) spatial PSF is the quadratic sum of two
+        components:
 
         - the optical (chromatic) component, with stddev proportional
-          to wavelength, normalized at wref=1 µm,
+          to wavelength, normalized at `lbda_ref` (see `psf_sigma_spectral`),
         - the guiding (achromatic) component, with constant stddev.
-
-        If needed, the 1D vector can be embedded in a N-dim array of
-        shape `(nlbda,) + (1,)*xdims`.
 
         Parameters
         ----------
         guiding_sigma : float, optional
-            Guiding sigma override in arcsec. Default is None.
-            If None, self.spatial_psf["guiding_sigma"] is used.
-            If you don't want any, specify guiding_sigma=0.
+            Guiding sigma override in arcsec. If None,
+            ``self.spatial_psf["guiding_sigma"]`` is used. Set
+            ``guiding_sigma=0`` for no guiding contribution. Default is None.
+        incl_telescope : bool, optional
+            If True, include the optical (chromatic) component. If False, only
+            the guiding component remains. Default is True.
         in_spaxels : bool, optional
-            If True, return sigma in spaxels. Default is False.
-            If False, the sigma is in arcsec.
+            If True, return sigma in spaxels, otherwise in arcsec.
+            Default is False.
         lbda : array_like, optional
-            Wavelength array in Angstrom. If None (Default),
-            this uses self.lbda.
+            Wavelength array in Angstrom. If None, ``self.lbda`` is used.
+            Default is None.
+
         Returns
         -------
-        array_like
-            Total sigma in arcsec or spaxels.
+        numpy.ndarray
+            Total sigma in arcsec or spaxels, of shape ``(nlbda, 1, 1)``.
         """
         if lbda is None:
             lbda = self.lbda
@@ -866,24 +956,29 @@ class Spectrograph:
     def get_additonal_spatial_scatter(self, guiding_sigma=None,
                                           incl_instrument=True,
                                           in_spaxels=True):
-        """ scale of the scatter induced by telescope jitter and instrumental psf
+        """Get the scatter induced by the telescope jitter and instrumental PSF.
 
-        Note: current implementation assumes scatter to the gaussian.
+        The current implementation assumes Gaussian scatter.
 
         Parameters
         ----------
         guiding_sigma : float, optional
-            Gaussian noise convolution (in arcsec) caused by jitter.
-            If None (default), this uses internally stored 'guiding_sigma'.
-            To force no guiding scatter, specify guiding_sigma=0.
-        incl_instrument: bool
-            should this also include instrumental induced PSF
-            = this only apply to slicer spectrograph =
+            Gaussian sigma (in arcsec) of the jitter. If None, the internally
+            stored ``spatial_psf["guiding_sigma"]`` is used. Set
+            ``guiding_sigma=0`` for no guiding scatter. Default is None.
+        incl_instrument : bool, optional
+            If True, also include the instrumental PSF (see
+            `get_instrumental_psf`) along the ``y`` (slice) direction. This
+            only applies to slicer spectrographs. Default is True.
+        in_spaxels : bool, optional
+            If True, return the scatter in spaxels, otherwise in arcsec.
+            Default is True.
+
         Returns
         -------
-        scatter: array_like
-            (x, y) gaussian sigma in spaxels if `in_spaxels` is True,
-            otherwise in arcsec.
+        numpy.ndarray or None
+            ``(sigma_x, sigma_y)`` Gaussian sigma, in spaxels or in arcsec
+            (see ``in_spaxels``). None if there is no scatter.
         """
         if guiding_sigma is None:
             guiding_sigma = self.spatial_psf["guiding_sigma"]
@@ -932,37 +1027,62 @@ class Spectrograph:
                         incl_instrument=True,
                         incl_telescope=True,
                         **kwargs):
-        """Get normalized 2D spatial PSF on the spectrograph.
+        """Get the normalized 2D spatial PSF on the spaxel grid.
 
-        This takes the psf generated by the telescope, includes jitter and
-        add the contribution from the instrument caused by internal optics.
+        This takes the PSF generated by the telescope, includes the jitter
+        and adds the contribution of the instrument internal optics.
 
         Parameters
         ----------
         profile : str, optional
             Profile to be used:
-            - "gaussian": gaussian profile using exact erf integration (default).
-            - "airy": airy disk profile generated by the telescope mirror.
-            Default is "default".
-        position : tuple, optional
-            Location of the point source within the slicer/mla in unit of slice/spaxel.
-            Default is (0, 0).
+
+            - ``"default"``, ``"gaussian"``, ``"normal"`` or ``"norm"``:
+              Gaussian profile using exact erf integration over the spaxels.
+            - ``"airy"``, ``"mirror"``, ``"telescope"`` or ``"airydisk"``:
+              Airy disk generated by the telescope mirror.
+            - ``"Gaussian2D"`` or ``"gaussian2d"``: Gaussian profile evaluated
+              on the oversampled grid.
+
+            Default is ``"default"``.
+        position : tuple of float, optional
+            ``(x, y)`` location of the point source with respect to the
+            grid center, in spaxels. Default is ``(0, 0)``.
         guiding_sigma : float, optional
-            Gaussian noise convolution (in arcsec) caused by jitter.
-            Default is None.
+            Gaussian sigma (in arcsec) of the jitter. If None, the stored
+            ``spatial_psf["guiding_sigma"]`` is used. Default is None.
         oversampling : int, optional
-            Oversampling factor used for the PSF (except if profile is gaussian, where erf is used).
-            If oversampling is None, 3 is used by default. Set oversampling=1 for no oversampling.
-            Default is None.
+            Oversampling factor used to evaluate the PSF (not used by the
+            erf-integrated Gaussian profiles unless ``as_oversampled`` is
+            True). If None, 3 is used. Set ``oversampling=1`` for no
+            oversampling. Default is 5.
         as_oversampled : bool, optional
-            If True, return the oversampled PSF. Default is False.
+            If True, return the PSF on the oversampled grid. Default is False.
+        incl_instrument : bool, optional
+            If True, include the instrumental PSF contribution (see
+            `get_additonal_spatial_scatter`). Default is True.
+        incl_telescope : bool, optional
+            If True, include the telescope PSF and jitter. If False, the
+            guiding sigma is forced to 0. Default is True.
         **kwargs
-            Additional arguments passed to the profile function.
+            For the Gaussian (erf) profile, additional arguments passed to
+            `~slicersim.profiles.get_gaussian2d`. Ignored otherwise.
 
         Returns
         -------
-        array_like
-            Normalized PSF (nlbda, ny, nx).
+        numpy.ndarray
+            Normalized PSF, of shape ``(nlbda, ny, nx)``.
+
+        Raises
+        ------
+        ValueError
+            If ``profile`` is not implemented.
+
+        Warns
+        -----
+        UserWarning
+            If ``incl_telescope`` is False while ``guiding_sigma`` is
+            positive.
         """
         from . import profiles
         if oversampling is None:
@@ -1087,31 +1207,32 @@ class Spectrograph:
 
     def get_instrumental_psf(self, spotsize=None, expected_size=2,
                                  in_spaxels=True):
-        """ get the contribution of the spectrograph to the total spot size.
-        This contribution is null if spot_size <= expected_size.
+        """Get the contribution of the spectrograph to the total spot size.
 
-        This simply provides:
-        extra_pixels = np.sqrt(spotsize**2 - expected_size**2)
+        This contribution is null if ``spotsize <= expected_size``. Otherwise,
+        it is the Gaussian sigma
+        ``extra_pixels = np.sqrt(spotsize**2 - expected_size**2) / 2``,
+        further divided by the anamorphosis factor for slicer spectrographs.
 
         Parameters
         ----------
-        spotsize: float
-            total size of a pointsource on the detector.
-            This is the total contribution, Telescope + Spectrograph.
-
-        expected_size: float
-            this is the expected geometric footprint of the psf on the
-            detector.
-
-        in_spaxels: bool
-            should the 'extra_pixels' be given in spaxel units
-            (spaxel=pixel for slicer along the x-slice direction)
-            or should this be given in arcsec.
+        spotsize : float, optional
+            Total size (in pixels) of a point source on the detector, i.e.
+            the total contribution of telescope and spectrograph. If None,
+            `get_dispersion_resolution` is used. Default is None.
+        expected_size : float, optional
+            Expected geometric footprint (in pixels) of the PSF on the
+            detector. Default is 2.
+        in_spaxels : bool, optional
+            If True, return the extra scattering in spaxels (spaxel = pixel
+            for a slicer along the slice), otherwise in arcsec.
+            Default is True.
 
         Returns
         -------
-        extra_pixels: array, float
-            extra scattering. Format depends of in_spaxels and self.spx_spatial_scale
+        float or numpy.ndarray or None
+            Extra scattering (Gaussian sigma), in spaxels or arcsec.
+            None if ``spotsize <= expected_size``.
         """
         if spotsize is None:
             spotsize = self.get_dispersion_resolution()
@@ -1147,8 +1268,9 @@ class Spectrograph:
             Guiding error [arcsec or spaxel, see in_units].
         oversampling : int, optional
             Oversampling factor. Default is 1.
-        in_units: bool
-            the guiding parameter units: ["arcsec" or "spaxels"]
+        in_units : str, optional
+            Units of ``guiding``: ``"arcsec"`` or ``"spaxels"``.
+            Default is ``"arcsec"``.
 
         Returns
         -------
@@ -1179,7 +1301,7 @@ class Spectrograph:
         oversampling : int
             Oversampling factor.
         func : callable, optional
-            Function to use for downsampling. Default is `np.mean`.
+            Function to use for downsampling. Default is `numpy.mean`.
 
         Returns
         -------
@@ -1200,24 +1322,25 @@ class Spectrograph:
     #  internal tricks
 
     def cube_to_slice(self, cube, lbda_range, func=np.nansum, squeeze=False):
-        """Get slices of the given cube.
+        """Collapse a cube into images over wavelength ranges.
 
         Parameters
         ----------
         cube : array_like
-            3D data cube.
-        lbda_range : tuple or list of tuples
-            Wavelength range(s) in Angstrom (wmin, wmax).
+            Data cube of shape ``(nlbda, ny, nx)``.
+        lbda_range : tuple of float or list of tuple
+            Wavelength range(s) ``(wmin, wmax)``, in Angstrom (bounds
+            included).
         func : callable, optional
-            Function to apply to merge wavelengths into one slice.
-            Default is `np.nansum`.
+            Function merging the wavelengths of a range into one image,
+            called as ``func(subcube, axis=0)``. Default is `numpy.nansum`.
         squeeze : bool, optional
             If True, squeeze the output array. Default is False.
 
         Returns
         -------
-        array_like
-            (n_ranges, ny, nx) array of slices.
+        numpy.ndarray
+            Images, of shape ``(n_ranges, ny, nx)``.
         """
         slices = []
         for wmin, wmax in np.atleast_2d(lbda_range):
@@ -1235,20 +1358,22 @@ class Spectrograph:
 
         Parameters
         ----------
-        position : tuple, optional
-            Position of the PSF in unit of spaxel/slicer.
-            Ignored if `nea_spatial` is given. Default is (0, 0).
+        position : tuple of float, optional
+            Position of the PSF in spaxels. Ignored if ``nea_spatial`` is
+            given. Default is ``(0, 0)``.
         nea_spatial : float or array_like, optional
             Noise equivalent area of the spatial PSF (in spaxels).
-            If None, `self.get_nea_spatial()` is used. Default is None.
+            If None, `get_nea_spatial` is used. Default is None.
         nea_pixels : float or array_like, optional
-            Noise equivalent area of a spaxel/slice caused by x-dispersion (in pixels).
-            If None, `self.get_nea_pixels()` is used. Default is None.
+            Noise equivalent area of a spaxel/slice caused by the
+            cross-dispersion (in pixels). If None, ``get_nea_pixels()`` is
+            used (only defined for `SlicerSpectrograph` and
+            `MLASpectrograph`). Default is None.
 
         Returns
         -------
-        array_like
-            Total Noise Equivalent Area.
+        float or numpy.ndarray
+            Total noise equivalent area, in pixels.
         """
 
         # NEA_Spatial PSF on the MLA (2D) / Slicer (1d) | in slice / spaxel
@@ -1262,19 +1387,24 @@ class Spectrograph:
         return nea_spatial * nea_pixels
 
     def get_nea_telescope_airy(self, position=(0, 0), in_spaxels=True): # pragma: no cover
-        """Get the NEA of the telescope's Airy disk.
+        """Get the noise equivalent area of the telescope Airy disk.
 
         Parameters
         ----------
-        position : tuple, optional
-            Position of the PSF in spaxels. Default is (0, 0).
+        position : tuple of float, optional
+            Position of the PSF in spaxels. Default is ``(0, 0)``.
         in_spaxels : bool, optional
-            If True, return NEA in spaxels^2. Default is True.
+            If True, return the NEA in spaxels. Only True is currently
+            supported. Default is True.
 
         Returns
         -------
-        array_like
-            NEA of the Airy disk.
+        numpy.ndarray
+            NEA of the Airy disk as a function of wavelength.
+
+        See Also
+        --------
+        slicersim.telescope.Telescope.get_nea_airy : The method called.
         """
         if in_spaxels:
             norm_scale = self.spx_spatial_scale
@@ -1298,22 +1428,32 @@ class Spectrograph:
         Parameters
         ----------
         varcube : array_like
-            Variance cube (nlbda, ny, nx) in ADU^2.
-        position : tuple, optional
-            Point source position in MLA in spaxels. Default is (0, 0).
-        radius : float, optional
-            MLA aperture radius in spaxels. Default is 5.
+            Variance cube, of shape ``(nlbda, ny, nx)``, in ADU².
+        position : tuple of float, optional
+            ``(x, y)`` point source position, in spaxels.
+            Default is ``(0, 0)``.
+        radius : float or tuple of float, optional
+            Aperture radius in spaxels, either a float (circular aperture) or
+            ``(radius_y, radius_x)`` (elliptical aperture). Default is 5.
         psf_profile : str, optional
-            PSF profile to use. Default is "default".
+            PSF profile to use (see `get_spatial_psf`). Default is
+            ``"default"``.
         optimal : bool, optional
-            If True, use optimal extraction. Default is True.
+            If True, use optimal extraction, otherwise plain summation.
+            Default is True.
         verbose : bool, optional
-            If True, print verbose output. Default is False.
+            If True, print the number of spaxels in the aperture.
+            Default is False.
 
         Returns
         -------
-        array_like
-            Extracted variance spectrum (nlbda,) in ADU^2.
+        numpy.ndarray
+            Extracted variance spectrum, of shape ``(nlbda,)``, in ADU².
+
+        Raises
+        ------
+        ValueError
+            If ``radius`` cannot be parsed.
         """
         if np.ndim(radius) == 0:
             radius_y = radius_x = radius
@@ -1344,13 +1484,30 @@ class Spectrograph:
         return variance  # (nlbda,) [ADU²]
 
     def get_lsf_dispersion(self, as_="scale"):
-        """Get the gaussian LSF dispersion sigma in units of wavelength bin.
+        """Get the Gaussian LSF dispersion, in wavelength bins (pixels).
 
         Parameters
         ----------
-        as: str
-            Specify how you when the dispersion defined.
-            - sigma/scale: equivalent of a normal distribution sigma (i.e. 'scale' in scipy, numpy definition)
+        as_ : str or None, optional
+            How the dispersion is defined:
+
+            - ``"scale"`` or ``"sigma"``: the Gaussian sigma (i.e. ``scale``
+              in the scipy/numpy definition), that is half the
+              `dispersion_resolution`.
+            - ``"resolution"`` or None: the full resolution element, i.e.
+              `get_dispersion_resolution`.
+
+            Default is ``"scale"``.
+
+        Returns
+        -------
+        float
+            LSF dispersion in wavelength bins.
+
+        Raises
+        ------
+        NotImplementedError
+            If ``as_`` is not one of the accepted values.
         """
         if as_ is None or as_ in ["resolution"]:
             disp_ = self.get_dispersion_resolution()
@@ -1365,17 +1522,21 @@ class Spectrograph:
     def apply_line_spread_function(self, fluxes, **kwargs):
         """Apply the line spread function to a flux cube.
 
+        The LSF is a Gaussian of sigma ``get_lsf_dispersion(as_="scale")``
+        wavelength bins.
+
         Parameters
         ----------
         fluxes : array_like
-            Flux spectrum (nlbda) or cube (nlbda, ny, nx).
+            Flux spectrum ``(nlbda,)`` or cube ``(nlbda, ny, nx)``.
         **kwargs
-            Additional arguments passed to `scipy.ndimage.gaussian_filter1d`.
+            Additional arguments passed to `scipy.ndimage.gaussian_filter1d`
+            (``axis=0`` by default).
 
         Returns
         -------
-        array_like
-            Flux cube convolved with the LSF.
+        numpy.ndarray
+            Fluxes convolved with the LSF, with the same shape as ``fluxes``.
         """
         from scipy.ndimage import gaussian_filter1d
 
@@ -1409,7 +1570,7 @@ class Spectrograph:
         Raises
         ------
         ValueError
-            If `array` has more than 3 dimensions, or if its shape matches
+            If ``array`` has more than 3 dimensions, or if its shape matches
             neither ``(nlbda, )`` nor the spatial shape of the spectrograph.
 
         See Also
@@ -1446,7 +1607,18 @@ class Spectrograph:
 
     # Generic
     def generate_fullof_cube(self, array, oversample=True):
-        """ This generic funtion to project an array as a cube """
+        """Project an array as a cube (not implemented).
+
+        Placeholder: this currently does nothing and returns None. See
+        `get_array_as_cube` instead.
+
+        Parameters
+        ----------
+        array : array_like
+            Array to project.
+        oversample : bool, optional
+            Unused. Default is True.
+        """
 
 
     # Point Souce
@@ -1460,23 +1632,27 @@ class Spectrograph:
         Parameters
         ----------
         spectrum : array_like
-            Point source spectrum in erg/s/cm²/Å.
-        position : tuple, optional
-            Point source position in MLA in spaxels. Default is (0, 0).
+            Point source spectrum, of shape ``(nlbda,)``, in erg/s/cm²/Å.
+        position : tuple of float, optional
+            ``(x, y)`` point source position, in spaxels.
+            Default is ``(0, 0)``.
         psf_profile : str, optional
-            PSF profile to use. Default is "default".
+            PSF profile to use (see `get_spatial_psf`). Default is
+            ``"default"``.
         oversampling : int, optional
-            Oversampling factor. Default is None.
+            Spatial oversampling factor of the PSF (see `get_spatial_psf`).
+            Default is None.
         as_oversampled : bool, optional
             If True, return the oversampled cube. Default is False.
         apply_lsf : bool, optional
             If True, apply the line spread function. Default is True.
+        **kwargs
+            Goes to `get_spatial_psf`.
 
-        kwargs goes to get_spatial_psf
         Returns
         -------
-        array_like
-            Photon flux cube (nlbda, ny, nx) in ph/s/spx.
+        numpy.ndarray
+            Photon flux cube, of shape ``(nlbda, ny, nx)``, in ph/s/spx.
         """
         # Spatial PSF
         psf = self.get_spatial_psf(profile=psf_profile, position=position,
@@ -1505,16 +1681,17 @@ class Spectrograph:
         Parameters
         ----------
         spectrum : array_like
-            Uniform scene background spectrum in erg/s/cm²/Å/arcsec².
+            Uniform scene background spectrum, of shape ``(nlbda,)``, in
+            erg/s/cm²/Å/arcsec².
         oversampling : int, optional
-            Oversampling factor. Default is None.
+            Spatial oversampling factor of the output cube. Default is None.
         apply_lsf : bool, optional
             If True, apply the line spread function. Default is True.
 
         Returns
         -------
-        array_like
-            Photon flux cube (nlbda, ny, nx) in ph/s/spx.
+        numpy.ndarray
+            Photon flux cube, of shape ``(nlbda, ny, nx)``, in ph/s/spx.
         """
         # erg/s/cm²/Å/arcsec² * cm² * Å / erg/ph * arcsec² = ph/s/spx
         flux = spectrum * self.flambda2photon * self.spx_area
@@ -1551,8 +1728,8 @@ class Spectrograph:
 
         Returns
         -------
-        array_like
-            Photon flux cube (nlbda, ny, nx) in ph/s/spx.
+        numpy.ndarray
+            Photon flux cube, of shape ``(nlbda, ny, nx)``, in ph/s/spx.
         """
         from scipy.signal import fftconvolve
 
@@ -1632,26 +1809,33 @@ class Spectrograph:
     def generate_thermal_signal(self, lbda_bin=None,
                                 as_cube=False, oversampling=None,
                                 apply_lsf=True, as_sum=True):
-        """Telescope mirror thermal signal in ph/s/spx/Δλ.
+        """Get the dispersed thermal signal, in ph/s/spx/Δλ.
+
+        This is the thermal emission that goes through the disperser: the
+        telescope mirrors and the spectrograph optical surfaces located
+        before the disperser.
 
         Parameters
         ----------
         lbda_bin : array_like, optional
-            (nlbda, 2) list of spectral domains in Angstrom.
-            Default is None (use `self.lbda_bin`).
+            ``(nlbda, 2)`` list of spectral domains in Angstrom.
+            If None, `lbda_bin` is used. Default is None.
         as_cube : bool, optional
-            If True, return a 3D cube. Default is False.
+            If True, return a ``(nlbda, ny, nx)`` cube, otherwise a
+            ``(nlbda,)`` spectrum. Default is False.
         oversampling : int, optional
-            Oversampling factor. Default is None.
+            Spatial oversampling factor, used if ``as_cube`` is True.
+            Default is None.
         apply_lsf : bool, optional
             If True, apply the line spread function. Default is True.
         as_sum : bool, optional
-            If True, sum the contribution from all mirrors. Default is True.
+            Unused: the contributions are always summed. Default is True.
 
         Returns
         -------
-        array_like or float
-            Thermal signal in ph/s/spx/Δλ.
+        numpy.ndarray
+            Thermal signal in ph/s/spx/Δλ, of shape ``(nlbda,)`` or
+            ``(nlbda, ny, nx)`` (see ``as_cube``).
         """
         if lbda_bin is None:
             lbda_bin = self.lbda_bin
@@ -1677,19 +1861,19 @@ class Spectrograph:
 
     # Empty cube
     def get_empty_cube(self, filled=0, oversampling=None):
-        """Get an empty data cube.
+        """Get a uniform data cube.
 
         Parameters
         ----------
         filled : float, optional
             Value to fill the cube with. Default is 0.
         oversampling : int, optional
-            Oversampling factor. Default is None.
+            Spatial oversampling factor. Default is None.
 
         Returns
         -------
-        array_like
-            An empty data cube.
+        numpy.ndarray
+            Cube of shape ``(nlbda, ny, nx)`` filled with ``filled``.
         """
         # no apply LSF as zeros...
         ny, nx = self.get_spectrograph_shape(oversampling=oversampling)
@@ -1715,24 +1899,30 @@ class Spectrograph:
     #   GETTER     #
     # ------------ #
     def get_nea_spatial(self, position=(0, 0), in_spaxels=True, guiding_sigma=None): # pragma: no cover
-        """Noise equivalent area in unit of slice/spaxels.
+        """Get the noise equivalent area of the spatial PSF.
 
-        i.e., how many "spaxel noise".
+        That is, the equivalent number of spaxels contributing noise.
 
         Parameters
         ----------
-        position : tuple, optional
-            Position of the PSF in unit of spaxel/slicer. Default is (0, 0).
+        position : tuple of float, optional
+            Position of the PSF, in spaxels. Default is ``(0, 0)``.
         in_spaxels : bool, optional
-            If True, return the area in spaxels^2. If False, in arcsec^2.
+            If True, return the area in spaxels, otherwise in arcsec².
             Default is True.
         guiding_sigma : float, optional
-            Guiding sigma override in arcsec. Default is None.
+            Guiding sigma override in arcsec (see `get_psf_sigma_spectral`).
+            Default is None.
 
         Returns
         -------
-        array_like
-            Noise equivalent area.
+        numpy.ndarray
+            Noise equivalent area as a function of wavelength.
+
+        Raises
+        ------
+        NotImplementedError
+            If the spatial PSF profile is not Gaussian.
         """
         from .nea import get_2dnorm_nea
 
@@ -1748,12 +1938,15 @@ class Spectrograph:
     # - tools
     #
     def chromatic_average(self, quantity):
-        """Chromatic average of a quantity (averaged over wavelength rather than px).
+        """Compute the chromatic average of a quantity.
+
+        The average is weighted by the wavelength bin widths, i.e. averaged
+        over wavelength rather than over pixels.
 
         Parameters
         ----------
         quantity : array_like
-            Chromatic quantity (nlbda,).
+            Chromatic quantity, of shape ``(nlbda,)``.
 
         Returns
         -------
@@ -1772,25 +1965,21 @@ class Spectrograph:
         """Get total PSF, including chromatic and constant components.
 
         The total (Gaussian) stddev is the quadratic sum of two components:
-        - the chromatic stddev, proportional to wavelength,
-          normalized at `wref`,
-        - the achromatic, constant stddev.
 
-        If needed, the 1D vector can be embedded in a N-dim array of
-        shape `(nlbda,) + (1,)*xdims`.
+        - the chromatic stddev, proportional to wavelength,
+          normalized at ``wref``,
+        - the achromatic, constant stddev.
 
         Parameters
         ----------
         lbda : array_like
             Wavelength.
         chromatic_sigma : float
-            Chromatic (linear) stddev.
+            Chromatic (linear) stddev at ``wref``.
         constant_sigma : float
             Achromatic (constant) stddev.
         wref : float
-            Reference wavelength (same unit as `lbda`).
-        xdims : int, optional
-            Extra dimensions to be appended. Default is 0.
+            Reference wavelength (same unit as ``lbda``).
 
         Returns
         -------
@@ -1809,15 +1998,15 @@ class Spectrograph:
     #  SHOW    #
     # -------- #
     def show_nea(self, ax=None, position=(0, 0), legend=True): # pragma: no cover
-        """Show the Noise Equivalent Area.
+        """Show the total noise equivalent area as a function of wavelength.
 
         Parameters
         ----------
         ax : matplotlib.axes.Axes, optional
             Axes to plot on. If None, a new figure and axes are created.
             Default is None.
-        position : tuple, optional
-            Position of the PSF in spaxels. Default is (0, 0).
+        position : tuple of float, optional
+            Position of the PSF in spaxels. Default is ``(0, 0)``.
         legend : bool, optional
             If True, show the legend. Default is True.
 
@@ -1853,15 +2042,15 @@ class Spectrograph:
         return fig
 
     def show_nea_spatial(self, ax=None, position=(0, 0), legend=True): # pragma: no cover
-        """Show the spatial Noise Equivalent Area.
+        """Show the spatial noise equivalent area as a function of wavelength.
 
         Parameters
         ----------
         ax : matplotlib.axes.Axes, optional
             Axes to plot on. If None, a new figure and axes are created.
             Default is None.
-        position : tuple, optional
-            Position of the PSF in spaxels. Default is (0, 0).
+        position : tuple of float, optional
+            Position of the PSF in spaxels. Default is ``(0, 0)``.
         legend : bool, optional
             If True, show the legend. Default is True.
 
@@ -1893,7 +2082,7 @@ class Spectrograph:
         return fig
 
     def show_fwhm(self, ax=None, legend=True, guiding_arcsec=None, in_arcsec=False, show_band=True): # pragma: no cover
-        """Show the Full Width at Half Maximum (FWHM) of the PSF.
+        """Show the full width at half maximum (FWHM) of the spatial PSF.
 
         Parameters
         ----------
@@ -1903,11 +2092,14 @@ class Spectrograph:
         legend : bool, optional
             If True, show the legend. Default is True.
         guiding_arcsec : float, optional
-            Guiding error in arcsec. Default is None.
+            Guiding sigma in arcsec. If None, the stored
+            ``spatial_psf["guiding_sigma"]`` is used. Default is None.
         in_arcsec : bool, optional
-            If True, show the FWHM in arcsec. Default is False (in spaxels).
+            If True, show the FWHM in arcsec, otherwise in spaxels.
+            Default is False.
         show_band : bool, optional
-            If True, show the sampling bands. Default is True.
+            If True, highlight the under-sampled (FWHM < 2 spaxels) region.
+            Default is True.
 
         Returns
         -------
@@ -1951,29 +2143,36 @@ class Spectrograph:
                  position=(0, 0), oversampling=5,
                  in_arcsec=False,
                  norm="log", **kwargs): # pragma: no cover
-        """Show the spatial PSF.
+        """Show the spatial PSF, integrated over a wavelength range.
+
+        Three panels are shown: the oversampled PSF without guiding, the
+        oversampled PSF with guiding, and the PSF on the spaxel grid.
 
         Parameters
         ----------
-        lbda_range : tuple
-            Wavelength range to integrate over.
+        lbda_range : tuple of float
+            Wavelength range ``(wmin, wmax)`` to integrate over, in Angstrom.
         profile : str, optional
-            PSF profile to use. Default is "default".
+            PSF profile to use (see `get_spatial_psf`). Default is
+            ``"default"``.
         guiding_arcsec : float, optional
-            Guiding error in arcsec. Default is None.
+            Guiding sigma in arcsec. If None, the stored
+            ``spatial_psf["guiding_sigma"]`` is used. Default is None.
         axes : list of matplotlib.axes.Axes, optional
-            List of 3 axes to plot on. If None, a new figure and axes are created.
-            Default is None.
-        position : tuple, optional
-            Position of the PSF in spaxels. Default is (0, 0).
+            List of 3 axes to plot on. If None, a new figure and axes are
+            created. Default is None.
+        position : tuple of float, optional
+            Position of the PSF in spaxels. Default is ``(0, 0)``.
         oversampling : int, optional
             Oversampling factor. Default is 5.
         in_arcsec : bool, optional
-            If True, show the extent in arcsec. Default is False (in spaxels).
+            If True, show the extent in arcsec, otherwise in spaxels.
+            Default is False.
         norm : str, optional
-            Normalization for the color scale ("linear" or "log"). Default is "log".
+            Normalization for the color scale (``"linear"`` or ``"log"``).
+            Default is ``"log"``.
         **kwargs
-            Additional arguments passed to `ax.imshow()`.
+            Additional arguments passed to `matplotlib.axes.Axes.imshow`.
 
         Returns
         -------
@@ -2033,13 +2232,17 @@ class Spectrograph:
     # ================= #
     @property
     def spaxel_extent(self):
-        """extent in spaxels."""
+        """Extent ``[-hx, hx, -hy, hy]`` of the spaxel grid, in spaxels."""
         hy, hx = np.asarray(self.spx_shape) / 2  # Half total width [spx]
         return [-hx, hx, -hy, hy]
 
     @property
     def flambda2photon(self):
-        """Chromatic conversion factor from erg/s/cm²/Å to ph/s."""
+        """Chromatic conversion factor from erg/s/cm²/Å to ph/s.
+
+        It includes the telescope collecting surface, the spectrograph
+        throughput (see `get_throughput`) and the wavelength bin widths.
+        """
         dlbda = np.diff(self.lbda_edges)  # Spectral step (nlbda,)
         hnu = 1.9864459e-08 / self.lbda  # Photon energy [erg] with lbda in [Å]
 
@@ -2055,7 +2258,7 @@ class Spectrograph:
 
     @property
     def spaxels(self):
-        """Spaxel coordinates and properties."""
+        """Spaxel coordinates and properties (see `~slicersim.profiles.build_pixels`)."""
         # build from self._spaxels
         if self._spaxel_coords is None or len(self._spaxel_coords) == 0:
             self._spaxel_coords = build_pixels(self._spaxels["shape"], oversampling=1)
@@ -2064,22 +2267,22 @@ class Spectrograph:
 
     @property
     def spx_shape(self):
-        """Shape of the spaxel grid (ny, nx)."""
+        """Shape ``(ny, nx)`` of the spaxel grid."""
         return self.spaxels["shape"]
 
     @property
     def spx_centroids(self):
-        """Spaxel centroids."""
+        """Spaxel ``(x, y)`` centroid coordinates, in spaxels."""
         return self.spaxels["centroids"]
 
     @property
     def spx_edges(self):
-        """Spaxel edges."""
+        """Spaxel ``(x, y)`` edge coordinates, in spaxels."""
         return self.spaxels["edges"]
 
     @property
     def spx_area(self):
-        """Area of a spaxel in arcsec^2."""
+        """Area of a spaxel, in arcsec²."""
         if np.ndim(self.spx_spatial_scale) == 0:
             spx_spatial_scale_y = spx_spatial_scale_x = self.spx_spatial_scale
         else:
@@ -2088,7 +2291,11 @@ class Spectrograph:
 
     @property
     def spx_spatial_scale(self):
-        """Spatial scale of a spaxel in arcsec."""
+        """Spatial scale of a spaxel, in arcsec.
+
+        If not set, it is derived from the telescope Airy radius at
+        `lbda_ref`.
+        """
         spx_spatial_scale = self._spaxels.get("spx_scale", None)
         if spx_spatial_scale is None:
             from .profiles import airyradius_to_gaussiansigma
@@ -2100,21 +2307,22 @@ class Spectrograph:
 
     @property
     def dispersion_resolution(self):
-        """ provide the effective dispersion resolution in pixels.
-        note: 2 is optimal. Lower, the PSF is unresolved,
-        higher the PSF is oversampled hence producing unecessary pixel noise.
+        """Effective dispersion resolution (spot size), in pixels.
+
+        2 is optimal: below that, the PSF is unresolved; above it, the PSF is
+        oversampled, hence producing unnecessary pixel noise.
         """
         # - mapper -
         return self.meta.get("dispersion_resolution", 2)
 
     @property
     def nlbda(self):
-        """Number of spectral pixels."""
+        """Number of spectral pixels (wavelength bins)."""
         return len(self.lbda)
 
     @property
     def lbda_bin(self):
-        """Wavelength edge bins."""
+        """Wavelength bins ``(lbda_min, lbda_max)``, of shape ``(nlbda, 2)``, in Angstrom."""
         return np.vstack([self.lbda_edges[:-1],
                           self.lbda_edges[1:]]).T  # (nlbda, 2) [Å]
 
@@ -2125,18 +2333,18 @@ class Spectrograph:
 
     @property
     def name(self):
-        """Name of the spectrograph (if any)."""
+        """Name of the spectrograph (empty string if not set)."""
         return self.meta.get("name", "")
 
     @property
     def lbda_ref(self):
-        """Reference wavelength in Angstrom."""
+        """Reference wavelength of the chromatic PSF, in Angstrom (default 10000)."""
         # 1micron by default
         return self.meta.get("lbda_ref", 10_000)
 
     @property
     def omega(self):
-        """Spaxel solid angle in steradians."""
+        """Spaxel solid angle, in steradians."""
         # spx_spatial_scale is in arcsec (e.g. 0.04 for 40mas spaxels)
         hspx = self.spx_spatial_scale * u.arcsecond.to("rad")  # [rad]
         if np.ndim(hspx) == 0:
@@ -2152,11 +2360,15 @@ class Spectrograph:
 
     @property
     def skyarea(self):
-        """Full sky area (nspaxel * spaxel area)."""
+        """Full sky area covered by the spaxels (not implemented, always None)."""
 
     @property
     def psf_sigma_spectral(self):
-        """Chromatic PSF sigma in arcsec."""
+        """Chromatic PSF sigma at `lbda_ref`, in arcsec.
+
+        If not set (None or ``"default"``), it is derived from the telescope
+        Airy radius at `lbda_ref`.
+        """
         if self.spatial_psf["sigma_spectral"] in (None, "default"):
             # 2.9 is the airy equivalent.
             from .profiles import airyradius_to_gaussiansigma
@@ -2167,38 +2379,35 @@ class Spectrograph:
 
     @property
     def type(self):
-        """Type of the spectrograph."""
+        """Type of the spectrograph (e.g. ``"slicer"`` or ``"mla"``)."""
         return self._SPECTROGRAPH_TYPE
 
 
 
 class SlicerSpectrograph(Spectrograph):
-    """A spectrograph with an anamorphosis and a slicer.
+    """Image-slicer spectrograph, with anamorphosis.
 
     This class inherits from `Spectrograph` and modifies the spaxel
-    definition to account for the anamorphosis introduced by the slicer.
-    The anamorphosis is defined by the `_ANAMORPHOSE` attribute.
+    definition to account for the anamorphosis introduced by the slicer: the
+    number of spaxels along ``x`` (along the slices) is multiplied by the
+    anamorphosis factor (``_ANAMORPHOSE = 2``), each slice width being
+    sampled by 2 detector pixels.
 
-    Attributes
-    ----------
-    _ANAMORPHOSE : tuple
-        Anamorphosis factor (y, x).
-    _SPECTROGRAPH_TYPE : str
-        Type of the spectrograph, set to "slicer".
-
+    See `Spectrograph` for the parameters.
     """
     _ANAMORPHOSE = 2
     _SPECTROGRAPH_TYPE = "slicer"
 
     def set_spaxels(self, shape, spx_scale):
-        """Set spaxel information.
+        """Set the spaxel information, accounting for the anamorphosis.
 
         Parameters
         ----------
-        shape : tuple
-            Spaxel grid shape (ny, nx).
-        spx_scale : float
-            Spaxel scale in arcsec.
+        shape : tuple of int
+            Slicer grid shape ``(ny, nx)``. The stored ``nx`` is multiplied
+            by the anamorphosis factor.
+        spx_scale : float or tuple of float
+            Spaxel size in arcsec, either a float or ``(scale_y, scale_x)``.
         """
         shape = np.asarray(shape) * (1, self._ANAMORPHOSE)
         spx_scale = np.asarray(spx_scale)
@@ -2206,7 +2415,7 @@ class SlicerSpectrograph(Spectrograph):
         self._spaxel_coords = {}
 
     def get_nea_pixels(self):
-        """Noise equivalent area of a slice (per wavelength) in unit of pixels.
+        """Get the noise equivalent area of a slice (per wavelength), in pixels.
 
         Returns
         -------
@@ -2217,21 +2426,29 @@ class SlicerSpectrograph(Spectrograph):
 
 
 class MLASpectrograph(Spectrograph):
-    """A spectrograph with no anamorphose and x-dispersion for traces."""
+    """Micro-lens array (MLA) spectrograph.
+
+    No anamorphosis, but each spaxel trace has a cross-dispersion profile.
+
+    Parameters
+    ----------
+    xdispersion : dict, optional
+        Cross-dispersion information, with keys ``"sigma_spectral"``
+        (chromatic sigma at `~Spectrograph.lbda_ref`, in pixels),
+        ``"sigma"`` (constant sigma, in pixels) and ``"profile"``.
+        Default is ``{}``.
+    *args
+        Goes to `Spectrograph`.
+    **kwargs
+        Goes to `Spectrograph`.
+    """
     _ANAMORPHOSE = None
     _SPECTROGRAPH_TYPE = "mla"
 
     def __init__(self, xdispersion={}, *args, **kwargs): # pragma: no cover
-        """Initialize the MLASpectrograph.
+        """Initialize the MLA spectrograph.
 
-        Parameters
-        ----------
-        xdispersion : dict, optional
-            Cross-dispersion information. Default is {}.
-        *args
-            Variable length argument list.
-        **kwargs
-            Arbitrary keyword arguments.
+        See the class docstring for the parameters.
         """
         _ = super().__init__(*args, **kwargs)
 
@@ -2250,10 +2467,10 @@ class MLASpectrograph(Spectrograph):
 
         Returns
         -------
-        dict
-            Initialization properties.
-        dict
-            Input configuration.
+        init_prop : dict
+            Keyword arguments for the class constructor.
+        input_config : dict
+            Deep copy of the input configuration.
         """
 
         init_prop, config = super()._parse_config(config)
@@ -2268,13 +2485,23 @@ class MLASpectrograph(Spectrograph):
     def update(self, reset_others=False, **kwargs): # pragma: no cover
         """Update any mutable attribute of the spectrograph.
 
+        Cross-dispersion parameters (``xdisp_*`` entries of the detector PSF
+        configuration) are handled here, the rest goes to
+        `Spectrograph.update`.
+
         Parameters
         ----------
         reset_others : bool, optional
             If True, reset other parameters to their initial values.
-            Default is False.
+            Currently not forwarded (False is always used). Default is False.
         **kwargs
             Parameters to update.
+
+        Returns
+        -------
+        list of str
+            Names of the components that changed (see
+            `Spectrograph.update`).
         """
         # do xdispersion stuffs
         xdisp_updates = {}
@@ -2288,27 +2515,30 @@ class MLASpectrograph(Spectrograph):
         return super().update(reset_others=False, **kwargs)
 
     def get_xdisp_sigma_spectral(self, xdims=0, xdisp_sigma=None): # pragma: no cover
-        """Get spectral PSF stddev in pixels.
+        """Get the cross-dispersion stddev, in pixels.
 
-        The total (Gaussian) spectral PSF is made of two components:
+        The total (Gaussian) cross-dispersion profile is the quadratic sum
+        of two components:
 
         - the optical (chromatic) component, with stddev proportional
-          to wavelength, normalized at wref=1 µm,
-        - the achromatic component, with constant stddev.
+          to wavelength, normalized at `~Spectrograph.lbda_ref`,
+        - the achromatic component, with constant stddev (including the
+          instrumental PSF, see `~Spectrograph.get_instrumental_psf`).
 
         If needed, the 1D vector can be embedded in a N-dim array of
-        shape `(nlbda,) + (1,)*xdims`.
+        shape ``(nlbda,) + (1,)*xdims``.
 
         Parameters
         ----------
         xdims : int, optional
             Extra dimensions to be appended. Default is 0.
         xdisp_sigma : float, optional
-            Constant sigma override in pixels. Default is None.
+            Constant sigma override in pixels. If None,
+            ``xdispersion["sigma"]`` is used. Default is None.
 
         Returns
         -------
-        array_like
+        numpy.ndarray
             Total sigma in pixels.
         """
         if xdisp_sigma is None:
@@ -2326,24 +2556,30 @@ class MLASpectrograph(Spectrograph):
                                          xdims=xdims)
 
     def get_nea_spatial(self, position=(0, 0), in_spaxels=True, guiding_sigma=None): # pragma: no cover
-        """Noise equivalent area in unit of slice/spaxels.
+        """Get the noise equivalent area of the spatial PSF.
 
-        i.e., how many "spaxel noise".
+        That is, the equivalent number of spaxels contributing noise.
 
         Parameters
         ----------
-        position : tuple, optional
-            Position of the PSF in unit of spaxel/slicer. Default is (0, 0).
+        position : tuple of float, optional
+            Position of the PSF, in spaxels. Default is ``(0, 0)``.
         in_spaxels : bool, optional
-            If True, return the area in spaxels^2. If False, in arcsec^2.
+            If True, return the area in spaxels, otherwise in arcsec².
             Default is True.
         guiding_sigma : float, optional
-            Guiding sigma override in arcsec. Default is None.
+            Guiding sigma override in arcsec (see `get_psf_sigma_spectral`).
+            Default is None.
 
         Returns
         -------
-        array_like
-            Noise equivalent area.
+        numpy.ndarray
+            Noise equivalent area as a function of wavelength.
+
+        Raises
+        ------
+        NotImplementedError
+            If the spatial PSF profile is not Gaussian.
         """
         from .nea import get_2dnorm_nea
 
@@ -2355,12 +2591,17 @@ class MLASpectrograph(Spectrograph):
         return get_2dnorm_nea(sigma_at_mla, mean=position)
 
     def get_nea_pixels(self): # pragma: no cover
-        """Noise equivalent area of a spaxel/slice in unit of pixels.
+        """Get the noise equivalent area of a spaxel trace, in pixels.
 
         Returns
         -------
-        array_like
-            Noise equivalent area in pixels.
+        numpy.ndarray
+            Noise equivalent area in pixels, as a function of wavelength.
+
+        Raises
+        ------
+        NotImplementedError
+            If the cross-dispersion profile is not Gaussian.
         """
         from .nea import get_1dnorm_nea
         if self.xdispersion["profile"] not in ("normal", "norm", "gaussian"):
@@ -2398,16 +2639,16 @@ class OpticsThroughput:
         The keys are the element names and the values are callables
         (e.g., interpolators) that return the throughput as a function
         of wavelength.
-    noptics : int or list, optional
-        Number of optics for each curve. If an int, the same number is
-        applied to all elements. If a list, it must have the same length
-        as `curves`. Default is None.
+    noptics : int or dict, optional
+        Number of optics for each curve (the curve is raised to that power).
+        If a dict, it must have the same keys as ``curves``. If None, it is
+        not set and must be in ``meta``. Default is None.
     meta : dict, optional
-        Metadata dictionary. Default is {}.
+        Metadata dictionary. Default is ``{}``.
 
     Attributes
     ----------
-    mutable_parameters : list
+    mutable_parameters : list of str
         List of mutable parameters.
     """
     mutable_parameters = ["noptics"]
@@ -2416,19 +2657,7 @@ class OpticsThroughput:
     def __init__(self, curves, noptics=None, meta={}):
         """Initialize the OpticsThroughput object.
 
-        Parameters
-        ----------
-        curves : dict
-            Dictionary of throughput curves for each optical element.
-            The keys are the element names and the values are callables
-            (e.g., interpolators) that return the throughput as a function
-            of wavelength.
-        noptics : int or dict, optional
-            Number of optics for each curve. If an int, the same number is
-            applied to all elements. If a dict, it must have the same keys
-            as `curves`. Default is None.
-        meta : dict, optional
-            Metadata dictionary. Default is {}.
+        See the class docstring for the parameters.
         """
         self._curves = curves
         if noptics is not None:
@@ -2439,17 +2668,37 @@ class OpticsThroughput:
 
     @classmethod
     def from_curves(cls, curves, noptics=1, lbda=None, names=None):
-        """ builds the instance input curves.
+        """Create an OpticsThroughput instance from throughput arrays.
 
         Parameters
         ----------
-        curves: list, pandas.DataFrame
-            One curve per element. Each curve is associated with noptics.
-            Accepted formats:
+        curves : array_like
+            2D array ``[curve_1, curve_2, ...]`` of shape
+            ``(nelements, nlbda)``: one throughput curve per element, all
+            sampled at ``lbda``.
+        noptics : int or list of int, optional
+            Number of optics for each curve. If a list, it must have one
+            entry per curve. None means 1. Default is 1.
+        lbda : array_like, optional
+            Wavelengths (in Angstrom) at which the curves are sampled,
+            of shape ``(nlbda,)``. Default is None.
+        names : list of str, optional
+            Name of each element. Default is None.
 
-            - dataframe: wavelengths as index, one column (name) per curve.
-            - list of array 2d: ``[curve_1, curve_2, ...]``
-            - list of lbda, array 3d: ``[[lbda_1, curve_1], [lbda_2, curve_2], ...]``
+        Returns
+        -------
+        OpticsThroughput
+            An OpticsThroughput instance.
+
+        Raises
+        ------
+        ValueError
+            If the number of ``names`` or ``noptics`` entries does not match
+            the number of curves.
+
+        See Also
+        --------
+        from_curvesdf : Same, from a pandas.DataFrame.
         """
         # reformat as dataframe
         curves = np.asarray(curves)
@@ -2478,16 +2727,18 @@ class OpticsThroughput:
         Parameters
         ----------
         curves : pandas.DataFrame
-            DataFrame with wavelength as index and one column per optical
-            element.
-        noptics : int or dict, optional
+            DataFrame with wavelength (in Angstrom) as index and one column
+            per optical element.
+        noptics : int, list of int or dict, optional
             Number of optics for each curve. If an int, the same number is
             applied to all elements. If a dict, it must have the same keys
-            as the columns of `curves`. Default is 1.
+            as the columns of ``curves``. Default is 1.
         ext : str, optional
-            Extrapolation method for the interpolator. Default is "zeros".
+            Extrapolation method of the interpolators (see
+            `~slicersim.iotools.chromatic_interpolator`). Default is
+            ``"zeros"``.
         **kwargs
-            Additional arguments passed to the constructor.
+            Additional arguments passed to the constructor (e.g. ``meta``).
 
         Returns
         -------
@@ -2510,22 +2761,28 @@ class OpticsThroughput:
     def from_config(cls, config, **kwargs):
         """Create an OpticsThroughput instance from a configuration dictionary.
 
-        The configuration dictionary must contain a "throughput" key
-        pointing to a file (CSV or ecsv) with the throughput curves.
-        The file must have a "wavelength" column and one column for each
-        optical element.
+        The configuration dictionary must contain a ``"throughput"`` key
+        pointing to a file (csv or ecsv) with the throughput curves, see
+        `from_filename`. An optional ``"noptics"`` key (default 1) sets the
+        number of optics per curve. The full configuration is stored as
+        `meta`.
 
         Parameters
         ----------
         config : dict
             Configuration dictionary.
         **kwargs
-            Additional arguments passed to `pandas.read_csv`.
+            Goes to `from_filename`.
 
         Returns
         -------
         OpticsThroughput
             An OpticsThroughput instance.
+
+        Raises
+        ------
+        ValueError
+            If ``config`` has no ``"throughput"`` entry.
         """
         throughput_file = config.get("throughput", None) # e.g. "throughput.cvs"
         if throughput_file is None:
@@ -2536,19 +2793,27 @@ class OpticsThroughput:
 
     @classmethod
     def from_filename(cls, filename, noptics=1, meta={}, **kwargs):
-        """ Create an OpticsThroughput instance from a datafile
+        """Create an OpticsThroughput instance from a data file.
+
+        A csv file must have a ``wavelength`` column (in Angstrom, used as
+        index) and one column per optical element. An ecsv file must have
+        ``wavelength`` and ``throughput`` columns (single element named
+        ``"spectro"``). The curves are extrapolated outside the tabulated
+        range.
 
         Parameters
         ----------
         filename : str
-            Path of the throughput file (.ecsv or .csv).
-        noptics : int, optional
-            Number of optical elements associated to each curve. Default is 1.
+            Path of the throughput file (.ecsv or .csv). If it does not
+            exist as given, it is looked for in the package configuration
+            directory (see `~slicersim.iotools.expand_path`).
+        noptics : int or dict, optional
+            Number of optics associated to each curve. Default is 1.
         meta : dict, optional
-            Metadata stored with the instance. Default is {}.
-
+            Metadata stored with the instance. Default is ``{}``.
         **kwargs
-            Additional arguments passed to `pandas.read_csv`.
+            Additional arguments passed to `pandas.read_csv` (csv files
+            only).
 
         Returns
         -------
@@ -2569,21 +2834,17 @@ class OpticsThroughput:
 
     @staticmethod
     def _read_csv(filename):
-        """Read an ecsv file containing throughput data.
+        """Read a csv file containing throughput data.
 
         Parameters
         ----------
         filename : str
-            Path to the ecsv file.
-
-        as_dataframe : bool, optional
-            If True, return a pandas DataFrame. If False, return a
-            callable interpolator. Default is False.
+            Path to the csv file (see `~slicersim.iotools.expand_path`).
 
         Returns
         -------
-        pandas.DataFrame or callable
-            Throughput data as a DataFrame or an interpolator.
+        pandas.DataFrame
+            Throughput data.
         """
         fullpath = iotools.expand_path(filename)
         return pandas.read_csv(fullpath)
@@ -2622,7 +2883,7 @@ class OpticsThroughput:
     #  Generic  #
     # -------- #
     def __call__(self, lbda, **kwargs):
-        """ shortcut to get_throughput() """
+        """Shortcut to `get_throughput`."""
         return self.get_throughput(lbda, **kwargs)
 
     # -------- #
@@ -2640,19 +2901,20 @@ class OpticsThroughput:
             New throughput curve, indexed by wavelength in Angstrom.
         ext : str, optional
             How to extrapolate outside the tabulated wavelength range
-            ('extrapolate', 'zeros', 'raise' or 'const', see
-            `~slicersim.iotools.chromatic_interpolator`). Default is 'zeros'.
+            (``"extrapolate"``, ``"zeros"``, ``"raise"`` or ``"const"``, see
+            `~slicersim.iotools.chromatic_interpolator`). Default is
+            ``"zeros"``.
 
         Raises
         ------
         ValueError
-            If `name` is not one of the known curves.
+            If ``name`` is not one of the known curves.
 
         Notes
         -----
         This replaces the curve of an existing element, it cannot add a new
-        one. The number of optics associated to `name` is left untouched, use
-        `update` to change it.
+        one. The number of optics associated to ``name`` is left untouched,
+        use `update` to change it.
         """
         if name not in self._curves:
             raise ValueError(f"unknown curve: {name=}.")
@@ -2666,9 +2928,16 @@ class OpticsThroughput:
         Parameters
         ----------
         **kwargs
-            Keyword arguments where the key is the element name and the
-            value is the new number of optics.
-            It also accepts django-like format, e.g., `noptics__mirror=2`.
+            Either ``noptics=value`` (replaces the whole ``noptics`` entry)
+            or ``noptics.<name>=value`` to change the number of optics of
+            a single element. The django-like format is accepted, e.g.
+            ``noptics__mirror=2``.
+
+        Warns
+        -----
+        UserWarning
+            If a key cannot be parsed, refers to an unknown element or is not
+            mutable. It is then ignored.
         """
         for key, value in kwargs.items():
             # accept django-like format
@@ -2700,23 +2969,24 @@ class OpticsThroughput:
         ----------
         lbda : array_like
             Wavelength array in Angstrom.
-        which : str, None, optional
-            limit the element to this entry.
+        which : str, optional
+            If given, only return the throughput of this element (see
+            `get_element_throughput`). Default is None.
         per_element : bool, optional
             If True, return the throughput of each element separately.
-            Default is False.
-            - ignored if which is given -
+            Ignored if ``which`` is given. Default is False.
         incl_noptics : bool, optional
-            If True, include the number of optics in the calculation.
-            Default is True.
-        ignore : list, optional
-            List of element names to ignore in the calculation.
+            If True, each curve is raised to the power of its number of
+            optics. Default is True.
+        ignore : list of str, optional
+            Element names to ignore. Not used if ``which`` is given.
             Default is None.
 
         Returns
         -------
-        array_like or list of array_like
-            Total throughput or list of throughputs per element.
+        numpy.ndarray or list of numpy.ndarray
+            Total throughput (product over the elements), or list of
+            throughputs per element.
         """
         if which is not None:
             return self.get_element_throughput(which, lbda, incl_noptics=incl_noptics)
@@ -2738,13 +3008,19 @@ class OpticsThroughput:
         lbda : array_like
             Wavelength array in Angstrom.
         incl_noptics : bool, optional
-            If True, include the number of optics in the calculation.
-            Default is True.
+            If True, the curve is raised to the power of the element number
+            of optics. Default is True.
 
         Returns
         -------
-        array_like
+        numpy.ndarray
             Throughput of the element.
+
+        Raises
+        ------
+        ValueError
+            If the stored curve is an array whose length does not match
+            ``lbda``.
         """
         curve = self.curves[which]
         noptics = self.noptics[which]
@@ -2764,8 +3040,8 @@ class OpticsThroughput:
     def show(self, lbda, ax=None): # pragma: no cover
         """Show the throughput of the optical system.
 
-        This method plots the throughput of each element and the total
-        throughput as a function of wavelength.
+        This method plots the cumulative throughput of each element and the
+        total throughput as a function of wavelength.
 
         Parameters
         ----------
@@ -2813,17 +3089,17 @@ class OpticsThroughput:
     # ============= #
     @property
     def curves(self):
-        """ dictionary with optical element throughput information """
+        """Throughput curve (callable of wavelength in Angstrom) per optical element."""
         return self._curves
 
     @property
     def names(self):
-        """ list/iterator of the element's names """
+        """Names of the optical elements (dict keys view)."""
         return self.curves.keys()
 
     @property
     def noptics(self):
-        """ number of optics per elements (i.e., per curve) """
+        """Number of optics per element (i.e., per curve)."""
         return self.meta["noptics"]
 
     @property

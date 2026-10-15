@@ -1,7 +1,7 @@
-""" This module handles the Lazuli-specific targets and exposure time calculators.
+"""Lazuli-specific targets and exposure time calculators.
 
 Lazuli is a two-field integral field spectrograph: a narrow field (40 mas
-spaxels) and a wide field (80 mas spaxels) observe the same sky region at two
+spaxels) and a wide field (80 mas spaxels) observe adjacent sky regions at two
 samplings and are imaged side by side on a single detector. The classes here
 specialise the generic targets of `~slicersim.target` (e.g.
 `LazuliSupernova`, `LazuliKilonova`, `LazuliCalSpec`, `LazuliTarget`) with
@@ -59,19 +59,24 @@ def spectroconfig_to_fieldname(spatial_shape, spatial_scale, default = "unknown"
     spatial_scale : float
         Spaxel size in arcsec.
     default : str, optional
-        Name returned if no field of `SPECTROGRAPH_FIELD` matches the input
-        configuration. Default is "unknown".
+        Name returned if no field of ``SPECTROGRAPH_FIELD`` matches the input
+        configuration. Default is ``"unknown"``.
 
     Returns
     -------
     str
-        Name of the matching field (e.g. "narrow" or "wide"), `default`
+        Name of the matching field (``"narrow"`` or ``"wide"``), ``default``
         otherwise.
 
     See Also
     --------
-    VirtualLazuliTarget.get_spectrograph_field : field of a Lazuli target.
-    Spectrograph.get_fieldname : field of a spectrograph.
+    VirtualLazuliTarget.get_spectrograph_field : Field of a Lazuli target.
+    ~slicersim.spectrograph.Spectrograph.get_fieldname : Field of a spectrograph.
+
+    Examples
+    --------
+    >>> spectroconfig_to_fieldname([58, 58], 0.08)
+    'wide'
     """
     field = default
     for this_field, this_config in SPECTROGRAPH_FIELD.items():
@@ -92,58 +97,73 @@ def lazuli_sn_etc(model, redshift, snr, per_resolution=True,
                 statistic=np.nanmean,
                 max_group=None, nmd=None, time_details=False,
                 **kwargs):
-    """Calculate the exposure time to achieve a specified Signal-to-Noise Ratio (SNR).
+    """Compute the exposure time needed to reach a given SNR on a SN Ia.
 
-    This function creates a Supernova with a specified model, configures the
-    detector read-out mode needed to achieve the desired SNR,
-    and calculates the exposure time .
+    This builds a `LazuliSupernova` with the requested model and parameters,
+    sets the detector read-out mode, then finds the read-out configuration
+    (MACC mode and number of ramps) reaching the target signal-to-noise ratio
+    (see `~slicersim.target.VirtualTarget.setup_to_snr`) and returns the
+    corresponding exposure time.
 
     Parameters
     ----------
     model : str
-        The kind of supernova requested. Specify parameters with kwargs.
+        SN Ia model, the model parameters being given as ``**kwargs``:
 
-        - salt: SN Ia - parameters: x1, c
-        - twin: SN Ia - parameters: xi1, xi2, xi3, color
+        - ``"salt"``: SALT2-extended, parameters ``x1``, ``c`` (and ``MBmax``).
+          Any sncosmo SALT source name (e.g. ``"salt3"``) also works.
+        - ``"twin"``: Twins-Embedding, parameters ``xi1``, ``xi2``, ``xi3``
+          and ``color``.
     redshift : float
-        The redshift of the supernova.
+        Redshift of the supernova.
     snr : float
-        The target Signal-to-Noise Ratio to achieve.
+        Target signal-to-noise ratio.
     per_resolution : bool, optional
-        If True, the SNR is calculated per resolution element. Default is True.
+        If True, ``snr`` is given per spectral resolution element, otherwise
+        per wavelength bin. Default is True.
     phase : float, optional
-        The phase (with respect to manimum light) of the supernova. Default is 0.
+        Rest-frame phase of the supernova in days with respect to maximum
+        light. Default is 0.
     lbda_range : list of float, optional
-        The wavelength range in Angstroms over which to calculate the SNR.
-        Default is [4000, 6800].
+        Wavelength range ``[min, max]`` in Angstrom over which the SNR is
+        computed. Default is ``[4000, 6800]``.
     frame : str, optional
-        The reference frame for lbda_range. Options are 'rest' (rest-frame) or
-        'obs' (observer-frame). Default is 'rest'.
-    statistic : function, optional
-        The statistical function to use for calculating the SNR.
+        Reference frame of ``lbda_range``: ``"rest"`` (rest-frame) or
+        ``"obs"`` (observer-frame). Default is ``"rest"``.
+    statistic : callable, optional
+        Function used to summarise the SNR over ``lbda_range``.
         Default is `numpy.nanmean`.
     max_group : int, optional
-        Specify the maximum number of groups in a single ramp for the detector
-        read-out mode. If None, default configuration parameters are used.
-        Default is None.
-    nmd : int, optional
-        Specify the detector MACC mode (n, m, d).
-        n: number of groups
-        m: number of frames per group
-        d: number of drops between groups
-        Default is None.
+        Maximum number of groups in a single ramp. If None, the current
+        instrument configuration is kept. Default is None.
+    nmd : tuple of int, optional
+        Detector MACC mode ``(n_groups, n_frames_per_group, n_drops)``. If
+        None, the current instrument configuration is kept. Default is None.
     time_details : bool, optional
-        If True, returns detailed exposure time information. Default is False.
+        If True, return the full timing details instead of the total
+        exposure time. Default is False.
     **kwargs
-        Parameters of the SN model (see `model`).
+        Parameters of the SN model (see ``model``) and other point source
+        parameters (e.g. ``position``), passed to `LazuliSupernova`.
 
     Returns
     -------
     exptime : float or dict
-        The calculated exposure time required to achieve the target SNR.
-        (see `time_details`).
-    target : LazuliTarget
-        The configured target object with the specified conditions.
+        Total exposure time in seconds (including all ramps), or, if
+        ``time_details`` is True, a dict of detector times in seconds
+        (``"integration_time"``, ``"exposure_time"``, ``"tframe"``,
+        ``"tgroup"`` and ``"total_exptime"``).
+    target : LazuliSupernova
+        The target, configured to the read-out mode reaching ``snr``.
+
+    See Also
+    --------
+    lazuli_etc : Same for an arbitrary input spectrum.
+
+    Examples
+    --------
+    >>> exptime, sn = lazuli_sn_etc("salt", redshift=0.5, snr=15, x1=0, c=0)  # doctest: +SKIP
+    >>> readout = sn.get_readout_config()  # {"nmd": ..., "nramps": ...}  # doctest: +SKIP
     """
     # create a target of specified conditions
     target = LazuliSupernova(model=model, redshift=redshift, phase=phase, **kwargs)
@@ -166,59 +186,76 @@ def lazuli_etc(lbda, flux, snr, per_resolution=True,
                    lbda_range=[4000, 6800], frame='rest',
                    statistic=np.nanmean,
                    max_group=None, nmd=None, time_details=False):
-    """Calculate the exposure time to achieve a specified Signal-to-Noise Ratio (SNR).
+    """Compute the exposure time needed to reach a given SNR on any spectrum.
 
-    This function creates a target with specified spectral conditions, configures
-    the detector read-out mode, and calculates the exposure time needed to
-    achieve the desired SNR.
+    This builds a `LazuliTarget` point source from the input spectrum, sets
+    the detector read-out mode, then finds the read-out configuration (MACC
+    mode and number of ramps) reaching the target signal-to-noise ratio (see
+    `~slicersim.target.VirtualTarget.setup_to_snr`) and returns the
+    corresponding exposure time.
 
     Parameters
     ----------
     lbda : array_like
-        The wavelength of the spectrum in Angstroms.
+        Wavelengths of the spectrum in Angstrom. Should cover the Lazuli
+        bandpass.
     flux : array_like
-        The flux values of the spectrum. See `mag` for the unit.
+        Flux of the spectrum, in erg/s/cm^2/A if ``mag`` is None, in
+        arbitrary units otherwise.
     snr : float
-        The target Signal-to-Noise Ratio to achieve.
+        Target signal-to-noise ratio.
     per_resolution : bool, optional
-        If True, the SNR is calculated per resolution element. Default is False.
+        If True, ``snr`` is given per spectral resolution element, otherwise
+        per wavelength bin. Default is True.
     mag : float, optional
-        Specify the desired magnitude of the target. If None, the input flux is
-        assumed to be in erg/s/cm2/A. If given, the input flux will be
-        multiplied to reach the desired magnitude in the given band (see `band`).
-        Default is None.
+        If given, ``flux`` is rescaled so that the spectrum has this
+        magnitude in ``band``. Default is None.
     band : str, optional
-        The photometric band for the magnitude. Ignored if `mag` is None.
-        Default is "bessellb".
+        Bandpass of ``mag`` (any sncosmo bandpass name). Ignored if ``mag``
+        is None. Default is ``"bessellb"``.
     lbda_range : list of float, optional
-        The wavelength range in Angstroms over which to calculate the SNR.
-        Default is [4000, 6800].
+        Wavelength range ``[min, max]`` in Angstrom over which the SNR is
+        computed. Default is ``[4000, 6800]``.
     frame : str, optional
-        The reference frame for `lbda_range`. Options are 'rest' (rest-frame) or
-        'obs' (observer-frame). Default is 'rest'.
-    statistic : function, optional
-        The statistical function to use for calculating the SNR.
+        Reference frame of ``lbda_range``: ``"rest"`` (rest-frame) or
+        ``"obs"`` (observer-frame). Default is ``"rest"``.
+    statistic : callable, optional
+        Function used to summarise the SNR over ``lbda_range``.
         Default is `numpy.nanmean`.
     max_group : int, optional
-        Specify the maximum number of groups in a single ramp for the detector
-        read-out mode. If None, default configuration parameters are used.
-        Default is None.
-    nmd : int, optional
-        Specify the detector MACC mode (n, m, d).
-        n: number of groups
-        m: number of frames per group
-        d: number of drops between groups
-        Default is None.
+        Maximum number of groups in a single ramp. If None, the current
+        instrument configuration is kept. Default is None.
+    nmd : tuple of int, optional
+        Detector MACC mode ``(n_groups, n_frames_per_group, n_drops)``. If
+        None, the current instrument configuration is kept. Default is None.
     time_details : bool, optional
-        If True, returns detailed exposure time information. Default is False.
+        If True, return the full timing details instead of the total
+        exposure time. Default is False.
 
     Returns
     -------
     exptime : float or dict
-        The calculated exposure time required to achieve the target SNR.
-        (see `time_details`).
+        Total exposure time in seconds (including all ramps), or, if
+        ``time_details`` is True, a dict of detector times in seconds
+        (``"integration_time"``, ``"exposure_time"``, ``"tframe"``,
+        ``"tgroup"`` and ``"total_exptime"``).
     target : LazuliTarget
-        The configured target object with the specified conditions.
+        The target, configured to the read-out mode reaching ``snr``.
+
+    See Also
+    --------
+    lazuli_sn_etc : Same for SN Ia models.
+
+    Notes
+    -----
+    The input spectrum has no redshift, so ``frame="rest"`` and
+    ``frame="obs"`` select the same wavelengths.
+
+    Examples
+    --------
+    >>> lbda = np.arange(3_000, 20_000, 0.5)
+    >>> flux = np.ones_like(lbda)
+    >>> exptime, target = lazuli_etc(lbda, flux, snr=10, mag=22, band="bessellb")  # doctest: +SKIP
     """
     # create a target of specified conditions
     target = LazuliTarget(lbda, flux, mag=mag, band=band)
@@ -237,17 +274,19 @@ def lazuli_etc(lbda, flux, snr, per_resolution=True,
     return exptime, target
 
 class VirtualLazuliTarget:
-    """A virtual class to build Lazuli Target (see child classes).
+    """Mixin adding the Lazuli instrument and its two fields to a target.
 
-    This class provides a generic interface to the `slicersim.Simulation`
-    object. It is not intended to be used directly, but rather to be inherited
-    by other classes that define specific targets.
+    This class is not meant to be used directly: it is combined with one of
+    the generic targets of `~slicersim.target` (e.g. `LazuliSupernova`
+    inherits from `VirtualLazuliTarget` and `~slicersim.target.Supernova`).
+    It sets the Lazuli instrument configuration and adds the handling of the
+    narrow and wide fields (`change_spectrograph`, `get_spectrograph_field`,
+    `get_cube`, `to_image`).
 
     Parameters
     ----------
-    simulation : slicersim.Simulation, optional
-        The simulation object. Default is None.
-
+    simulation : slicersim.simulation.Simulation, optional
+        The simulation the target wraps. Default is None.
     """
     _INSTRUMENT = 'lazuli_cbe.toml'
 
@@ -257,17 +296,18 @@ class VirtualLazuliTarget:
 
         Parameters
         ----------
-        scene : dict, optional
-            Scene configuration with the given format (see
-            `slicersim.scene.get_scene`)::
+        scene : dict or str, optional
+            Scene configuration (see `~slicersim.scene.get_scene`), in the
+            format::
 
                 scene = {"scene": {"pointsource": {},  # PSF
                                    "background": {},   # spatially flat
                                    "host": {}}}        # structured background
 
-            Default is None.
+            or the name of a scene configuration file. Default is None.
         **kwargs
-            Goes to `iotools.get_config()` and updates the configuration.
+            Goes to `~slicersim.iotools.get_config`, overriding the
+            ``scene`` and the Lazuli ``instrument`` configuration.
 
         Returns
         -------
@@ -283,14 +323,17 @@ class VirtualLazuliTarget:
     #   Methods       #
     # =============== #
     def change_configuration(self, which):
-        """ change the intrumental configuration
+        """Change the Lazuli instrument configuration.
 
-        This will look for lazuli_{which}.csv and update the current configuration with that one.
+        The corresponding configuration file (``lazuli_eol.toml`` or
+        ``lazuli_cbe.toml``) is read and the simulation updated with it.
 
         Parameters
         ----------
-        which: str
-            name of the configuration.
+        which : str
+            Name of the configuration: ``"eol"`` (end of life) or ``"cbe"``
+            (current best estimate); ``"bol"`` (beginning of life) is an
+            alias of ``"cbe"``.
 
         Returns
         -------
@@ -311,19 +354,29 @@ class VirtualLazuliTarget:
         Parameters
         ----------
         field : str, optional
-            Field mode to use:
+            Lazuli field to use (see ``SPECTROGRAPH_FIELD``):
 
-            - "narrow": well-spatially sampled grid (~[58/2, 58] with 40mas spaxels)
-            - "wide": coarser grid field (~[58/2, 58] with 80mas spaxels)
+            - ``"narrow"``: finely sampled field, with 0.04 arcsec spaxels.
+            - ``"wide"``: coarser field, with 0.08 arcsec spaxels.
 
+            If None, only ``spatial_shape`` and ``spatial_scale`` are
+            applied. Default is None.
+        spatial_shape : tuple of int, optional
+            Spaxel grid shape (e.g. ``(40, 40)``), overriding that of
+            ``field`` if any. Default is None.
+        spatial_scale : float or list of float, optional
+            Spaxel size in arcsec, overriding that of ``field`` if any. If a
+            float, spaxels are square; if a list, ``(x, y)``.
             Default is None.
-        spatial_shape : tuple of float, optional
-            Manually set the grid shape (e.g., (40, 40)).
-            This is on top of `field` if any. Default is None.
-        spatial_scale : float or list, optional
-            Manually set spaxel size in arcsec.
-            If float, this is assumed to be squared. If list, (x, y).
-            This is on top of `field` if any. Default is None.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        ValueError
+            If ``field`` is not a known Lazuli field.
         """
         # overwrites the current one.
         if field is not None:
@@ -351,30 +404,32 @@ class VirtualLazuliTarget:
 
     # GETTER
     def get_readout_config(self):
-        """Get the current MACC (nmd) mode and the number of ramps.
+        """Get the current MACC mode and number of ramps.
 
         Returns
         -------
         dict
-            Readout configuration:
+            Read-out configuration, with keys:
 
-            - nmd: (ngroup, nframe_per_group, ndrop)
-            - nramps: number of ramps (1-ramp = 1-nmd)
+            - ``"nmd"``: ``(n_groups, n_frames_per_group, n_drops)``.
+            - ``"nramps"``: number of ramps, each ramp following the
+              ``nmd`` MACC mode.
         """
         return self.get_properties(["nmd", "nramps"])
 
 
     def get_spectrograph_field(self):
-        """Get the current spectrograph field configuration.
+        """Get the current spectrograph field.
 
         Returns
         -------
-        str
-            The name of the field mode if it exists, otherwise "unknown"
-            (see `spectroconfig_to_fieldname`).
-        dict
-            The configuration of the field.
-
+        field : str
+            Name of the current field (``"narrow"`` or ``"wide"``), or
+            ``"unknown"`` if the spectrograph matches neither (see
+            `spectroconfig_to_fieldname`).
+        config : dict
+            Current ``"spatial_shape"`` and ``"spatial_scale"`` (arcsec) of
+            the spectrograph.
         """
         keys_to_check = ["spatial_shape", "spatial_scale"]
         current_config = self.get_properties(keys_to_check)
@@ -389,29 +444,35 @@ class VirtualLazuliTarget:
         which : str, optional
             Which cube should be computed:
 
-            - "both": both narrow and wide field.
-            - "current": only the current setup.
-            - "narrow": only the narrow field.
-            - "wide": only the wide field.
+            - ``"both"``: both narrow and wide fields.
+            - ``"current"``: only the current setup.
+            - ``"narrow"``: only the narrow field.
+            - ``"wide"``: only the wide field.
 
-            Default is "both".
+            Default is ``"both"``.
         **kwargs
-            Goes to `simulation.Simulation.get_cube`.
+            Goes to `~slicersim.simulation.Simulation.get_cube`.
 
         Returns
         -------
         tuple
-            ``(cube, varcube)``, the cube and variance cube of the requested
-            field, or, if ``which="both"``,
+            ``(cube, varcube)``, the cube (ADU) and variance cube (ADU^2) of
+            the requested field, or, if ``which="both"``,
             ``((cube_narrow, varcube_narrow), (cube_wide, varcube_wide))``.
 
         Raises
         ------
         ValueError
-            If `which` is not "current" while the spectrograph is set up
-            neither as the narrow nor the wide field.
+            If ``which`` is not ``"current"`` while the spectrograph is set
+            up neither as the narrow nor the wide field.
         NotImplementedError
             If the scene contains a host (not yet supported).
+
+        Notes
+        -----
+        When switching field, the point source position is converted to the
+        spaxel units of the other field. The original spectrograph setup and
+        position are restored afterwards.
         """
         # just get the current cube.
         if which == "current":
@@ -482,12 +543,12 @@ class VirtualLazuliTarget:
         ----------
         mapper : slicersim.mapper.SlicerMapper
             Mapper describing where each slice falls on the detector.
-        cubes : tuple, optional
+        cubes : tuple of numpy.ndarray, optional
             ``(cube_narrow, cube_wide)`` to project, to avoid regenerating
             them. If None, both are generated with
             ``get_cube(which="both")``. Default is None.
         **kwargs
-            Goes to `get_cube`.
+            Goes to `get_cube`. Ignored if ``cubes`` is given.
 
         Returns
         -------
@@ -521,14 +582,14 @@ class VirtualLazuliTarget:
     def get_detector_image(self, mapper, cubes=None, **kwargs):
         """Project the narrow and wide field cubes onto a single detector image.
 
-        .. deprecated::
+        .. deprecated:: 1.1.1
             Use `to_image` instead, which this simply forwards to.
 
         Parameters
         ----------
         mapper : slicersim.mapper.SlicerMapper
             Mapper describing where each slice falls on the detector.
-        cubes : tuple, optional
+        cubes : tuple of numpy.ndarray, optional
             ``(cube_narrow, cube_wide)`` to project. Default is None.
         **kwargs
             Goes to `to_image`.
@@ -625,29 +686,36 @@ class VirtualLazuliTarget:
 # ============ #
 # Supernovae
 class LazuliSupernova( VirtualLazuliTarget, Supernova ):
-    """A supernova observed with Lazuli.
+    """A Type Ia supernova observed with Lazuli.
+
+    The supernova is a point source on top of the zodiacal background,
+    observed by default in the narrow field.
 
     Parameters
     ----------
     model : str, optional
         The supernova model:
 
-        - "salt": SALT2-extended, parameters ``x1``, ``c`` and ``MBmax``
-          [default]. Any sncosmo SALT source name (e.g. "salt3") also works.
-        - "twin": Twins-Embedding, parameters ``xi1``, ``xi2``, ``xi3`` and
-          ``color``.
+        - ``"salt"``: SALT2-extended, parameters ``x1``, ``c`` and ``MBmax``
+          [default]. Any sncosmo SALT source name (e.g. ``"salt3"``) also
+          works.
+        - ``"twin"``: Twins-Embedding, parameters ``xi1``, ``xi2``, ``xi3``
+          and ``color``.
     **kwargs
-        Point source parameters, e.g. ``redshift``, ``phase`` (days from
-        maximum light), ``position`` and the model parameters above.
+        Point source parameters, e.g. ``redshift``, ``phase`` (rest-frame
+        days from maximum light), ``position`` (spaxels) and the model
+        parameters above. ``instrument`` and ``background`` can also be
+        given (see `~slicersim.scene.get_scene`).
 
     See Also
     --------
-    lazuli_sn_etc : Exposure time to reach a SNR, in one call.
+    lazuli_sn_etc : Exposure time to reach a given SNR, in one call.
 
     Examples
     --------
     >>> sn = LazuliSupernova(redshift=1.0, x1=0, c=0.2, phase=1.5)  # doctest: +SKIP
     >>> config, snr = sn.setup_to_snr(20)  # doctest: +SKIP
+    >>> exptime = sn.get_exposure_time()  # in seconds  # doctest: +SKIP
     >>> lbda, flux, variance = sn.get_spectrum(unit="flambda")  # doctest: +SKIP
     """
 
@@ -662,11 +730,11 @@ class LazuliKilonova( VirtualLazuliTarget, Kilonova ):
     Parameters
     ----------
     model : str, optional
-        "bulla23" [default] or "bulla19".
+        ``"bulla23"`` [default] or ``"bulla19"``.
     **kwargs
         Point source parameters, mainly ``redshift``, ``phase`` (days since
         merger), ``theta`` (viewing angle in degrees), ``magabs`` or
-        ``magobs`` (peak magnitude in ``band``) and ``position``.
+        ``magobs`` (peak magnitude in ``band``) and ``position`` (spaxels).
 
     Examples
     --------
@@ -680,9 +748,10 @@ class LazuliCalSpec( VirtualLazuliTarget, CalSpec  ):
     Parameters
     ----------
     name : str
-        Name (or short name) of the CalSpec star, e.g. "bd_17" or "gd_71".
+        Name (or short name) of the CalSpec star, e.g. ``"bd_17"`` or
+        ``"gd_71"``.
     **kwargs
-        Point source parameters, e.g. ``position``.
+        Point source parameters, e.g. ``position`` (spaxels).
 
     Examples
     --------
@@ -699,7 +768,7 @@ class LazuliBlackBody( VirtualLazuliTarget, BlackBody ):
         Black body temperature in Kelvin.
     **kwargs
         Point source parameters: ``mag`` and ``band`` (normalisation, e.g.
-        ``band="sdssr"``), ``magsys`` and ``position``.
+        ``band="sdssr"``), ``magsys`` and ``position`` (spaxels).
 
     Examples
     --------
@@ -717,7 +786,7 @@ class LazuliPowerLaw( VirtualLazuliTarget, PowerLaw ):
         Power-law index, see `~slicersim.scene.sources.generic.get_powerlaw_flux`.
     **kwargs
         Point source parameters: ``mag`` and ``band`` (normalisation),
-        ``lambda_ref`` and ``position``.
+        ``lambda_ref`` (Angstrom) and ``position`` (spaxels).
 
     Examples
     --------
@@ -734,13 +803,19 @@ class LazuliTarget( VirtualLazuliTarget, Target  ):
     lbda : array_like
         Wavelengths in Angstrom. Should cover the Lazuli bandpass.
     flux : array_like
-        Flux in erg/s/cm2/A, or in arbitrary units when ``mag`` is given.
+        Flux in erg/s/cm^2/A, or in arbitrary units when ``mag`` is given.
     mag : float, optional
         If given, ``flux`` is rescaled to this magnitude in ``band``.
+        Default is None.
     band : str, optional
-        Bandpass of ``mag`` (any sncosmo bandpass). Default is "bessellb".
+        Bandpass of ``mag`` (any sncosmo bandpass name).
+        Default is ``"bessellb"``.
     **kwargs
-        Other point source parameters, e.g. ``position``.
+        Other point source parameters, e.g. ``position`` (spaxels).
+
+    See Also
+    --------
+    lazuli_etc : Exposure time to reach a given SNR, in one call.
 
     Examples
     --------
@@ -750,34 +825,44 @@ class LazuliTarget( VirtualLazuliTarget, Target  ):
 
 # Generic object
 class LazuliFlat( VirtualLazuliTarget, Target  ):
-    """Lazuli class for flat sources (no pointsource)
+    """A spatially uniform source observed with Lazuli.
+
+    The scene contains neither point source nor host: the input spectrum is
+    used as a spatially flat background filling the field.
+
+    .. warning::
+        Instantiation currently fails with a `TypeError`, as the parent
+        initialisation resolves to `~slicersim.target.Target`, which expects
+        ``lbda`` and ``flux``. See `Lazuli3DFlat` for flat-field
+        calibration exposures.
 
     Parameters
     ----------
     lbda : array_like
-        Wavelength array.
+        Wavelengths in Angstrom of the reference spectrum.
     flux : array_like
-        Flux array.
+        Flux of the reference spectrum, in erg/s/cm^2/A per spaxel.
+    amplitude : float, optional
+        Scaling factor applied to ``flux``. It is a mutable parameter of the
+        scene, so the flat level can be changed afterwards without rebuilding
+        the target. Default is 1.
     **kwargs
-        Goes to `simulation.Simulation.from_source()`.
-
+        Goes to `~slicersim.simulation.Simulation.from_config`.
     """
     def __init__(self, lbda, flux, amplitude=1,
                  **kwargs):
-        """Initialize the LazuliTarget.
+        """Initialize the LazuliFlat.
 
         Parameters
         ----------
         lbda : array_like
-            Wavelength array.
+            Wavelengths in Angstrom of the reference spectrum.
         flux : array_like
-            Flux array.
+            Flux of the reference spectrum.
         amplitude : float, optional
-            Scaling factor applied to `flux`. It is a mutable parameter of the
-            resulting scene, so the flat level can be changed afterwards
-            without rebuilding the target. Default is 1.
+            Scaling factor applied to ``flux``. Default is 1.
         **kwargs
-            Goes to `simulation.Simulation.from_config()`.
+            Goes to `~slicersim.simulation.Simulation.from_config`.
         """
 
         def model_flux(wave, amplitude):
@@ -794,7 +879,7 @@ class LazuliFlat( VirtualLazuliTarget, Target  ):
             -------
             numpy.ndarray
                 The scaled flat flux. Wavelengths outside the range of the
-                reference spectrum are `numpy.nan`.
+                reference spectrum are NaN.
             """
             return np.interp(wave, lbda, flux, left=np.nan, right=np.nan) * amplitude
 
@@ -828,25 +913,52 @@ class Lazuli3DFlat(VirtualLazuliTarget, Flat3DCalibration):
     that turns its continuum into a comb of spectral features used for
     wavelength calibration (see `from_febryperot`).
 
+    It is normally built with `from_qth` or `from_febryperot`. The
+    spectrograph is set up in the narrow field by default; use
+    `~VirtualLazuliTarget.change_spectrograph` to switch field.
+
     Parameters
     ----------
-    simulation : slicersim.Simulation, optional
-        The simulation object. Default is None.
-    field : str, optional
-        Lazuli field the spectrograph is configured for, "narrow" or "wide".
-        Default is "narrow".
+    simulation : slicersim.simulation.Simulation, optional
+        The simulation the target wraps. Default is None.
 
-    Attributes
-    ----------
-    _QTH_TEMPERATURE : float
-        Blackbody temperature in Kelvin assumed for the QTH lamp.
+    Examples
+    --------
+    >>> flat = Lazuli3DFlat.from_qth()  # doctest: +SKIP
+    >>> cube, varcube = flat.get_cube(which="current")  # doctest: +SKIP
     """
     _QTH_TEMPERATURE = 3000
     @classmethod
     def from_qth(cls, temperature=None, mag=12, band='sdssr',
                         **kwargs):
-        """ Initialize the flat as observing the 3D flat QTH lamp
-        This method make use the generic .from_blackbody class method.
+        """Initialize the flat as observing the QTH lamp.
+
+        The lamp is modelled as a blackbody (see
+        `~slicersim.calibration.Flat3DCalibration.from_blackbody`).
+
+        Parameters
+        ----------
+        temperature : float, optional
+            Temperature of the lamp in Kelvin. If None, the class default
+            ``_QTH_TEMPERATURE`` (3000 K) is used. Default is None.
+        mag : float, optional
+            Magnitude the lamp spectrum is normalised to. Default is 12.
+        band : str, optional
+            Name of the bandpass used for the normalisation (any sncosmo
+            bandpass name). Default is ``"sdssr"``.
+        **kwargs
+            Goes to
+            `~slicersim.calibration.Flat3DCalibration.from_blackbody`
+            (e.g. ``magsys``, ``lbda_range``, ``lbda_bin``).
+
+        Returns
+        -------
+        Lazuli3DFlat
+            An instance of the class.
+
+        See Also
+        --------
+        from_febryperot : The same lamp seen through the Fabry-Perot etalon.
         """
         if temperature is None:
             temperature = cls._QTH_TEMPERATURE
@@ -862,19 +974,21 @@ class Lazuli3DFlat(VirtualLazuliTarget, Flat3DCalibration):
         ----------
         fp_throughput : str or callable, optional
             Fabry-Perot transmission. If a str, the path to a csv file with
-            the wavelength in Angstrom as index and a "transmission" column;
-            it is looked up in the package config directory when it is not
-            found locally. If a callable, the transmission as a function of
-            wavelength in Angstrom.
-            Default is "lazuli_fp_transmission.csv".
+            the wavelength in Angstrom as index and a ``"transmission"``
+            column; it is looked up in the package config directory when it
+            is not found locally. If a callable, the transmission as a
+            function of wavelength in Angstrom.
+            Default is ``"lazuli_fp_transmission.csv"``.
         temperature : float, optional
-            Temperature of the lamp in Kelvin. Default is None.
-            If None`_QTH_TEMPERATURE` is used.
+            Temperature of the lamp in Kelvin. Currently ignored: the class
+            default ``_QTH_TEMPERATURE`` (3000 K) is always used.
+            Default is None.
         mag : float, optional
-            Magnitude the lamp spectrum is normalised to. Default is 12.
+            Magnitude the lamp spectrum is normalised to, before the
+            Fabry-Perot transmission is applied. Default is 12.
         band : str, optional
-            Name of the bandpass used for the normalisation (must be known by
-            `sncosmo`). Default is "sdssr".
+            Name of the bandpass used for the normalisation (any sncosmo
+            bandpass name). Default is ``"sdssr"``.
         **kwargs
             Goes to
             `~slicersim.calibration.Flat3DCalibration.from_febryperot`.
@@ -887,7 +1001,7 @@ class Lazuli3DFlat(VirtualLazuliTarget, Flat3DCalibration):
         Warns
         -----
         UserWarning
-            When `fp_throughput` is read from a file, flagging the temporary
+            When ``fp_throughput`` is read from a file, flagging the temporary
             extrapolation patch that fills wavelengths outside the tabulated
             range with the first tabulated transmission value.
 

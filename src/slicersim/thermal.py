@@ -1,5 +1,8 @@
-"""
-Computation of thermal signal (solid angles, black body spectrum).
+"""Thermal emission module.
+
+This module computes the thermal (black body) emission of optical elements
+received by a detector or a spaxel: black body photon fluxes, solid angles
+from f-ratios and integrated thermal signals.
 """
 import warnings
 from copy import deepcopy
@@ -10,24 +13,35 @@ from scipy.integrate import quad_vec
 
 
 def get_source_radiation(lbda, temperature, emissivity=1, angular_coefficient=1):
-    """ Calculate the blackbody photon flux for a given wavelength and temperature and emissivity
-    This function is based on blackbody_photonflux (emissivity * blackbody_photonflux)
+    """Calculate the photon flux of a grey body.
 
+    This is ``emissivity * blackbody_photonflux(lbda, temperature)``.
 
     Parameters
     ----------
-    lbda : float
-        The wavelength in Angstrong.
+    lbda : float or array_like
+        Wavelength(s) in Angstrom.
     temperature : float
-        The temperature in Kelvin.
-    emissivity: float
-        emissivity of the source. defined between [0, 1].
-    angular_coefficient: float
-        multiplicative coefficient associated to the opening angle of the source (area * 
+        Temperature in K.
+    emissivity : float, optional
+        Emissivity of the source, between 0 and 1. Default is 1.
+    angular_coefficient : float, optional
+        Multiplicative coefficient associated with the opening angle of the
+        source. Currently not used. Default is 1.
+
     Returns
     -------
-    photonflux: float, array
-        The blackbody photon flux in [photon/s/sr/m²/A]
+    float or numpy.ndarray
+        Photon flux in ph/s/sr/m^2/A.
+
+    Raises
+    ------
+    ValueError
+        If ``emissivity`` is not between 0 and 1.
+
+    See Also
+    --------
+    blackbody_photonflux : Black body photon flux.
     """
     if emissivity<0 or emissivity>1:
         raise ValueError(f"emissivity is defined in between 0 and 1,{emissivity=} given")
@@ -35,18 +49,19 @@ def get_source_radiation(lbda, temperature, emissivity=1, angular_coefficient=1)
     return emissivity * blackbody_photonflux(lbda, temperature)
 
 def blackbody_photonflux(lbda, temperature):
-    """ Calculate the blackbody photon flux for a given wavelength and temperature.
+    """Calculate the black body photon flux (Planck's law in photon units).
 
     Parameters
     ----------
-    lbda : float, array
-        The wavelength(s) in Angstrong.
-    temperature : float
-        The temperature in Kelvin.
+    lbda : float or array_like
+        Wavelength(s) in Angstrom.
+    temperature : float or array_like
+        Temperature(s) in K. Must broadcast with ``lbda``.
+
     Returns
     -------
-    photonflux: float, array
-        The blackbody photon flux in [photon/s/sr/m²/A]
+    float or numpy.ndarray
+        Black body photon flux in ph/s/sr/m^2/A.
     """
     c = constants.c.value     # [m/s]
     hc_over_kB = ( (constants.h*constants.c) / (constants.k_B) ).value  # [K.m]
@@ -57,23 +72,33 @@ def blackbody_photonflux(lbda, temperature):
     return bbflux_per_m * 1e-10  # [photon/s/sr/m²/A] | 1e-10 for A
 
 def fratio_to_solidangle(fratio, geometry="circular"):
-    """ Convert f-ratio to solid angle.
+    """Convert f-ratios into solid angles.
+
+    The solid angle is ``coef / (fratio_y * fratio_x)``, with ``coef = pi / 4``
+    for a circular pupil and ``coef = 1`` for a square one.
 
     Parameters
     ----------
-    fratio : float or array-like
-        The f-ratio of the optical system. If a single value is given, it is
-        assumed to be the same for both x and y directions. If an array-like
-        of two values is given, it is assumed to be (fratio_y, fratio_x).
-
-    geometry: str
-        shape of the optical element. Could be square or circular. This
-        affects the normalisation coefficient. 
+    fratio : numpy.ndarray
+        F-ratio(s) of the optical elements. If 0-dimensional, the same value is
+        used for both the y and x directions. Otherwise, the first axis must
+        have length 2 and holds ``(fratio_y, fratio_x)``, e.g. an array of
+        shape ``(2, nelements)``.
+    geometry : str or array_like of str, optional
+        Pupil shape of the optical element(s), ``"circular"`` or
+        ``"square"``; must broadcast with ``fratio_y``.
+        Default is ``"circular"``.
 
     Returns
     -------
-    float
-        The solid angle in steradians.
+    numpy.ndarray
+        Solid angle(s) in steradian.
+
+    Raises
+    ------
+    NotImplementedError
+        If ``geometry`` contains values other than ``"circular"`` or
+        ``"square"``.
     """
     
     if np.ndim(fratio) == 0:
@@ -94,60 +119,46 @@ def fratio_to_solidangle(fratio, geometry="circular"):
 
 
 class ThermalOptics:
-    """Class to compute the thermal radiation of optical elements.
+    """Thermal emission of a set of optical elements.
+
+    Each optical element (or group of identical elements) is described by a
+    temperature, an emissivity, a number of elements and an f-ratio (or a
+    solid angle). Array inputs define one entry per element.
 
     Parameters
     ----------
-    temperature : float or array-like
-        The temperature of the optical elements in Kelvin.
-    emissivity : float or array-like
-        The emissivity of the optical elements.
-    fratio : float or array-like, optional
-        The f-ratio of the optical system. If a single value is given, it is
-        assumed to be the same for both x and y directions. If an array-like
-        of two values is given, it is assumed to be (fratio_y, fratio_x).
+    temperature : float or array_like
+        Temperature(s) of the optical elements in K.
+    emissivity : float or array_like
+        Emissivity of the optical elements, between 0 and 1.
+    fratio : float or array_like or None, optional
+        F-ratio(s) of the optical elements, used to compute `solid_angle`.
+        Either one value per element (same in both directions) or one
+        ``(fratio_y, fratio_x)`` pair per element. Default is None.
+    solid_angle : float or array_like or None, optional
+        Solid angle(s) in steradian. If None, it is computed from ``fratio``.
         Default is None.
-    solid_angle : float or array-like, optional
-        The solid angle in steradians. If not given, it is computed from the
-        f-ratio. Default is None.
-    nelements : int, optional
-        The number of optical elements. Default is 1.
-    geometry : str, optional
-        The geometry of the optical elements. Can be "circular" or "square".
-        Default is "circular".
+    nelements : int or array_like of int, optional
+        Number of optical elements sharing each temperature and emissivity.
+        Default is 1.
+    geometry : str or array_like of str, optional
+        Pupil shape of the optical elements, ``"circular"`` or ``"square"``.
+        Default is ``"circular"``.
     meta : dict, optional
-        A dictionary of metadata. Default is {}.
+        Metadata dictionary (e.g. the input configuration). Default is an
+        empty dict.
 
+    Attributes
+    ----------
+    mutable_parameters : list of str
+        Parameters that can be changed after initialization with `update`.
     """
     mutable_parameters = ['temperature', 'emissivity', 'nelements'] # lbda
 
     def __init__(self, temperature, emissivity, fratio=None, solid_angle=None,
                      nelements=1, geometry="circular",
                      meta={}):
-        """Initialize the ThermalOptics class.
-
-        Parameters
-        ----------
-        temperature : float or array-like
-            The temperature of the optical elements in Kelvin.
-        emissivity : float or array-like
-            The emissivity of the optical elements.
-        fratio : float or array-like, optional
-            The f-ratio of the optical system. If a single value is given, it is
-            assumed to be the same for both x and y directions. If an array-like
-            of two values is given, it is assumed to be (fratio_y, fratio_x).
-            Default is None.
-        solid_angle : float or array-like, optional
-            The solid angle in steradians. If not given, it is computed from the
-            f-ratio. Default is None.
-        nelements : int, optional
-            The number of optical elements. Default is 1.
-        geometry : str, optional
-            The geometry of the optical elements. Can be "circular" or "square".
-            Default is "circular".
-        meta : dict, optional
-            A dictionary of metadata. Default is {}.
-        """
+        """Initialize the ThermalOptics (see the class docstring for parameters)."""
         self._temperature = np.atleast_1d(temperature)[:, None].astype(float)
         self._emissivity = np.atleast_1d(emissivity)[:, None].astype(float)
         self._nelements = np.atleast_1d(nelements)[:, None].astype(int)
@@ -168,21 +179,35 @@ class ThermalOptics:
     
     @classmethod
     def from_config(cls, config, no_solidangle_ok=True):
-        """Create a `ThermalOptics` object from a configuration dictionary.
+        """Create a `ThermalOptics` from a configuration dictionary.
 
         Parameters
         ----------
         config : dict
-            A dictionary of configuration parameters.
+            Configuration dictionary. It must contain ``"temperature"`` and
+            ``"emissivity"``, and may contain ``"fratio"``, ``"solid_angle"``,
+            ``"nelements"`` and ``"geometry"`` (see `ThermalOptics`). The full
+            dictionary is stored as `meta`.
         no_solidangle_ok : bool, optional
-            If True, do not raise a warning if both fratio and solid_angle are
-            None. Default is True.
+            If True, do not warn when both ``"fratio"`` and ``"solid_angle"``
+            are missing. Default is True.
 
         Returns
         -------
         ThermalOptics
-            A `ThermalOptics` object.
+            The thermal optics instance.
 
+        Raises
+        ------
+        ValueError
+            If ``"temperature"`` or ``"emissivity"`` is missing.
+
+        Warns
+        -----
+        UserWarning
+            If both ``"fratio"`` and ``"solid_angle"`` are given (the solid
+            angle is then not derived from the f-ratio), or if both are missing
+            and ``no_solidangle_ok`` is False.
         """
         
         temperature = config.get("temperature", None)        
@@ -207,15 +232,22 @@ class ThermalOptics:
                   meta=config)
 
     def update(self, reset_thermal=True, **kwargs):
-        """Update the mutable parameters of the object.
+        """Update the mutable parameters.
+
+        See `mutable_parameters` for the list of accepted names.
 
         Parameters
         ----------
         reset_thermal : bool, optional
-            If True, reset the thermal radiation object. Default is True.
+            If True, reset the cached `thermal` object so that it is rebuilt
+            with the new parameters. Default is True.
         **kwargs
-            The mutable parameters to update.
+            Mutable parameters to update.
 
+        Warns
+        -----
+        UserWarning
+            If a given parameter is not mutable (it is then ignored).
         """
         for k, v in kwargs.items():
             if k not in self.mutable_parameters:
@@ -234,27 +266,33 @@ class ThermalOptics:
     #   Methods     #
     # ============= #
     def get_signal(self, lbda_bin, area, solid_angle=None, qe=None):
-        """ Calculate the thermal radiation signal for given parameters.
-        
+        """Calculate the thermal signal received, integrated over wavelength bins.
+
         Parameters
         ----------
-        lbda_bin : array-like
-            The wavelength bin(s) in Angtrom. Can be a 1D or 2D array.
-            - 1D: [lbda_min, lbda_max]
-            - 2D: [[lbda_min, lbda_max],[lbda_min, lbda_max],...]
-
+        lbda_bin : array_like
+            Wavelength bin(s) in Angstrom, either 1D ``[lbda_min, lbda_max]``
+            or 2D ``[[lbda_min, lbda_max], [lbda_min, lbda_max], ...]``.
         area : float
-            The area in square meters.
-
-        solid_angle : float, None
-            if None, self.solid_angle is used
-            The solid angle in steradians ; it corresponds to the angular area [sr] of the reception 
-            (e.g. spaxel_size in rad*rad)
+            Collecting area in m^2.
+        solid_angle : float or array_like or None, optional
+            Solid angle(s) in steradian under which the emission is received
+            (e.g. the spaxel angular area). If None, `solid_angle` is used.
+            Default is None.
+        qe : float or callable or None, optional
+            Quantum efficiency in e-/ph, as a constant or a function of
+            wavelength (in Angstrom). If None, the signal is in photons.
+            Default is None.
 
         Returns
         -------
-        float or numpy.ndarray
-            The calculated flux signal in photons per second, integrated over the bandwidth.
+        numpy.ndarray
+            Thermal signal in ph/s (or e-/s if ``qe`` is given) integrated over
+            each bin, with one row per optical element.
+
+        See Also
+        --------
+        ThermalRadiation.get_signal : Underlying computation.
         """
         if solid_angle is None:
             solid_angle = self.solid_angle
@@ -267,39 +305,41 @@ class ThermalOptics:
     # ============= #
     @property
     def meta(self):
-        """ meta data of the instance """
+        """Metadata dictionary of the instance."""
         return self._meta
     
     @property
     def temperature(self):
-        """The temperature of the components [K]."""
+        """Temperature of the optical elements in K, shape ``(n, 1)``."""
         return self._temperature
 
     @property
     def emissivity(self):
-        """The emissivity of the components."""
+        """Emissivity of the optical elements, shape ``(n, 1)``."""
         return self._emissivity
 
     @property
     def nelements(self):
-        """The number of elements at a given temperature and emissivity."""
+        """Number of elements sharing each temperature and emissivity."""
         return self._nelements
 
     @property
     def fratio(self):
-        """The f-ratio of the optical system."""
+        """F-ratio(s) of the optical elements, or None."""
         return self._fratio
 
     @property
     def geometry(self):
-        """The geometry of the optical elements."""
+        """Pupil shape(s) of the optical elements (``"circular"`` or ``"square"``)."""
         return self._geometry
         
     @property
     def solid_angle(self):
-        """The solid angle of the optical system [sr].
+        """Solid angle(s) of the optical elements in steradian.
 
-        If not provided at initialization, it is computed from the f-ratio.
+        If not provided at initialization, it is computed from `fratio` and
+        `geometry` (see `fratio_to_solidangle`). A `ValueError` is raised if
+        neither is available.
         """
         if self._solid_angle is None:
             if self.fratio is None: 
@@ -311,75 +351,62 @@ class ThermalOptics:
 
     @property
     def thermal(self):
-        """The thermal radiation object."""
+        """`ThermalRadiation` object built from the current parameters."""
         if not hasattr(self, "_thermal") or self._thermal is None:
             self._thermal = ThermalRadiation(self.temperature, self.emissivity, self.nelements)
             
         return self._thermal
 
 class ThermalRadiation:
-    """A class to simulate the thermal radiation of telescope and instrument components.
+    """Black body thermal radiation of telescope and instrument components.
 
-    This class calculates the thermal radiation signal based on the black body radiation
-    principles. It allows for the computation of photon flux within specified wavelength
-    ranges, taking into account the temperature and emissivity of the components.
+    This class computes the thermal photon (or electron) flux of grey bodies,
+    integrated over wavelength bins, given the temperature, emissivity and
+    number of the emitting components.
 
     Parameters
     ----------
-    temperature : float, numpy.ndarray
-        The temperature of the components in Kelvin.
-    emissivity : float, numpy.ndarray
-        The emissivity of the components.
-    nelements : int, optional
-        The number of elements. Default is 1.
-
-    Attributes
-    ----------
-    temperature : float, numpy.ndarray
-        The temperature of the components in Kelvin.
-        
-    emissivity : float, numpy.ndarray
-        The emissivity of the components.
+    temperature : float or numpy.ndarray
+        Temperature(s) of the components in K.
+    emissivity : float or numpy.ndarray
+        Emissivity of the components, between 0 and 1.
+    nelements : int or numpy.ndarray, optional
+        Number of components sharing each temperature and emissivity.
+        Default is 1.
     """
     def __init__(self, temperature, emissivity, nelements=1):
-        """ Initialize the ThermalRadiation class with temperature and emissivity.
-
-        Parameters
-        ----------
-        temperature : float, numpy.ndarray
-            The temperature of the components in Kelvin.
-        
-        emissivity : float, numpy.ndarray
-            The emissivity of the components.
-        """
+        """Initialize the ThermalRadiation (see the class docstring for parameters)."""
         self._temperature = np.atleast_2d(temperature)
         self._emissivity = np.atleast_2d(emissivity)
         self._nelements = np.atleast_2d(nelements)
         
     def get_signal(self, lbda_bin, area, solid_angle, qe=None):
-        """ Calculate the thermal radiation signal for given parameters.
-        
+        """Calculate the thermal signal received, integrated over wavelength bins.
+
+        This is the integrated black body flux (see
+        `get_integrated_blackbody_flux`) times ``solid_angle * area *
+        emissivity * nelements``.
+
         Parameters
         ----------
-        lbda_bin : array-like
-            The wavelength bin(s) in Angtrom. Can be a 1D or 2D array.
-            - 1D: [lbda_min, lbda_max]
-            - 2D: [[lbda_min, lbda_max],[lbda_min, lbda_max],...]
-
+        lbda_bin : array_like
+            Wavelength bin(s) in Angstrom, either 1D ``[lbda_min, lbda_max]``
+            or 2D ``[[lbda_min, lbda_max], [lbda_min, lbda_max], ...]``.
         area : float
-            The area in square meters.
-
-        solid_angle : float
-            The solid angle in steradians ; it corresponds to the angular area [sr] of the reception 
-            (e.g. spaxel_size in rad*rad)
-
-        qe: None, float, func
-            Quantum efficiency to convert ph->e-
+            Collecting area in m^2.
+        solid_angle : float or numpy.ndarray
+            Solid angle(s) in steradian under which the emission is received
+            (e.g. the spaxel angular area).
+        qe : float or callable or None, optional
+            Quantum efficiency in e-/ph, as a constant or a function of
+            wavelength (in Angstrom). If None, the signal is in photons.
+            Default is None.
 
         Returns
         -------
         float or numpy.ndarray
-            The calculated flux signal in photons (or e- if qe!=1) per second, integrated over the bandwidth.
+            Thermal signal in ph/s (or e-/s if ``qe`` is given) integrated over
+            each bin.
         """
         # allows [[lbda_min, lbda_max], [lbda_min, lbda_max], ...]
         int_flux = self.get_integrated_blackbody_flux(lbda_bin, qe=qe)
@@ -388,51 +415,54 @@ class ThermalRadiation:
         return int_flux * solid_angle * area * self.emissivity * self.nelements  # [{photon,e-}/s] integrated over bandwidth
 
     def get_blackbody_flux(self, lbda, qe=1):
-        """ Calculate the blackbody photon flux for a given wavelength.
+        """Calculate the black body flux of the components' temperatures.
 
         Parameters
         ----------
-        lbda : float, numpy.array
-            The wavelength in Angstrong.
+        lbda : float or numpy.ndarray
+            Wavelength(s) in Angstrom.
+        qe : float or numpy.ndarray or callable or None, optional
+            Quantum efficiency in e-/ph used to convert photons into
+            electrons: None (flux in photons), a function of wavelength, or
+            a float or array broadcasting with ``lbda``. Default is 1.
 
-        qe: None, float, array, func
-            Quantum efficiency to convert ph->e-
-            - None: returned unit: ph/s
-            - function: qe <= qe(lbda)
-            - float or array: should broadcast with lbda.shape
-            
         Returns
         -------
-        float, numpy.array
-            The blackbody photon (or e-) flux in [{photon, e-}/s/sr/m²/A]
+        float or numpy.ndarray
+            Black body photon (or electron) flux in ph/s/sr/m^2/A
+            (or e-/s/sr/m^2/A).
         """
         return self._blackbody_flux(lbda, self.temperature, qe=qe)
         
     def get_integrated_blackbody_flux(self, lbda_bin, allow_trapez=True, qe=None):
-        """ Calculate the blackbody photon (or e-) flux intergrated over given wavelength bins.
-        
+        """Calculate the black body flux integrated over wavelength bins.
+
         Parameters
         ----------
-        lbda_bin : array-like
-            The wavelength bin(s) in Angtrom. Can be a 1D or 2D array.
-            - 1D: [lbda_min, lbda_max]
-            - 2D: [[lbda_min, lbda_max],[lbda_min, lbda_max],...]
-            
-        allow_trapez : bool
-            Whether to allow the use of trapez to approximate the integral.
-            This is used only for 2D-lbda_bin to significantly speed the code.
-            (per-mil level approximation error).
+        lbda_bin : array_like
+            Wavelength bin(s) in Angstrom, either 1D ``[lbda_min, lbda_max]``
+            or 2D ``[[lbda_min, lbda_max], [lbda_min, lbda_max], ...]``.
+        allow_trapez : bool, optional
+            If True, approximate the integral by the flux at the bin centre
+            times the bin width (per-mil level accuracy, much faster). Only
+            used for 2D ``lbda_bin``; 1D bins are always integrated exactly.
+            Default is True.
+        qe : float or numpy.ndarray or callable or None, optional
+            Quantum efficiency in e-/ph used to convert photons into
+            electrons: None (flux in photons), a function of wavelength, or
+            a float or array broadcasting with the wavelengths.
+            Default is None.
 
-        qe: None, float, array, func
-            Quantum efficiency to convert ph->e-
-            - None: returned unit: ph/s
-            - function: qe <= qe(lbda)
-            - float or array: should broadcast with lbda.shape
-        
         Returns
         -------
-        float, numpy.array
-            The blackbody photon (or e- if qe!=1) flux integrated in given band in [{photon,e-}/s/sr/m²]
+        float or numpy.ndarray
+            Integrated black body photon (or electron) flux in ph/s/sr/m^2
+            (or e-/s/sr/m^2).
+
+        Raises
+        ------
+        ValueError
+            If ``lbda_bin`` is neither 1D nor 2D.
         """
         # 1d-boundaries: let's use exact method.
         if np.ndim(lbda_bin) == 1:
@@ -469,12 +499,12 @@ class ThermalRadiation:
             The temperature in Kelvin.
             
         lbda_min : float
-            The minimum wavelength in Angstrong.
+            The minimum wavelength in Angstrom.
             
         lbda_max : float
-            The maximum wavelength in Angstrong.
+            The maximum wavelength in Angstrom.
 
-        qe: None, float, array, func
+        qe : float or numpy.ndarray or callable or None, optional
             Quantum efficiency to convert ph->e-
             - None: returned unit: ph/s
             - function: qe <= qe(lbda)
@@ -497,12 +527,12 @@ class ThermalRadiation:
         Parameters
         ----------
         lbda : float
-            The wavelength in Angstrong.
+            The wavelength in Angstrom.
 
         temperature : float
             The temperature in Kelvin.
 
-        qe: None, float, array, func
+        qe : float or numpy.ndarray or callable or None, optional
             Quantum efficiency to convert ph->e-
             - None: returned unit: ph/s
             - function: qe => qe(lbda)
@@ -511,7 +541,7 @@ class ThermalRadiation:
         Returns
         -------
         float
-            The blackbody flux in photons (or e-) per second per steradian per square meter per micrometer.
+            The blackbody flux in photons (or e-) per second per steradian per square meter per Angstrom.
         """
         flux_ph = blackbody_photonflux(lbda, temperature)
         
@@ -531,16 +561,16 @@ class ThermalRadiation:
     # ============ #
     @property
     def temperature(self):
-        """The temperature of the components [K]."""
+        """Temperature of the components in K."""
         return self._temperature
 
     @property
     def emissivity(self):
-        """The emissivity of the components."""
+        """Emissivity of the components."""
         return self._emissivity
 
     @property
     def nelements(self):
-        """The number of elements at a given temperature and emissivity."""
+        """Number of components sharing each temperature and emissivity."""
         return self._nelements
     

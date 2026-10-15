@@ -19,20 +19,40 @@ from .utils import mesh_kwargs, unbin_array
 
 
 class SlicerMapper:
-    """Maps between detector pixel coordinates and the IFS slicer focal-plane coordinates.
+    """Map between detector pixel coordinates and IFS slicer coordinates.
 
-    The mapping is derived from spot calibration data that relates each slicer
-    slice, field position, and wavelength to a physical ``(x, y)`` position on
-    the detector.  Linear interpolators built from this data are used to project
-    scene cubes onto the detector and to de-project detector images back to the
-    sky plane.
+    The mapping is derived from spot calibration data that relates each
+    slice, field position along the slice (from -1 to 1) and wavelength to a
+    physical ``(x, y)`` position on the detector. Linear interpolators built
+    from this data are used to project scene cubes onto the detector and to
+    de-project detector images back to the sky plane.
 
-    Attributes
+    Internally, wavelengths are stored in Angstrom and detector positions in
+    mm, with (0, 0) at the detector center.
+
+    Parameters
     ----------
-    _LBDA_UNITS : str
-        Units of the wavelength axis (``"angstrom"``).
-    _XY_UNITS : str
-        Units of the spatial axes (``"mm"``).
+    data : pandas.DataFrame
+        Calibration data, with one row per spot and columns for the slice
+        id, field position, wavelength and ``(x, y)`` detector position
+        (column names can be set through ``**kwargs``).
+    detector_shape : tuple of int, optional
+        Shape of the detector in pixels ``(ny, nx)``. Default is
+        (4096, 4096).
+    pixel_size : float, optional
+        Size of a detector pixel, in micrometers. Default is 10.
+    xy_units : str, optional
+        Unit of the ``(x, y)`` coordinates in ``data`` (an astropy unit
+        name). Default is ``"mm"``.
+    **kwargs
+        Column names and wavelength unit of ``data``: ``wavelength_units``
+        (default ``"micrometer"``), ``x`` (default ``"x"``), ``y`` (default
+        ``"y"``), ``sliceid`` (default ``"slice"``), ``fieldpos`` (default
+        ``"fieldpos"``) and ``wavelength`` (default ``"lbda"``).
+
+    See Also
+    --------
+    from_data : Build the mapper from a calibration file.
     """
 
     _LBDA_UNITS = "angstrom"
@@ -42,22 +62,7 @@ class SlicerMapper:
                  pixel_size=10, # in micrometer
                  xy_units="mm", **kwargs
                 ):
-        """Initialize SlicerMapper with detector and data specifications.
-
-        Parameters
-        ----------
-        data : pandas.DataFrame
-            Input data containing slice positions, field positions, wavelengths,
-            and xy coordinates.
-        detector_shape : tuple, optional
-            Shape of the detector in pixels (ny, nx). Default is (4096, 4096).
-        pixel_size : float, optional
-            Size of each pixel in micrometers. Default is 10.
-        xy_units : str, optional
-            Units of the xy coordinates in the data. Default is "mm".
-        **kwargs
-            Additional keyword arguments passed to _get_interp_structures_.
-        """
+        """Initialize the mapper (see the class docstring for parameters)."""
         self._data = data
         self._sliceposwave, self._xy, self._metakey = self._get_interp_structures_(data,
                                                                                     xy_units=xy_units,
@@ -67,21 +72,23 @@ class SlicerMapper:
 
     @classmethod
     def from_data(cls, data, xy_units="mm", **kwargs):
-        """Create SlicerMapper instance from data file or DataFrame.
+        """Create a `SlicerMapper` from a calibration file or DataFrame.
 
         Parameters
         ----------
         data : str or pandas.DataFrame
-            Path to CSV file or pandas DataFrame containing the calibration data.
+            Path to a space-separated CSV file (e.g. ``mapping_spotdata.csv``
+            in ``PACKAGE_PATH``) or DataFrame containing the calibration
+            data.
         xy_units : str, optional
-            Units of the xy coordinates. Default is "mm".
+            Unit of the ``(x, y)`` coordinates. Default is ``"mm"``.
         **kwargs
-            Additional keyword arguments passed to __init__.
+            Goes to `SlicerMapper`.
 
         Returns
         -------
         SlicerMapper
-            Instance of SlicerMapper initialized with the provided data.
+            Mapper built from the calibration data.
         """
         if type(data) in [str, np.str_]:
             data = pandas.read_csv(data, sep=" ")
@@ -119,9 +126,10 @@ class SlicerMapper:
 
         Returns
         -------
-        sliceposwave : ndarray
-            Array of shape (N, 3) containing [sliceid, fieldpos, wavelength] values.
-        xy : ndarray
+        sliceposwave : numpy.ndarray
+            Array of shape (N, 3) containing [sliceid, fieldpos, wavelength]
+            values, wavelengths in Angstrom.
+        xy : numpy.ndarray
             Array of shape (N, 2) containing [x, y] physical coordinates in mm.
         metakey : dict
             Dictionary storing the column name mappings for reference.
@@ -145,23 +153,27 @@ class SlicerMapper:
     # =============== #
     def project_lazulitarget(self, lazulitarget, psf_profile="airy", switch_off=[],
                                  **kwargs):
-        """Project a LAZULI target simulation onto the detector plane.
+        """Project a Lazuli target simulation onto the detector plane.
+
+        The cubes of both the narrow (slices 1 to 58) and wide (slices 59
+        to 116) fields are simulated and projected, and the resulting images
+        are summed.
 
         Parameters
         ----------
-        lazulitarget : LazuliTarget
-            LAZULI target simulation object containing cube and wavelength data.
+        lazulitarget : slicersim.lazuli.VirtualLazuliTarget
+            Lazuli target, e.g. a `~slicersim.lazuli.LazuliSupernova`.
         psf_profile : str, optional
-            PSF profile to use ("airy" or other options). Default is "airy".
-        switch_off : list, optional
-            List of contributions to switch off. Default is empty list.
+            PSF profile used to simulate the cubes. Default is ``"airy"``.
+        switch_off : list of str, optional
+            Scene contributions to switch off. Default is ``[]``.
         **kwargs
-            Additional keyword arguments passed to get_cube and project_slice.
+            Goes to `~slicersim.lazuli.VirtualLazuliTarget.get_cube`.
 
         Returns
         -------
-        ndarray
-            2D detector image combining both fine and wide slices.
+        numpy.ndarray
+            2D detector image combining both the narrow and wide fields.
         """
 
         # generate the cubes (one per channel), you can remove contributions.
@@ -186,27 +198,27 @@ class SlicerMapper:
 
         Parameters
         ----------
-        cube : ndarray
-            Data cube to project with shape [nlbda, nslices, nspatial_spaxels].
+        cube : numpy.ndarray
+            Data cube to project, of shape ``(nlbda, 58, nspatial)``.
         which : str
-            Which slices to project: "fine"/"narrow" for slices 1-58,
-            "medium"/"wide" for slices 59-116.
-        lbda : ndarray
-            Wavelength array in Angstrom corresponding to the cube's spectral axis.
+            Which slices to project: ``"fine"`` or ``"narrow"`` for slices
+            1-58, ``"medium"`` or ``"wide"`` for slices 59-116.
+        lbda : numpy.ndarray
+            Wavelengths in Angstrom of the cube spectral axis.
         fill_value : float, optional
-            Value to use for empty pixels. Default is 0.
+            Value of the pixels with no projected signal. Default is 0.
         **kwargs
-            Additional keyword arguments passed to project_slice.
+            Goes to `project_slice`.
 
         Returns
         -------
-        ndarray
+        numpy.ndarray
             2D detector image.
 
         Raises
         ------
         ValueError
-            If which parameter is not one of the available options.
+            If ``which`` is not one of the available options.
         """
         if which in ["fine", "narrow"]:
             index_ = np.arange(1, 59)[::-1]
@@ -225,8 +237,10 @@ class SlicerMapper:
         ----------
         key : str
             Column name to extract from the deprojected DataFrame.
-        deproj_df : pandas.DataFrame, optional
-            Deprojected DataFrame. If None, uses stored _deprojected_df. Default is None.
+        deproj_df : pandas.DataFrame or None, optional
+            Deprojected DataFrame, as returned by `deproject_data`. If None,
+            the one stored by ``deproject_data(..., inplace=True)`` is used.
+            Default is None.
         nslices : int, optional
             Number of slices. Default is 58.
         nfieldpos : int, optional
@@ -236,13 +250,20 @@ class SlicerMapper:
 
         Returns
         -------
-        ndarray
-            3D array with shape (nlbda, nfieldpos, nslices) with wavelength as first axis.
+        numpy.ndarray
+            3D array of shape ``(nlbda, nfieldpos, nslices)``.
 
         Raises
         ------
         ValueError
             If no deprojected DataFrame is provided or stored.
+
+        Notes
+        -----
+        The ``key`` column is reshaped as ``(nslices, nfieldpos, nlbda)``
+        before moving the axes, while `deproject_data` orders its rows with
+        the field position varying the slowest, then the slice id, then the
+        wavelength.
         """
         if deproj_df is None:
             if self._deprojected_df is None:
@@ -260,25 +281,33 @@ class SlicerMapper:
 
 
     def deproject_data(self, sliceid, fieldpos, lbda, key=None, inplace=False):
-        """Deproject detector data back to slice-field-wavelength space.
+        """Interpolate the calibration data on a slice-field-wavelength grid.
+
+        For each combination of ``sliceid``, ``fieldpos`` and ``lbda``, the
+        detector position is computed, and the ``key`` columns of `data` are
+        linearly interpolated (in the detector plane) at that position.
 
         Parameters
         ----------
-        sliceid : array-like
-            Slice IDs to deproject.
-        fieldpos : array-like
-            Field positions to deproject.
-        lbda : array-like
-            Wavelengths to deproject.
-        key : str or list, optional
-            Column name(s) to deproject. If None, uses all data columns. Default is None.
+        sliceid : array_like
+            Slice ids.
+        fieldpos : array_like
+            Field positions along the slice (from -1 to 1).
+        lbda : array_like
+            Wavelengths in Angstrom.
+        key : str or list of str or None, optional
+            Column name(s) of `data` to interpolate. If None, all the columns
+            are used. Default is None.
         inplace : bool, optional
-            If True, store the result in _hdeprojected_df. Default is False.
+            If True, also store the result in the mapper, for later use by
+            `deproject_cubeof`. Default is False.
 
         Returns
         -------
         pandas.DataFrame
-            Deprojected data with columns including pixel positions and data values.
+            One row per grid point (see `~slicersim.utils.mesh_kwargs` for
+            the ordering), with columns ``sliceid``, ``fieldpos``, ``lbda``,
+            ``xpixel``, ``ypixel`` and the interpolated ``key`` column(s).
         """
         if key is None:
             key = self.data.columns
@@ -297,11 +326,11 @@ class SlicerMapper:
 
         Parameters
         ----------
-        sliceid : array-like
+        sliceid : array_like
             Slice IDs to deproject.
-        fieldpos : array-like
+        fieldpos : array_like
             Field positions to deproject.
-        lbda : array-like
+        lbda : array_like
             Wavelengths to deproject.
         key : str or list
             Column name(s) to interpolate.
@@ -327,34 +356,39 @@ class SlicerMapper:
         return df
 
     def project_slice(self, sliceid, sliceimg, lbda, oversample=(5, 2), fill_value=0):
-        """ project the slice(s) into the detector
+        """Project slice image(s) onto the detector.
+
+        The slice images are oversampled (by repetition), each oversampled
+        element is mapped to its detector pixel, and the values falling into
+        the same pixel are summed.
 
         Parameters
         ----------
-        sliceid: int, list, array
-            index of the slice(s).
-
-        sliceimg: ndarray
-            image associated with the slices
-            [nlbda, (nslices,)  nspatial_spaxels]
-
-        lbda: 1d array
-            wavelength (in Angstrom) corresponding to
-            the slice image along the spectral direction.
-
-        oversample: int, list
-            oversampling to be applied to the image.
-            If int, both wavelength and spatial directions
-            are oversampled similarly, otherwise
-            (spectral_oversampling, spatial_oversampling)
-
-        fill_value: float
-            value in the image prior projecting the image.
+        sliceid : int or array_like
+            Id(s) of the slice(s), matching the second axis of ``sliceimg``.
+        sliceimg : numpy.ndarray
+            Image of the slices, of shape ``(nlbda, nslices, nspatial)``,
+            the spatial axis spanning field positions -1 to 1.
+        lbda : numpy.ndarray
+            Wavelengths in Angstrom of the spectral axis of ``sliceimg``.
+        oversample : tuple of int, optional
+            ``(spectral_oversampling, spatial_oversampling)`` factors applied
+            to the image before projection. Default is (5, 2).
+        fill_value : float, optional
+            Initial value of the detector pixels, onto which the projected
+            values are added. If NaN, the pixels with no (or zero) signal are
+            set to NaN. Default is 0.
 
         Returns
         -------
-        image: 2darray
-            2d image correspinding to the detector size.
+        numpy.ndarray
+            2D image of shape ``detector["shape"]``.
+
+        Raises
+        ------
+        ValueError
+            If the shape of ``sliceimg`` does not match the lengths of
+            ``sliceid`` or ``lbda``.
         """
         # general format
         sliceid = np.atleast_1d(sliceid)
@@ -424,38 +458,52 @@ class SlicerMapper:
                           combined=False):
         """Get the contour edges of specified slices.
 
+        The contour is the convex hull of the detector positions of a
+        ``nbin_pos x nbin_lbda`` grid of field positions and wavelengths.
+
         Parameters
         ----------
-        sliceid : int or array-like
-            Slice ID(s) to get contours for.
-        lbda_range : list, optional
-            Wavelength range [min, max] in Angstrom. Default is [3500, 17000].
+        sliceid : int or array_like
+            Slice id(s) to get contours for.
+        lbda_range : list of float, optional
+            Wavelength range ``[min, max]`` in Angstrom.
+            Default is ``[3_500, 17_000]``.
         out_format : str, optional
-            Output format: "shapely"/"geometry" for shapely polygon,
-            "numpy"/"array" for vertex coordinates. Default is "numpy".
+            Output format: ``"shapely"`` or ``"geometry"`` for a shapely
+            polygon, ``"numpy"`` or ``"array"`` for the vertex coordinates.
+            Default is ``"numpy"``.
         units : str, optional
-            Units of output coordinates: "pixels"/"pxl"/"pixel" or "physical"/"mm".
-            Default is "pixels".
-        slice_edge : list, optional
-            Position range of slice edge [-1, 1]. Default is [-1, 1].
+            Units of the output coordinates: ``"pixels"`` (or ``"pxl"``,
+            ``"pixel"``) for detector pixels, ``"physical"`` or ``"mm"`` for
+            mm from the detector center. Default is ``"pixels"``.
+        slice_edge : list of float, optional
+            Range of field positions along the slice. Default is ``[-1, 1]``.
         nbin_pos : int, optional
-            Number of bins along slice position. Default is 5.
+            Number of points along the field position. Default is 5.
         nbin_lbda : int, optional
-            Number of bins along wavelength. Default is 10.
+            Number of points along wavelength. Default is 10.
         combined : bool, optional
-            If True and multiple slices given, return combined edge.
-            If False, return list of edges for each slice. Default is False.
+            If True and several slices are given, return a single contour
+            enclosing all of them. If False, return one contour per slice.
+            Default is False.
 
         Returns
         -------
-        shapely.geometry.BaseGeometry or ndarray or list
-            Contour polygon or vertices depending on out_format parameter.
-            If multiple slices and combined=False, returns list of results.
+        ``shapely.Polygon`` or numpy.ndarray or list
+            Contour polygon, or array of its ``(x, y)`` vertices of shape
+            ``(nvertices, 2)``, depending on ``out_format``. If several
+            slices are given and ``combined`` is False, a list with one such
+            result per slice.
 
         Raises
         ------
         ValueError
-            If units or out_format parameters are invalid.
+            If ``units`` or ``out_format`` are invalid.
+
+        Notes
+        -----
+        ``nbin_pos`` and ``nbin_lbda`` are not propagated when ``combined`` is
+        False and several slices are given (the defaults are used).
         """
         from shapely import geometry  # new dependecy
 
@@ -503,18 +551,24 @@ class SlicerMapper:
 
         Parameters
         ----------
-        sliceid : int or array-like
-            Slice ID(s) to get bounding box for.
-        lbda_range : list, optional
-            Wavelength range [min, max] in Angstrom. Default is [3500, 17000].
+        sliceid : int or array_like
+            Slice id(s) to get the bounding box for.
+        lbda_range : list of float, optional
+            Wavelength range ``[min, max]`` in Angstrom.
+            Default is ``[3500, 17000]``.
         units : str, optional
-            Units of output: "pixels" or "physical"/"mm". Default is "pixels".
+            Units of the output: ``"pixels"`` or ``"physical"``/``"mm"``.
+            Default is ``"pixels"``.
 
         Returns
         -------
-        ndarray
-            For single slice: array of shape (2, 2) containing [[xmin, xmax], [ymin, ymax]].
-            For multiple slices: array of shape (N, 2, 2) for each slice.
+        numpy.ndarray
+            For ``N`` slices, array of shape ``(2, N, 2)``: axis 0 is
+            ``(x, y)``, axis 1 the slice and axis 2 ``(min, max)``.
+
+        See Also
+        --------
+        get_slice_contours : The slice contours used to get the box.
         """
         sliceid = np.atleast_1d(sliceid)
         slice_contours = self.get_slice_contours(sliceid, out_format='numpy',
@@ -529,7 +583,7 @@ class SlicerMapper:
         """Paint the footprint of a slice onto a detector image.
 
         The slice contour is turned into a polygon and every pixel whose
-        centre falls inside it is set to `fillvalue`. The test is run on an
+        centre falls inside it is set to ``fillvalue``. The test is run on an
         oversampled grid and rebinned, so that the pixels straddling the edge
         of the slice end up with the fraction of their area it covers.
 
@@ -546,12 +600,13 @@ class SlicerMapper:
             Oversampling factor per axis, used to estimate the partial
             coverage of the edge pixels. Default is 3.
         **kwargs
-            Goes to `get_slice_contours`.
+            Goes to `get_slice_contours` (with ``units="pixels"`` and
+            ``out_format="numpy"``, the defaults).
 
         Returns
         -------
         numpy.ndarray
-            The input `image`, with the slice footprint painted in.
+            The input ``image``, with the slice footprint painted in.
 
         See Also
         --------
@@ -559,7 +614,7 @@ class SlicerMapper:
 
         Notes
         -----
-        `image` is modified in place, the returned array is the input object
+        ``image`` is modified in place, the returned array is the input object
         and not a copy. Only the bounding box of the slice is touched, but it
         is overwritten rather than added to, so painting slices whose bounding
         boxes overlap will erase the earlier ones.
@@ -591,36 +646,40 @@ class SlicerMapper:
 
 
     def get_pixel_positions(self, coordinates):
-        """Get detector pixel positions corresponding to slice-field-wavelength coordinates.
+        """Get the detector pixel positions of slice-field-wavelength coordinates.
 
         Parameters
         ----------
-        coordinates : pandas.DataFrame or array-like
-            3D coordinates with columns [sliceid, slicepos, wavelength]
-            or array of shape (N, 3).
+        coordinates : pandas.DataFrame or array_like
+            Coordinates ``(sliceid, fieldpos, wavelength)`` (wavelength in
+            Angstrom), as a DataFrame with these 3 columns (in that order) or
+            an array of shape ``(N, 3)``.
 
         Returns
         -------
-        ndarray
-            Pixel coordinates (x, y) in the detector plane of shape (N, 2).
+        numpy.ndarray
+            Detector pixel coordinates ``(x, y)``, of shape ``(N, 2)``. NaN
+            outside of the calibration domain.
         """
         xy = self.interp_3d_to_2d(coordinates)
         return self.physical_to_pixels(xy)
 
     def physical_to_pixels(self, a_physical, from_center=True):
-        """Convert physical coordinates (mm) to pixel coordinates.
+        """Convert physical coordinates (mm) to detector pixel coordinates.
 
         Parameters
         ----------
-        a_physical : ndarray
-            Physical coordinates in mm with shape (..., 2).
+        a_physical : numpy.ndarray
+            Physical coordinates ``(x, y)`` in mm, of shape ``(..., 2)``.
         from_center : bool, optional
-            If True, shift coordinates from detector center. Default is True.
+            If True, the physical coordinates are relative to the detector
+            center, and ``detector_shape / 2`` is added to the output pixel
+            coordinates. Default is True.
 
         Returns
         -------
-        ndarray
-            Pixel coordinates with same shape as input.
+        numpy.ndarray
+            Pixel coordinates, with the same shape as the input.
         """
         a_pixels = a_physical * getattr(u, self._XY_UNITS).to("micrometer") / self._pixel_size
         if from_center:
@@ -629,19 +688,26 @@ class SlicerMapper:
         return a_pixels
 
     def pixels_to_physical(self, a_pixels, from_center=True):
-        """Convert pixel coordinates to physical coordinates (mm).
+        """Convert detector pixel coordinates to physical coordinates (mm).
 
         Parameters
         ----------
-        a_pixels : ndarray
-            Pixel coordinates with shape (..., 2).
+        a_pixels : numpy.ndarray
+            Pixel coordinates ``(x, y)``, of shape ``(..., 2)``.
         from_center : bool, optional
-            If True, shift coordinates from detector center. Default is True.
+            If True, ``detector_shape / 2`` is subtracted from the pixel
+            coordinates, such that the physical coordinates are relative to
+            the detector center. Default is True.
 
         Returns
         -------
-        ndarray
-            Physical coordinates in mm with same shape as input.
+        numpy.ndarray
+            Physical coordinates in mm, with the same shape as the input.
+
+        Notes
+        -----
+        If ``a_pixels`` is a float `numpy.ndarray` and ``from_center`` is
+        True, it is modified in place.
         """
         a_pixels = np.atleast_1d(a_pixels) # copies
 
@@ -655,21 +721,27 @@ class SlicerMapper:
     # convertions  #
     # ------------ #
     def slice_pos_wave_to_xy(self, sliceid, fieldpos, lbda):
-        """ convert slice, field position and wavelength into xy pixel coordinates
+        """Convert slice, field position and wavelength into detector pixels.
 
         Parameters
         ----------
-        sliceid, fieldpos, lbda: float, array
-            Broadcasting 3d coordinates.
-            e.g. sliceid=[1, 10, 80], fieldpos=-1, lbda=8000
-            is understood as -1 position at lbda=8000 for each of the 3 slideid
-            while sliceid=[10, 80], fieldpos=[0, -1], lbda=8000
-            is undeunderstood as field pos 0 for slice 10 and -1 for slice 80; each at 8000A.
+        sliceid, fieldpos, lbda : float or array_like
+            Coordinates, broadcast to the shape of ``sliceid`` (wavelength in
+            Angstrom). For instance, ``sliceid=[1, 10, 80], fieldpos=-1,
+            lbda=8000`` is understood as field position -1 at 8000 A for each
+            of the 3 slices, while ``sliceid=[10, 80], fieldpos=[0, -1],
+            lbda=8000`` is understood as field position 0 for slice 10 and -1
+            for slice 80, each at 8000 A.
 
         Returns
         -------
-        x, y: array
-            coordinates [in pixels] in the detector.
+        numpy.ndarray
+            Detector pixel coordinates ``(x, y)``, of shape ``(2, N)`` (or
+            ``(2,)`` for a single point).
+
+        See Also
+        --------
+        xy_to_slice_pos_wave : The inverse conversion.
         """
         # structure broadcasting
         sliceid = np.atleast_1d(sliceid)
@@ -684,21 +756,27 @@ class SlicerMapper:
         return self.physical_to_pixels(xy).squeeze().T
 
     def xy_to_slice_pos_wave(self, x, y):
-        """ convert xy pixel coordinates into slice, field position and wavelength
+        """Convert detector pixels into slice, field position and wavelength.
 
         Parameters
-        -----------
-        x, y: float, array
-            Broadcasting 2d coordinates (in pixels).
-            e.g. x=[1, 10], y=90
-            is understood as y=90 for both x=1 and x=10
-            while x=[1, 10], y=[80, 90]
-            is undeunderstood as xy_0 = [1, 80] and xy_1=[10, 90].
+        ----------
+        x, y : float or array_like
+            Detector pixel coordinates, ``y`` being broadcast to the shape of
+            ``x``. For instance, ``x=[1, 10], y=90`` is understood as
+            ``y=90`` for both ``x=1`` and ``x=10``, while
+            ``x=[1, 10], y=[80, 90]`` is understood as the two points
+            ``(1, 80)`` and ``(10, 90)``.
 
         Returns
         -------
-        sliceid, fieldpos, lbda: array
-            3d coordinates.
+        numpy.ndarray
+            ``(sliceid, fieldpos, lbda)`` coordinates (wavelength in
+            Angstrom), of shape ``(3, N)``. NaN outside of the calibration
+            domain.
+
+        See Also
+        --------
+        slice_pos_wave_to_xy : The inverse conversion.
         """
         x = np.atleast_1d(x)
         y = np.broadcast_to(y, x.shape)
@@ -717,26 +795,28 @@ class SlicerMapper:
 
         Parameters
         ----------
-        sliceid : int or array-like
-            Slice ID(s) to display.
+        sliceid : int or array_like
+            Slice id(s) to display.
         which : str, optional
-            What to color by: "lbda" for wavelength, "id"/"sliceid" for slice ID.
-            Default is "lbda".
-        ax : matplotlib.axes.Axes or tuple, optional
-            Axes to plot on. If tuple of 2 axes, second is used for colorbar.
-            If None, creates new figure. Default is None.
+            What to color by: ``"lbda"`` for wavelength, ``"id"`` or
+            ``"sliceid"`` for slice id. Default is ``"lbda"``.
+        ax : matplotlib.axes.Axes or tuple of matplotlib.axes.Axes, optional
+            Axes to plot on. If a tuple of 2 axes, the second is used for the
+            colorbar. If None, a new figure is created. Default is None.
         **kwargs
-            Additional keyword arguments passed to plotting functions.
+            Goes to the internal plotting method: ``cmap``, ``lbda_min``,
+            ``lbda_max`` (Angstrom), ``nlbda`` (for ``which="lbda"``), and
+            otherwise to `matplotlib.patches.Polygon`.
 
         Returns
         -------
         matplotlib.figure.Figure
-            The figure object containing the plot.
+            The figure containing the plot.
 
         Raises
         ------
         ValueError
-            If which parameter is not recognized.
+            If ``which`` is not recognized.
         """
         if which == "lbda":
             fig = self._show_slice_lbda_(sliceid, ax=ax, **kwargs)
@@ -753,7 +833,7 @@ class SlicerMapper:
 
         Parameters
         ----------
-        sliceid : int or array-like
+        sliceid : int or array_like
             Slice ID(s) to display.
         ax : matplotlib.axes.Axes or tuple, optional
             Axes to plot on. If tuple of 2, second is colorbar axis. Default is None.
@@ -825,7 +905,7 @@ class SlicerMapper:
 
         Parameters
         ----------
-        sliceid : int or array-like
+        sliceid : int or array_like
             Slice ID(s) to display.
         ax : matplotlib.axes.Axes or tuple, optional
             Axes to plot on. If tuple of 2, second is colorbar axis. Default is None.
@@ -894,45 +974,24 @@ class SlicerMapper:
     # =============== #
     @property
     def keys(self):
-        """Get metadata dictionary of column name mappings.
-
-        Returns
-        -------
-        dict
-            Dictionary containing column name mappings used during initialization.
-        """
+        """Column names and units of the calibration data, as given at initialization."""
         return self._metakey
 
     @property
     def nslices(self):
-        """Get the number of unique slices in the data.
-
-        Returns
-        -------
-        int
-            Number of unique slice IDs.
-        """
+        """Number of unique slice ids in the calibration data."""
         return self.data[ self.keys["sliceid"] ].nunique()
 
     @property
     def data(self):
-        """Get the input data DataFrame.
-
-        Returns
-        -------
-        pandas.DataFrame
-            The calibration data.
-        """
+        """Calibration data (`pandas.DataFrame`)."""
         return self._data
 
     @property
     def interp_3d_to_2d(self):
-        """Get or create interpolator from 3D (slice-field-wavelength) to 2D (xy) space.
+        """Interpolator from (slice id, field position, wavelength [A]) to detector (x, y) [mm].
 
-        Returns
-        -------
-        scipy.interpolate.LinearNDInterpolator
-            Interpolator function mapping 3D coordinates to 2D detector coordinates.
+        A `scipy.interpolate.LinearNDInterpolator`, built at first access.
         """
         if not hasattr(self, "_interp_3d_to_2d") or self._interp_3d_to_2d is None:
             self._interp_3d_to_2d = LinearNDInterpolator(self._sliceposwave, self._xy)
@@ -941,12 +1000,9 @@ class SlicerMapper:
 
     @property
     def interp_2d_to_3d(self):
-        """Get or create interpolator from 2D (xy) to 3D (slice-field-wavelength) space.
+        """Interpolator from detector (x, y) [mm] to (slice id, field position, wavelength [A]).
 
-        Returns
-        -------
-        scipy.interpolate.LinearNDInterpolator
-            Interpolator function mapping 2D detector coordinates to 3D coordinates.
+        A `scipy.interpolate.LinearNDInterpolator`, built at first access.
         """
         if not hasattr(self, "_interp_2d_to_3d") or self._interp_2d_to_3d is None:
             self._interp_2d_to_3d = LinearNDInterpolator(self._xy, self._sliceposwave)
@@ -955,14 +1011,7 @@ class SlicerMapper:
 
     @property
     def detector(self):
-        """Get detector properties dictionary.
-
-        Returns
-        -------
-        dict
-            Dictionary with keys: "shape" (tuple of detector dimensions),
-            "pixel_size" (float, pixel size in micrometers).
-        """
+        """Detector properties, as a dict with ``"shape"`` (``(ny, nx)`` in pixels) and ``"pixel_size"`` (micrometers)."""
         return {"shape": self._detector_shape,
                 "pixel_size": self._pixel_size}
 

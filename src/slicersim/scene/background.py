@@ -1,7 +1,8 @@
-""" Scene: background module.
+"""Scene: background module.
 
 Spatially flat backgrounds of the scene, e.g. the zodiacal light
 (`zodiacal_spectrum`), wrapped as a `Background` scene element.
+Background spectra are surface brightnesses, in erg/s/cm^2/A/arcsec^2.
 """
 import warnings
 
@@ -17,13 +18,21 @@ def get_background_model_func(name):
     Parameters
     ----------
     name : str
-        Name of the background model.
-        - "zodi"
+        Name of the background model:
+
+        - any name containing ``"zodi"``: `zodiacal_spectrum`.
+        - ``"bb"`` or ``"blackbody"``:
+          `~slicersim.thermal.get_source_radiation`.
 
     Returns
     -------
     callable
         The model function for the given background.
+
+    Raises
+    ------
+    NotImplementedError
+        If ``name`` is not a known background model.
     """
     if "zodi" in name:
         model_func = zodiacal_spectrum
@@ -38,30 +47,39 @@ def get_background_model_func(name):
     return model_func
 
 def zodiacal_spectrum(lbda, scale=1, model="Aldering01.BB5800"):
-    """Sky background (zodi) spectrum at the North Ecliptic Pole.
+    """Sky background (zodiacal light) spectrum at the North Ecliptic Pole.
 
-    Two models are implemented from Aldering 2001 (LBNL-51157):
-    - Black-Body approximation (`Aldering01.BB5800`)
-    - Truncated Power Law (`Aldering01.TPL`)
+    Two models are implemented from Aldering (2001):
+
+    - ``"Aldering01.BB5800"``: 5800 K blackbody approximation.
+    - ``"Aldering01.TPL"``: truncated power law (flat below 6100 A).
 
     Parameters
     ----------
     lbda : array_like
-        Wavelength in Angstrom.
+        Wavelength in Angstrom. Must be a `numpy.ndarray` for the
+        ``"Aldering01.TPL"`` model.
     scale : float, optional
-        Scaling factor. Default is 1.
+        Multiplicative scaling factor. Default is 1.
     model : str, optional
-        Model name. Default is "Aldering01.BB5800".
+        Model name, ``"Aldering01.BB5800"`` or ``"Aldering01.TPL"``.
+        Default is ``"Aldering01.BB5800"``.
 
     Returns
     -------
-    array_like
-        Flux in erg/s/cm^2/A/arcsec^2.
+    numpy.ndarray
+        Surface brightness in erg/s/cm^2/A/arcsec^2.
+
+    Raises
+    ------
+    NotImplementedError
+        If ``model`` is unknown.
 
     References
     ----------
-    Scaramella et al. 2022, A&A 662, A112
-    (`2022A&A...662A.112E <https://ui.adsabs.harvard.edu/abs/2022A%26A...662A.112E>`_)
+    - Aldering, G. 2001, LBNL report LBNL-51157.
+    - Euclid Collaboration: Scaramella, R. et al. 2022, A&A 662, A112
+      (`2022A&A...662A.112E <https://ui.adsabs.harvard.edu/abs/2022A%26A...662A.112E>`_).
 
     Examples
     --------
@@ -104,22 +122,45 @@ def zodiacal_spectrum(lbda, scale=1, model="Aldering01.BB5800"):
 #                  #
 # ================ #
 class Background(SceneElement):
-    """Class for background scene elements."""
+    """Spatially flat background scene element (e.g. zodiacal light).
+
+    Its model function returns a surface brightness in
+    erg/s/cm^2/A/arcsec^2. Use `from_config` or `from_spectrum` to build it.
+    """
 
     @classmethod
     def from_config(cls, config):
-        """Build the class from a configuration file.
+        """Build a `Background` from a configuration dictionary.
 
         Parameters
         ----------
         config : dict
-            Dictionary containing the configuration.
-            It must contain the key "name".
+            Dictionary containing the configuration. It must contain either
+            ``"func"`` (the model function, a callable) or ``"name"`` (see
+            `get_background_model_func`). All entries, together with the
+            model function defaults, are stored in the meta and used as
+            parameters of the model function (e.g. ``"model"`` and
+            ``"scale"`` for `zodiacal_spectrum`).
 
         Returns
         -------
         Background
-            An instance of the Background class.
+            An instance of the `Background` class.
+
+        Raises
+        ------
+        ValueError
+            If neither ``"name"`` nor ``"func"`` is in ``config``.
+
+        Warns
+        -----
+        UserWarning
+            If the first argument of the model function is not named
+            ``lbda``, ``wave`` or ``wavelength``.
+
+        Examples
+        --------
+        >>> bkgd = Background.from_config({"name": "zodi", "scale": 2})
         """
         func = config.get("func", None)
         name = config.get("name", None)
@@ -139,25 +180,34 @@ class Background(SceneElement):
     @classmethod
     def from_spectrum(cls, lbda_, flux_, mag=20, band="bessellb",
                        meta={}):
-        """Generate a `PointSource` from a spectrum.
+        """Generate a `Background` from a tabulated spectrum.
+
+        The spectrum is linearly interpolated at the requested wavelengths
+        (NaN outside of ``lbda_``) and rescaled so that its AB magnitude in
+        ``band`` equals ``mag``.
 
         Parameters
         ----------
         lbda_ : array_like
-            Wavelength array in Angstrom of the reference spectrum.
+            Wavelength array of the reference spectrum, in Angstrom.
         flux_ : array_like
-            Flux of the reference spectrum.
-        mag : float, optional
-            Default magnitude of the target. Default is 20.
+            Surface brightness of the reference spectrum, in
+            erg/s/cm^2/A/arcsec^2.
+        mag : float or None, optional
+            AB magnitude (per arcsec^2) of the background in ``band``. If
+            None, the reference spectrum is used as is. Default is 20.
         band : str, optional
-            Name of the bandpass (must be known by sncosmo). Default is "bessellb".
+            Name of the bandpass (must be known by ``sncosmo``).
+            Default is ``"bessellb"``.
         meta : dict, optional
-            Meta information carried by the object. Default is {}.
+            Meta information carried by the object. It is updated in place
+            with ``mag``, ``band``, ``lbda_ref`` and ``flux_ref``.
+            Default is an empty dict.
 
         Returns
         -------
-        PointSource
-            An instance of the `PointSource` class.
+        Background
+            An instance of the `Background` class.
         """
         from sncosmo import Spectrum
         meta["mag"] = mag

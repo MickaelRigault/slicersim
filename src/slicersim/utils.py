@@ -8,7 +8,11 @@ import numpy as np
 
 
 def recursive_get(dict_, key, default=None):
-    """ Recursively get a key from a nested dictionary.
+    """Recursively get a key from a nested dictionary.
+
+    The key is first looked for at the top level of ``dict_``, then in its
+    nested dictionaries (depth first, in insertion order). The first non-None
+    value found is returned.
 
     Parameters
     ----------
@@ -16,13 +20,18 @@ def recursive_get(dict_, key, default=None):
         The dictionary to search.
     key : str
         The key to search for.
-    default : any, optional
-        The value to return if the key is not found. Defaults to None.
+    default : object, optional
+        The value to return if the key is not found. Default is None.
 
     Returns
     -------
-    any
-        The value of the key if found, otherwise the default value.
+    object
+        The value of the key if found, otherwise ``default``.
+
+    Examples
+    --------
+    >>> recursive_get({"a": 1, "b": {"c": 2}}, "c")
+    2
     """
     if key in dict_:
         return dict_.get(key)
@@ -36,9 +45,27 @@ def recursive_get(dict_, key, default=None):
     return default
 
 def mesh_kwargs(**kwargs):
-    """
-    Create a dataframe with all parameter combinations.
+    """Create a dataframe with all parameter combinations.
 
+    Parameters
+    ----------
+    **kwargs
+        Parameter names and the list of values each of them takes.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per combination of the input values, one column per
+        parameter.
+
+    Notes
+    -----
+    The combinations follow the `numpy.meshgrid` default (``indexing="xy"``)
+    ordering: for three parameters ``a, b, c``, ``b`` varies the slowest, then
+    ``a``, and ``c`` the fastest.
+
+    Examples
+    --------
     >>> mesh_kwargs(scale=[0.02, 0.05], sigma=[0.03, 0.06])
        scale  sigma
     0   0.02   0.03
@@ -61,22 +88,22 @@ def mesh_kwargs(**kwargs):
     return df_params
 
 def inspect_func( func ):
-    """ Inspect the parameters of a function.
+    """Inspect the parameters of a function.
 
-    This function returns the names of all parameters (args and kwargs) and a
-    dictionary of the keyword arguments with their default values.
+    This function returns the names of all positional-or-keyword parameters
+    and a dictionary of those having a default value.
 
     Parameters
     ----------
-    func : function
+    func : callable
         The function to inspect.
 
     Returns
     -------
-    list
-        A list of the names of all parameters.
-    dict
-        A dictionary of the keyword arguments and their default values.
+    all_params : list of str
+        Names of all the parameters.
+    defaults : dict
+        Parameters that have a default value, mapped to that value.
     """
     import inspect
     inspect_full = inspect.getfullargspec( func )
@@ -91,20 +118,39 @@ def inspect_func( func ):
 
 
 def restride(arr, binfactor, squeezed=True, flattened=False):
-    """ Rebin ND-array `arr` by `binfactor`.
+    """Restride an N-D array into bins, without copying.
 
-    Let `arr.shape = (s1, s2, ...)` and `binfactor = (b1, b2, ...)` (same
-    length), new shape will be `(s1/b1, s2/b2, ... b1, b2, ...)` (squeezed).
+    Let ``arr.shape = (s1, s2, ...)`` and ``binfactor = (b1, b2, ...)`` (same
+    length), the new shape will be ``(s1/b1, s2/b2, ..., b1, b2, ...)``
+    (squeezed).
 
-    If `binfactor` is an iterable of length < `arr.ndim`, it is prepended
-    with 1's.
+    Parameters
+    ----------
+    arr : numpy.ndarray
+        Input array. Each ``s_i`` must be a multiple of the corresponding
+        ``b_i``.
+    binfactor : int or tuple of int
+        Bin factor. If an integer, it is used for all axes. If its length is
+        lower than ``arr.ndim``, it is prepended with 1's.
+    squeezed : bool, optional
+        Remove the length-1 axes from the output. Default is True.
+    flattened : bool, optional
+        Flatten the bin axes into a single axis. Note that this will probably
+        induce a copy of the array. Default is False.
 
-    If `binfactor` is an integer, it is considered as the bin factor for all
-    axes.
+    Returns
+    -------
+    numpy.ndarray
+        Restrided view of ``arr``, of shape
+        ``(s1/b1, s2/b2, ..., b1, b2, ...)``.
 
-    If `flattened`, the bin axes are explicitely flattened into a single
-    axis. Note that this will probably induce a copy of the array.
+    Raises
+    ------
+    AssertionError
+        If ``binfactor`` is incompatible with the shape of ``arr``.
 
+    Examples
+    --------
     Bin 2D-array by a factor 2:
 
     >>> restride(np.ones((6, 8)), 2).shape
@@ -126,6 +172,7 @@ def restride(arr, binfactor, squeezed=True, flattened=False):
     >>> restride(q, (2, 2)).mean(axis=(-1, -2))
     array([[[ 3.5,  5.5,  7.5],
             [15.5, 17.5, 19.5]],
+    <BLANKLINE>
            [[27.5, 29.5, 31.5],
             [39.5, 41.5, 43.5]]])
 
@@ -160,26 +207,41 @@ def restride(arr, binfactor, squeezed=True, flattened=False):
 
 
 def bin_array(arr, binfactor, function):
-    """
-    Bin (through `function`) ND-array `arr` by `binfactor`.
+    """Bin an N-D array by a given factor, using a reduction function.
 
-    Let `arr.shape = (s1, s2, ...)` and `binfactor = (b1, b2, ...)` (same
-    length), new shape will be `(s1/b1, s2/b2, ...)`.
+    Let ``arr.shape = (s1, s2, ...)`` and ``binfactor = (b1, b2, ...)`` (same
+    length), the new shape will be ``(s1/b1, s2/b2, ...)``.
 
-    If `binfactor` is an iterable of length < `arr.ndim`, it is prepended
-    with 1's.
+    Parameters
+    ----------
+    arr : numpy.ndarray
+        Input array. Each ``s_i`` must be a multiple of the corresponding
+        ``b_i``.
+    binfactor : int or tuple of int
+        Bin factor. If an integer, it is used for all axes. If its length is
+        lower than ``arr.ndim``, it is prepended with 1's.
+    function : callable
+        Reduction function accepting an ``axis`` argument, e.g. `numpy.mean`
+        or `numpy.sum`.
 
-    If `binfactor` is an integer, it is considered as the bin factor for all
-    axes.
+    Returns
+    -------
+    numpy.ndarray
+        Binned array of shape ``(s1/b1, s2/b2, ...)``.
 
+    See Also
+    --------
+    unbin_array : The opposite operation.
+    restride : The underlying binning view.
+
+    Examples
+    --------
     >>> bin_array(np.arange(4*6).reshape(4, 6), 2, np.mean).shape
     (2, 3)
     >>> bin_array(np.arange(4*6).reshape(4, 6), (2,), np.mean).shape
     (4, 3)
     >>> bin_array(np.arange(4*6).reshape(4, 6), (2, 1), np.mean).shape
     (2, 6)
-
-    .. Note:: this is the opposite of :func:`unbin_array()`.
     """
 
     try:                        # binfactor is list-like
@@ -195,26 +257,37 @@ def bin_array(arr, binfactor, function):
 
 
 def unbin_array(arr, binfactor):
-    """
-    Unbin (by repetition) ND-array `arr` by `binfactor`.
+    """Unbin (by repetition) an N-D array by a given factor.
 
-    Let `arr.shape = (s1, s2, ...)` and `binfactor = (b1, b2, ...)` (same
-    length), new shape will be `(s1*b1, s2*b2, ...)`.
+    Let ``arr.shape = (s1, s2, ...)`` and ``binfactor = (b1, b2, ...)`` (same
+    length), the new shape will be ``(s1*b1, s2*b2, ...)``.
 
-    If `binfactor` is an iterable of length < `arr.ndim`, it is prepended
-    with 1's.
+    Parameters
+    ----------
+    arr : numpy.ndarray
+        Input array.
+    binfactor : int or tuple of int
+        Unbin factor. If an integer, it is used for all axes. If its length
+        is lower than ``arr.ndim``, it is prepended with 1's.
 
-    If `binfactor` is an integer, it is considered as the bin factor for all
-    axes.
+    Returns
+    -------
+    numpy.ndarray
+        Array of shape ``(s1*b1, s2*b2, ...)``, each input element being
+        repeated ``b1 x b2 x ...`` times.
 
+    See Also
+    --------
+    bin_array : The opposite operation.
+
+    Examples
+    --------
     >>> unbin_array(np.arange(2*3).reshape(2, 3), 2).shape
     (4, 6)
     >>> unbin_array(np.arange(2*3).reshape(2, 3), (2,)).shape
     (2, 6)
     >>> unbin_array(np.arange(2*3).reshape(2, 3), (2, 1)).shape
     (4, 3)
-
-    .. Note:: this is the opposite of :func:`bin_array()`.
     """
 
     try:                        # binfactor is list-like
@@ -232,15 +305,32 @@ def unbin_array(arr, binfactor):
 
 
 def integ_gaussian1D_erf(x_edges, sigma, mu=0, normed=True):
-    """
-    Return 1D-Gaussian integrated over pixels (exact).
+    """Return a 1D Gaussian integrated over pixels (exact).
 
-    :param x_edges: x-coordinates of pixel edges (nx+1,)
-    :param sigma: Gaussian standard deviation (scalar or shape (nsig, 1))
-    :param mu: center of the 1D Gaussian
-    :param normed: use a total flux-normalized 1D Gaussian
-    :return: sigma.shape + (nx,) array
+    The integral over each pixel is computed analytically with the error
+    function.
 
+    Parameters
+    ----------
+    x_edges : numpy.ndarray
+        Coordinates of the pixel edges, of shape ``(nx+1,)``.
+    sigma : float or numpy.ndarray
+        Gaussian standard deviation, scalar or of shape ``(nsig, 1)``, in the
+        same units as ``x_edges``.
+    mu : float, optional
+        Center of the 1D Gaussian. Default is 0.
+    normed : bool, optional
+        If True, use a unit-integral Gaussian; otherwise use a Gaussian of
+        unit peak amplitude. Default is True.
+
+    Returns
+    -------
+    numpy.ndarray
+        Integrated Gaussian of shape ``sigma.shape[:-1] + (nx,)`` (``(nx,)``
+        for a scalar ``sigma``).
+
+    Examples
+    --------
     >>> x_edges = np.linspace(-10, 10, 41); sigma = 2
     >>> np.isclose(
     ...     integ_gaussian1D_erf(x_edges, sigma=sigma, normed=True).sum(),
@@ -264,26 +354,51 @@ def integ_gaussian1D_erf(x_edges, sigma, mu=0, normed=True):
     return f
 
 def integ_gaussian2D_erf(xy_edges, sigma, mu=(0, 0), normed=True):
-    """ Return (axisymmetric) 2D-Gaussian integrated over pixels (exact).
+    """Return a 2D Gaussian integrated over pixels (exact).
 
-    :param xy_edges: x- and y-coordinates of pixel edges
-                     (1, nx+1) and (ny+1, 1)
-    :param sigma: Gaussian standard deviation (scalar or shape (nsig, 1, 1))
-    :param mu: (x, y) center of the 2D Gaussian
-    :param normed: use a total flux-normalized 2D Gaussian
-    :return: sigma.shape + (ny, nx) array
+    The Gaussian is aligned with the x and y axes (no rotation), and the
+    integral over each pixel is computed analytically with the error
+    function.
 
+    Parameters
+    ----------
+    xy_edges : tuple of numpy.ndarray
+        ``(x_edges, y_edges)`` coordinates of the pixel edges, as an "open"
+        mesh-grid of shapes ``(1, nx+1)`` and ``(ny+1, 1)`` (see
+        `numpy.ogrid`).
+    sigma : array_like
+        Gaussian standard deviations, in the same units as ``xy_edges``, of
+        shape ``(..., 2)`` with the last axis being ``(sigma_y, sigma_x)``.
+        A 2D input of shape ``(nsig, 2)`` is reshaped as ``(nsig, 1, 2)``.
+    mu : tuple of float or array_like, optional
+        ``(x, y)`` center of the 2D Gaussian; it must broadcast to the shape
+        of ``sigma``. Default is (0, 0).
+    normed : bool, optional
+        If True, use a unit-integral Gaussian; otherwise use a Gaussian of
+        unit peak amplitude. Default is True.
+
+    Returns
+    -------
+    numpy.ndarray
+        Integrated Gaussian of shape ``(ny, nx)`` for a single ``sigma``, or
+        ``(nsig, ny, nx)`` for ``sigma`` of shape ``(nsig, 2)`` or
+        ``(nsig, 1, 2)``.
+
+    Raises
+    ------
+    NotImplementedError
+        If ``xy_edges`` is not an open mesh-grid.
+
+    Examples
+    --------
     >>> y, x = np.ogrid[-5:5.1, -6:6.1]
-    >>> sigma = np.array([1])
-    >>> np.isclose(
-    ...     integ_gaussian2D_erf((x, y), sigma=sigma, normed=True).sum(),
-    ...     1)
+    >>> pixels = integ_gaussian2D_erf((x, y), sigma=[1, 1])
+    >>> pixels.shape
+    (10, 12)
+    >>> np.isclose(pixels.sum(), 1)
     np.True_
-    >>> np.isclose(
-    ...     integ_gaussian2D_erf((x, y), sigma=sigma, normed=False).sum(),
-    ...     sigma**2 * 2*np.pi)
-    array([ True])
-
+    >>> integ_gaussian2D_erf((x, y), sigma=[[1, 1], [2, 2], [3, 3]]).shape
+    (3, 10, 12)
     """
     from scipy.special import erf
 
@@ -323,20 +438,32 @@ def integ_gaussian2D_erf(xy_edges, sigma, mu=(0, 0), normed=True):
 
 
 def complete_dims(arr, xdims, squeeze=True):
-    """
-    Complete dimensions of an array.
+    """Complete the dimensions of an array with trailing length-1 axes.
 
-    * If `xdims > 0`, add `xdims` dimensions, final shape is
-      `arr.shape + (1,) * xdims`;
-    * If `xdims < 0`, add as many dimensions as necessary to reach
-      `|xdims|` dimensions at least, final shape is
-      `arr.shape + (1,) * (|xdims| - arr.ndim)`.
+    - If ``xdims >= 0``, add ``xdims`` dimensions, the final shape is
+      ``arr.shape + (1,) * xdims``;
+    - If ``xdims < 0``, add as many dimensions as necessary to reach
+      ``|xdims|`` dimensions at least, the final shape is
+      ``arr.shape + (1,) * (|xdims| - arr.ndim)``.
 
-    :param np.array arr: input array
-    :param int xdims: extra dimensions to be appended
-    :param bool squeeze: remove *trivial* dimensions
-    :return: expanded array, of shape `arr.shape + (1,) * xdims`
+    Parameters
+    ----------
+    arr : array_like
+        Input array.
+    xdims : int
+        Number of extra dimensions to append (if positive), or minimal
+        number of dimensions of the output (if negative).
+    squeeze : bool, optional
+        Remove the *leading* length-1 dimensions (up to the first non-trivial
+        one). Default is True.
 
+    Returns
+    -------
+    numpy.ndarray
+        Expanded array.
+
+    Examples
+    --------
     >>> complete_dims(1, 2, False).shape  # () + (1,)*2
     (1, 1)
     >>> complete_dims(1, 2).shape

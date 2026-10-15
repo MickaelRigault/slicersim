@@ -12,29 +12,36 @@ import pandas
 
 
 class CalSpecSource:
-    """
-    A class to handle the retrieval and processing of CalSpec data.
+    """Access to the HST CalSpec spectrophotometric standard stars.
 
-    This class provides methods to download file lists, get URLs of specific sources,
-    and retrieve spectral data.
+    This class downloads the list of CalSpec files from the STScI archive and
+    provides methods to get the URL, the fits data and the spectrum of a
+    given star. A module-level instance, ``calspecsource``, is created at
+    import (None if the archive cannot be reached).
+
+    References
+    ----------
+    - Bohlin, R. C., Gordon, K. D., & Tremblay, P.-E. 2014, PASP, 126,
+      711.
     """
 
     _ARCHIVE_URL = "https://archive.stsci.edu/hlsps/reference-atlases/cdbs/current_calspec/"
     def __init__(self):
-        """ Initialize the CalSpecSource instance.
+        """Initialize the CalSpecSource instance.
 
-        This method initializes the instance by downloading the file list of CalSpec sources.
+        The list of CalSpec files is downloaded from the STScI archive.
         """
         self._df_source = self.download_filelist()
 
     @classmethod
     def download_filelist(cls):
-        """ Download the list of all the CalSpec star files.
+        """Download the list of all the CalSpec star files.
 
         Returns
         -------
         pandas.DataFrame
-            A DataFrame containing the list of files and associated star names.
+            DataFrame indexed by star name, with the fits file names in the
+            ``"basename"`` column.
         """
         import requests
         calspeclit = requests.get(cls._ARCHIVE_URL)
@@ -45,20 +52,27 @@ class CalSpecSource:
         return df.set_index("name")
 
     def get_url_of(self, name):
-        """ get the URL of a CalSpec source
+        """Get the URL of a CalSpec source.
+
+        If several files exist for the star, the last one (latest version)
+        is used.
 
         Parameters
         ----------
         name : str
-            The name of the source.
-            You can simply provide the start of the source name.
-            for instance: name='bd_17' for 'bd_17d4708'. However
-            name='bd' will break as several bd_* star exist.
+            The name of the source. The start of the name is enough, e.g.
+            ``name="bd_17"`` for ``"bd_17d4708"``. However ``name="bd"``
+            fails as several ``bd_*`` stars exist.
 
         Returns
         -------
         str
-            The URL of the specified source.
+            The URL of the fits file of the source.
+
+        Raises
+        ------
+        ValueError
+            If ``name`` matches several stars.
         """
         if name in self.source.index:
             basename = self.source.loc[name]["basename"]
@@ -74,19 +88,17 @@ class CalSpecSource:
         return os.path.join(self._ARCHIVE_URL, basename)
 
     def get_data(self, name):
-        """ retrieve fits data a specific CalSpec source.
+        """Retrieve the fits data of a CalSpec source.
 
         Parameters
         ----------
         name : str
-            The name of the source.
-            You can simply provide the start of the source name.
-            for instance: name='bd_17' for 'bd_17d4708'. However
-            name='bd' will break as several bd_* star exist.
+            The name of the source, see `get_url_of`.
 
         Returns
         -------
-        astropy.io.fits
+        astropy.io.fits.HDUList
+            The opened fits file.
         """
         from astropy.io import fits
         # get the data url
@@ -94,27 +106,29 @@ class CalSpecSource:
         return fits.open(url_target)
 
     def get_spectrum(self, name, lbda_range=[3_000, 20_000], var_source=["sys", "stat"]):
-        """ retrieve the spectrum of a specific CalSpec source.
+        """Retrieve the spectrum of a CalSpec source.
 
         Parameters
         ----------
         name : str
-            The name of the source.
-            You can simply provide the start of the source name.
-            for instance: name='bd_17' for 'bd_17d4708'. However
-            name='bd' will break as several bd_* star exist.
-
-        lbda_range : list
-            The wavelength range to filter the spectrum data.
-
-        var_source : list
-            The sources of variance to include.
-            If both sys and stat are given, the sum of variance is given.
+            The name of the source, see `get_url_of`.
+        lbda_range : list of float, optional
+            Wavelength range ``[min, max]``, in Angstrom, to which the
+            spectrum is restricted. Default is ``[3000, 20000]``.
+        var_source : list of str or None, optional
+            The sources of variance to include, among ``"stat"`` and
+            ``"sys"``. If both are given, the variances are summed. If None,
+            no variance is returned. Default is ``["sys", "stat"]``.
 
         Returns
         -------
-        tuple
-            (wavelength, flux, variance)
+        lbda : numpy.ndarray
+            Wavelength in Angstrom.
+        flux : numpy.ndarray
+            Flux in erg/s/cm^2/A.
+        variance : numpy.ndarray or None
+            Flux variance in (erg/s/cm^2/A)^2, None if ``var_source`` is
+            None.
         """
         # grab data from calspec url
         fits_data = self.get_data(name)
@@ -153,7 +167,7 @@ class CalSpecSource:
     # ============ #
     @property
     def source(self):
-        """ dataframe containing the list of CalSpec sources. """
+        """DataFrame of the CalSpec files, indexed by star name."""
         return self._df_source
 
 # ================ #

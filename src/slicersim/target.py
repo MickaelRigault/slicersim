@@ -1,4 +1,4 @@
-""" This module handles the targets, the observation-level view of a simulation.
+"""Targets, the observation-level view of a simulation.
 
 A target wraps a `~slicersim.simulation.Simulation` and exposes what one
 actually asks of an observation: exposure time and signal-to-noise
@@ -7,8 +7,9 @@ access to the simulated spectra and cubes.
 
 `VirtualTarget` holds that generic interface and is not meant to be used
 directly. The concrete targets differ only by the scene they build:
-`Supernova` for SN Ia models, `Kilonova` for kilonova models, `CalSpec` for HST CalSpec standard stars, and
-`Target` for an arbitrary input spectrum. Instrument-specific flavours are
+`Supernova` for SN Ia models, `Kilonova` for kilonova models, `CalSpec` for
+HST CalSpec standard stars, `BlackBody` and `PowerLaw` for analytic spectra,
+and `Target` for an arbitrary input spectrum. Instrument-specific flavours are
 defined in `~slicersim.lazuli`, and calibration exposures in
 `~slicersim.calibration`.
 """
@@ -21,27 +22,27 @@ from .scene import get_scene
 
 
 class VirtualTarget:
-    """A virtual class to build Lazuli Target (see child classes).
+    """Base class of all targets (see child classes).
 
-    This class provides a generic interface to the `slicersim.Simulation`
-    object. It is not intended to be used directly, but rather to be inherited
-    by other classes that define specific targets.
+    This class provides a generic, observation-level interface to a
+    `~slicersim.simulation.Simulation`. It is not intended to be used
+    directly, but rather to be inherited by classes that define specific
+    targets.
 
     Parameters
     ----------
-    simulation : slicersim.Simulation, optional
-        The simulation object. Default is None.
-
+    simulation : slicersim.simulation.Simulation, optional
+        The simulation the target wraps. Default is None.
     """
     _DEFAULT_CONFIG = {"instrument": None}
 
     def __init__(self, simulation=None):
-        """Initialize the VirtualLazuliTarget.
+        """Initialize the VirtualTarget.
 
         Parameters
         ----------
-        simulation : slicersim.Simulation, optional
-            The simulation object. Default is None.
+        simulation : slicersim.simulation.Simulation, optional
+            The simulation the target wraps. Default is None.
         """
         # set it.
         self._simulation = simulation
@@ -64,24 +65,25 @@ class VirtualTarget:
 
         Parameters
         ----------
-        scene : dict, optional
-            Scene configuration with the given format (see
-            `slicersim.scene.get_scene`)::
+        scene : dict or str, optional
+            Scene configuration (see `~slicersim.scene.get_scene`), in the
+            format::
 
                 scene = {"scene": {"pointsource": {},  # PSF
                                    "background": {},   # spatially flat
                                    "host": {}}}        # structured background
 
-            Default is None.
+            or the name of a scene configuration file. Default is None.
         instrument : str or dict, optional
             Configuration of the instrument, if any. If None, the class
             ``_INSTRUMENT`` is used when defined. Default is None.
         **kwargs
-            Goes to `iotools.get_config()` and updates the configuration.
+            Goes to `~slicersim.iotools.get_config`, overriding the
+            ``scene`` and ``instrument`` configuration.
 
         Returns
         -------
-        VirtualTarget
+        ~slicersim.target.VirtualTarget
             An instance of the class.
         """
         if instrument is None and hasattr(cls,"_INSTRUMENT"):
@@ -103,7 +105,7 @@ class VirtualTarget:
 
         Returns
         -------
-        VirtualTarget
+        ~slicersim.target.VirtualTarget
             An instance of the class.
 
         See Also
@@ -126,13 +128,16 @@ class VirtualTarget:
             only the contribution of this target is returned.
             Default is None.
         **kwargs
-            Goes to `get_cube`.
+            Goes to ``get_cube``. The generic
+            `~slicersim.target.VirtualTarget.get_cube`
+            accepts none; use them with subclasses such as
+            `~slicersim.lazuli.VirtualLazuliTarget`.
 
         Returns
         -------
         numpy.ndarray
-            2D detector image. When `image` is given, the sum of `image` and
-            of the projected cube; `image` itself is left unchanged.
+            2D detector image. When ``image`` is given, the sum of ``image``
+            and of the projected cube; ``image`` itself is left unchanged.
         """
         cube, *_ = self.get_cube(**kwargs)
 
@@ -146,20 +151,23 @@ class VirtualTarget:
     #   Methods       #
     # =============== #
     def change_detector(self, nmd=None, max_group=None, nramps=None):
-        """Change the detector configuration.
+        """Change the detector read-out configuration.
+
+        Parameters set to None are left unchanged.
 
         Parameters
         ----------
-        nmd : list, optional
-            MACC mode (n, m, d).
-            n: number of groups
-            m: number of frames per group
-            d: number of drops between groups
+        nmd : tuple of int, optional
+            MACC mode ``(n_groups, n_frames_per_group, n_drops)``.
             Default is None.
         max_group : int, optional
-            Maximum number of groups for a single ramp. Default is None.
+            Maximum number of groups in a single ramp. Default is None.
         nramps : int, optional
             Number of ramps. Default is None.
+
+        Returns
+        -------
+        None
         """
         if max_group is not None:
             self.simulation.update(max_group=max_group)
@@ -175,13 +183,16 @@ class VirtualTarget:
 
         Parameters
         ----------
-        spatial_shape : tuple of float, optional
-            Manually set the grid shape (e.g., (40, 40)).
-            This is on top of `sampling` if any. Default is None.
-        spatial_scale : float or list, optional
-            Manually set spaxel size in arcsec.
-            If float, this is assumed to be squared. If list, (x, y).
-            This is on top of `sampling` if any. Default is None.
+        spatial_shape : tuple of int, optional
+            Spaxel grid shape (e.g. ``(40, 40)``). If None, it is left
+            unchanged. Default is None.
+        spatial_scale : float or list of float, optional
+            Spaxel size in arcsec. If a float, spaxels are square; if a list,
+            ``(x, y)``. If None, it is left unchanged. Default is None.
+
+        Returns
+        -------
+        None
         """
         new_config = {}
 
@@ -196,53 +207,66 @@ class VirtualTarget:
 
     # SETTER
     def change_properties(self, **kwargs):
-        """Shortcut to change any of the simulation properties.
+        """Change any mutable parameter of the simulation.
+
+        Shortcut to `~slicersim.simulation.Simulation.update`.
 
         Parameters
         ----------
         **kwargs
-            The properties to change. The keys should be the name of the
-            property to change, and the values the new value.
+            The parameters to change, as ``name=value`` (e.g.
+            ``redshift=0.5`` or ``pointsource__phase=-2``).
+
+        Returns
+        -------
+        None
         """
         _ = self.simulation.update(**kwargs)
 
     def setup_to_snr(self, snr, per_resolution=True,
                      lbda_range=[4000, 6800], frame='rest',
                      statistic=np.nanmean, inplace=True, **kwarg):
-        """Set the simulation parameters to achieve a specified Signal-to-Noise Ratio (SNR).
+        """Find the detector read-out configuration reaching a target SNR.
+
+        The MACC mode and number of ramps are varied until the
+        signal-to-noise ratio over ``lbda_range`` reaches ``snr`` (see
+        `~slicersim.simulation.Simulation.fetch_snr`).
 
         Parameters
         ----------
         snr : float
-            The target Signal-to-Noise Ratio to achieve.
-        per_resolution: bool
-            Did you provide the snr per spectral resolution element (True) or
-            per wavelength bins (False).
-            If per resolution, this method will convert this into snr per
-            wavelength bin (snr_lbdabin = snr / sqrt(dispersion_resolution))
-            and feed this to the fetch_snr() Simulation methods that expects it
-            per wavelength bin.
-        lbda_range : list of int, optional
-            The wavelength range in Angstroms over which to calculate the SNR.
-            Default is [4000, 6800].
+            Target signal-to-noise ratio.
+        per_resolution : bool, optional
+            If True, ``snr`` is given per spectral resolution element and is
+            converted into a SNR per wavelength bin,
+            ``snr / sqrt(dispersion_resolution)``, before being passed to
+            `~slicersim.simulation.Simulation.fetch_snr`. If False, ``snr``
+            is per wavelength bin. Default is True.
+        lbda_range : list of float, optional
+            Wavelength range ``[min, max]`` in Angstrom over which the SNR is
+            computed. Default is ``[4000, 6800]``.
         frame : str, optional
-            The reference frame for the wavelength range. Options are 'rest'
-            (rest-frame) or 'obs' (observer-frame). Default is 'rest'.
-        statistic : function, optional
-            The statistical function to use for calculating the SNR.
+            Reference frame of ``lbda_range``: ``"rest"`` (rest-frame) or
+            ``"obs"`` (observer-frame). Default is ``"rest"``.
+        statistic : callable, optional
+            Function used to summarise the SNR over ``lbda_range``.
             Default is `numpy.nanmean`.
         inplace : bool, optional
-            If True, updates the instance configuration to match the requested SNR.
-            Default is True.
-        **kwargs
-            Additional keyword arguments to pass to the `simulation.fetch_snr` method.
+            If True, the simulation is updated to the returned
+            configuration. Default is True.
+        **kwarg
+            Goes to `~slicersim.simulation.Simulation.fetch_snr` (e.g.
+            ``max_group`` or ``ndrop``). ``nframe_per_group`` is set to 8 and
+            cannot be given.
 
         Returns
         -------
         config : dict
-            The configuration required to achieve the target SNR.
+            Read-out configuration reaching ``snr``, with keys ``"nmd"``
+            and ``"nramps"``.
         reached_snr : float
-            The actual SNR achieved with the returned configuration.
+            SNR reached with ``config``, per resolution element if
+            ``per_resolution`` is True, per wavelength bin otherwise.
         """
         if per_resolution:
             # get the snr per wavelength bin as expected by fetch_snr
@@ -270,21 +294,22 @@ class VirtualTarget:
         Parameters
         ----------
         snr : float, optional
-            Change the SNR of the target before calculating the exposure time.
-            This does not change the configuration of the current instance
-            (`inplace=False`). `kwargs` are used to update `setup_to_snr`
-            arguments. Default is None.
+            Currently has no effect on the returned time: `setup_to_snr` is
+            called with ``inplace=False``, so the configuration used for the
+            exposure time remains the current one. Default is None.
         full : bool, optional
-            If True, returns all timing details (t-frame, t-group, etc.)
-            associated with the exposure. If False, only the total exposure
-            time is returned. Default is False.
+            If True, return all timing details; otherwise only the total
+            exposure time. Default is False.
         **kwargs
-            Goes to `setup_to_snr()`. Ignored if `snr` is None.
+            Goes to `setup_to_snr`. Ignored if ``snr`` is None.
 
         Returns
         -------
         float or dict
-            Exposure time. See `full`.
+            Total exposure time in seconds (all ramps included), or, if
+            ``full`` is True, a dict of times in seconds with keys
+            ``"integration_time"``, ``"exposure_time"`` (one ramp),
+            ``"tframe"``, ``"tgroup"`` and ``"total_exptime"``.
         """
         if snr is not None:
             self.setup_to_snr(snr=snr, inplace=False, **kwargs)
@@ -296,58 +321,77 @@ class VirtualTarget:
         return times["total_exptime"]
 
     def get_readout_config(self):
-        """Get the current MACC (nmd) mode and the number of ramps.
+        """Get the current MACC mode and number of ramps.
 
         Returns
         -------
         dict
-            Readout configuration:
+            Read-out configuration, with keys:
 
-            - nmd: (ngroup, nframe_per_group, ndrop)
-            - nramps: number of ramps (1-ramp = 1-nmd)
+            - ``"nmd"``: ``(n_groups, n_frames_per_group, n_drops)``.
+            - ``"nramps"``: number of ramps, each ramp following the
+              ``nmd`` MACC mode.
         """
         # This should be generalized once other detector than HxRG have been implemented.
         return self.get_properties(["nmd", "nramps"])
 
     def get_data_volume(self, units="GB", per_ramp=False):
-        """ get the data volume associated to each observations """
+        """Get the data volume of the observation.
+
+        Parameters
+        ----------
+        units : str, optional
+            Unit of the returned volume (any astropy data unit, e.g.
+            ``"MB"`` or ``"GB"``). Default is ``"GB"``.
+        per_ramp : bool, optional
+            If True, return the volume of a single ramp instead of the total
+            volume over all ramps. Default is False.
+
+        Returns
+        -------
+        float
+            Data volume in ``units``.
+
+        See Also
+        --------
+        ~slicersim.simulation.Simulation.get_data_volume : The underlying method.
+        """
         return self.simulation.get_data_volume(units=units, per_ramp=per_ramp)
 
     def get_spectrum(self, unit="adu", incl_error=True, **kwargs):
-        """Get a realistic simulated spectrum given the current configurations.
+        """Get the simulated spectrum of the point source.
 
-        This function fetches the spectrum data from the simulation and converts the
-        flux and variance to the specified unit.
+        The spectrum is extracted from the simulation in ADU and converted to
+        ``unit``.
 
         Parameters
         ----------
         unit : str, optional
-            The unit to convert the spectrum flux and variance to.
-            Available units are:
+            Unit of the returned flux (and of the variance, squared):
 
-            - adu [total]
-            - flambda [erg/s/a/cm2]
-            - fphoton [ph/s]
-            - rate [adu/s]
-            - framerate [adu/frame]
+            - ``"adu"``: total ADU integrated over all ramps.
+            - ``"flambda"``: erg/s/cm^2/A.
+            - ``"fphoton"``: photon/s.
+            - ``"rate"``: ADU/s.
+            - ``"framerate"``: ADU/frame.
 
-            Default is "adu".
+            Default is ``"adu"``.
         incl_error : bool, optional
-            If True, the returned flux is scattered from the true_flux given the
-            variance. If False, the true_flux is returned. Default is True.
+            If True, the returned flux is randomly scattered according to the
+            variance (hence realistic). If False, the noise-free flux is
+            returned. Default is True.
         **kwargs
-            Additional keyword arguments to pass to the `simulation.get_spectrum` method.
+            Goes to `~slicersim.simulation.Simulation.get_spectrum` (e.g.
+            ``switch_off``).
 
         Returns
         -------
-        lbda : array_like
-            The wavelength values of the spectrum in Angstroms.
-        flux : array_like
-            The flux values of the spectrum, converted to the specified unit.
-            If `incl_error` is True, this flux is scattered given the variance
-            (hence realistic).
-        variance : array_like
-            The variance of the spectrum.
+        lbda : numpy.ndarray
+            Wavelengths in Angstrom.
+        flux : numpy.ndarray
+            Flux in ``unit``.
+        variance : numpy.ndarray
+            Variance of the flux, in ``unit`` squared.
         """
         # get spectra [adu]
         lbda, flux, variance = self.simulation.get_spectrum(incl_error=incl_error, **kwargs)
@@ -358,25 +402,30 @@ class VirtualTarget:
 
     def get_band_snr(self, lbda_range, frame="obs", per_resolution=True,
                     statistic=np.nanmean, **kwargs):
-        """Get the SNR for a given wavelength range.
+        """Get the signal-to-noise ratio over a wavelength range.
 
         Parameters
         ----------
-        lbda_range : tuple, optional
-            The wavelength range to calculate the SNR for.
+        lbda_range : tuple of float or list of tuple
+            Wavelength range ``(min, max)`` in Angstrom (or a list of them).
         frame : str, optional
-            The frame of the wavelength range. Default is "obs".
+            Reference frame of ``lbda_range``: ``"rest"`` or ``"obs"``.
+            Default is ``"obs"``.
         per_resolution : bool, optional
-            Whether to calculate the SNR per resolution element. Default is True.
-        statistic : function, optional
-            Numpy function to apply on test domain. Default is `np.nanmean`.
+            If True, return the SNR per spectral resolution element,
+            otherwise per wavelength bin. Default is True.
+        statistic : callable, optional
+            Function used to summarise the signal and variance over
+            ``lbda_range``. Default is `numpy.nanmean`.
         **kwargs
-            Additional keyword arguments to pass to the `simulation.get_spectrum` method.
+            Goes to `~slicersim.simulation.Simulation.get_band_snr` (e.g.
+            ``switch_off``).
 
         Returns
         -------
-        float
-            The SNR for the given wavelength range.
+        float or numpy.ndarray
+            The SNR, one per wavelength range if a list is given. If any
+            detector pixel saturates, ``numpy.inf`` is returned.
         """
         snr = self.simulation.get_band_snr(lbda_range, frame=frame,
                                            statistic=statistic, **kwargs)
@@ -388,11 +437,18 @@ class VirtualTarget:
 
 
     def get_cube(self):
-        """ returns the current cubes.
+        """Get the simulated cube in the current configuration.
 
         Returns
         -------
-        cube, variance cube
+        cube : numpy.ndarray
+            Data cube in ADU, of shape ``(nlbda, ny, nx)``.
+        varcube : numpy.ndarray
+            Variance cube in ADU^2, same shape.
+
+        See Also
+        --------
+        ~slicersim.simulation.Simulation.get_cube : The underlying method.
         """
         return self.simulation.get_cube()
 
@@ -420,34 +476,42 @@ class VirtualTarget:
         raise NotImplementedError("This functionality is not implemented for the generic Target class. See e.g., LazuliTarget")
 
     def get_variance_contribution(self):
-        """Get a dataframe detailing the variance contribution for each wavelength
-        of each variance source.
+        """Get the contribution of each noise source to the variance.
 
         Returns
         -------
         pandas.DataFrame
-            Variance contribution.
+            One row per wavelength, with columns ``"lbda"`` (Angstrom),
+            ``"flux"`` and ``"variance"`` (ADU, ADU^2), and one column per
+            variance source (see
+            `~slicersim.simulation.Simulation.variance_sources`, e.g.
+            ``"dark"``, ``"ron"``, ``"pointsource"``, ``"background"``,
+            ``"thermal"``) giving its contribution to the variance in ADU^2.
         """
         return self.simulation.get_variance_contribution()
 
     def get_properties(self, which, default=None, as_dict=True):
-        """Get the properties of the target.
+        """Get parameter values of the target's simulation.
+
+        Shortcut to `~slicersim.simulation.Simulation.get_parameter`.
 
         Parameters
         ----------
         which : str or list of str
-            The name of the property to get.
-        default : any, optional
-            The default value to return if the property is not found.
-            Default is None.
+            Name(s) of the parameter(s), e.g. ``"redshift"`` or
+            ``["nmd", "nramps"]``.
+        default : object, optional
+            Value returned if a parameter is not found. Default is None.
         as_dict : bool, optional
-            If True, return a dictionary of properties. Default is True.
+            Only used when ``which`` is a single name that is not found: if
+            True, ``{which: default}`` is returned instead of ``default``.
+            Default is True.
 
         Returns
         -------
-        any or dict
-            The value of the property or a dictionary of properties.
-
+        object or dict
+            The parameter value if ``which`` is a str, a dict
+            ``{name: value}`` if it is a list.
         """
         return self.simulation.get_parameter(which=which, default=default, as_dict=as_dict)
 
@@ -456,13 +520,13 @@ class VirtualTarget:
     # ============== #
     @property
     def pointsource_properties(self):
-        """Get mutable properties of the pointsource."""
+        """Names of the mutable parameters of the point source (list of str)."""
         return [param_ for param_ in self.simulation.scene.mutable_parameters
                     if param_.startswith("pointsource.")]
 
     @property
     def simulation(self):
-        """Core attribute containing simulation details."""
+        """The `~slicersim.simulation.Simulation` wrapped by the target."""
         return self._simulation
 
 # ============ #
@@ -470,43 +534,48 @@ class VirtualTarget:
 # ============ #
 # # Generic object
 class Target( VirtualTarget ):
-    """Lazuli class for generic targets.
+    """Point source target with an arbitrary input spectrum.
 
     Parameters
     ----------
     lbda : array_like
-        Wavelength array.
+        Wavelengths in Angstrom.
     flux : array_like
-        Flux array.
+        Flux in erg/s/cm^2/A, or in arbitrary units when ``mag`` is given.
     mag : float, optional
-        Magnitude of the target. Default is None.
+        If given, ``flux`` is rescaled to this magnitude in ``band``.
+        Default is None.
     band : str, optional
-        Photometric band for the magnitude. Default is "bessellb".
-    background : str, optional
-        Background to use. Default is "zodi".
+        Bandpass of ``mag`` (any sncosmo bandpass name).
+        Default is ``"bessellb"``.
     **kwargs
-        Goes to `simulation.Simulation.from_source()`.
+        Goes to `~slicersim.scene.get_scene`, e.g. ``background``
+        (default ``"zodi"``), ``host`` or point source parameters such as
+        ``position``. ``instrument`` sets the instrument configuration.
 
+    See Also
+    --------
+    slicersim.lazuli.LazuliTarget : The Lazuli flavour of this target.
     """
     def __init__(self, lbda, flux,
                      mag=None, band="bessellb",
                      **kwargs):
-        """Initialize the LazuliTarget.
+        """Initialize the Target.
 
         Parameters
         ----------
         lbda : array_like
-            Wavelength array.
+            Wavelengths in Angstrom.
         flux : array_like
-            Flux array.
+            Flux in erg/s/cm^2/A, or in arbitrary units when ``mag`` is given.
         mag : float, optional
-            Magnitude of the target. Default is None.
+            If given, ``flux`` is rescaled to this magnitude in ``band``.
+            Default is None.
         band : str, optional
-            Photometric band for the magnitude. Default is "bessellb".
-        background : str, optional
-            Background to use. Default is "zodi".
+            Bandpass of ``mag``. Default is ``"bessellb"``.
         **kwargs
-            Goes to `simulation.Simulation.from_source()`.
+            Goes to `~slicersim.scene.get_scene`; ``instrument`` sets the
+            instrument configuration.
         """
         simulation = self._source_to_simulation_(source=[lbda, flux],
                                                  mag=mag, band=band,
@@ -519,10 +588,10 @@ class Target( VirtualTarget ):
 
         .. warning::
             This override is currently broken and always raises `TypeError`:
-            `super().__init__` is called from a classmethod, so `simulation`
-            is bound to ``self`` and no instance is ever built. It shadows the
-            working `VirtualTarget.from_simulation` for `Target` and its
-            subclasses.
+            ``super().__init__`` is called from a classmethod, so no instance
+            is ever built. It shadows the working
+            `~slicersim.target.VirtualTarget.from_simulation` for
+            `~slicersim.target.Target` and its subclasses.
 
         Parameters
         ----------
@@ -531,7 +600,7 @@ class Target( VirtualTarget ):
 
         Returns
         -------
-        Target
+        ~slicersim.target.Target
             An instance of the class, once the implementation is fixed.
 
         Raises
@@ -543,17 +612,25 @@ class Target( VirtualTarget ):
 
 # Supernova
 class Supernova( VirtualTarget ):
-    """Target class for Supernovae.
+    """Type Ia supernova point source target.
 
     Parameters
     ----------
-    instrument : str, optional
-        Configuration of the instrument, if any. If None, the class
-        ``_INSTRUMENT`` is used when defined. Default is None.
     model : str, optional
-        The supernova model to use. Default is "salt".
+        The supernova model, passed to `~slicersim.scene.get_scene` as
+        ``source="snia-{model}"``:
+
+        - ``"salt"``: SALT2-extended, parameters ``x1``, ``c`` and ``MBmax``
+          [default]. Any sncosmo SALT source name (e.g. ``"salt3"``) also
+          works.
+        - ``"twin"``: Twins-Embedding, parameters ``xi1``, ``xi2``, ``xi3``
+          and ``color``.
     **kwargs
-        Goes to `scene.get_scene()`.
+        Goes to `~slicersim.scene.get_scene`, i.e. point source parameters
+        (e.g. ``redshift``, ``phase``, ``position`` and the model
+        parameters), ``background`` or ``host``. ``instrument`` sets the
+        instrument configuration (default: the class ``_INSTRUMENT``, if
+        any).
 
     See Also
     --------
@@ -565,26 +642,17 @@ class Supernova( VirtualTarget ):
         Parameters
         ----------
         model : str, optional
-            The supernova model to use (it is passed to `scene.get_scene` as
-            ``source="snia-{model}"``):
-
-            - "salt": SALT2-extended (parameters: x1, c, MBmax)
-            - any sncosmo salt source name (e.g. "salt3")
-            - "twin": Twins-Embedding
-
-            Default is "salt".
-
+            The supernova model. Default is ``"salt"``.
         **kwargs
-            - instrument: specify the instrument details.
-            Rest goes to `scene.get_scene()`, i.e. to the point source
-            configuration (e.g. redshift, phase, position, x1, c).
+            Goes to `~slicersim.scene.get_scene`; ``instrument`` sets the
+            instrument configuration.
         """
         simulation = self._source_to_simulation_(source=f"snia-{model}", **kwargs)
         super().__init__(simulation=simulation)
 
 # Kilonova
 class Kilonova( VirtualTarget ):
-    """Target class for Kilonovae.
+    """Kilonova point source target.
 
     The kilonova spectrum is computed from POSSIS radiative transfer models
     (Bulla 2019, 2023) for a given viewing angle, see
@@ -593,9 +661,24 @@ class Kilonova( VirtualTarget ):
     Parameters
     ----------
     model : str, optional
-        The kilonova model to use. Default is "bulla23".
+        The kilonova model, passed to `~slicersim.scene.get_scene` as
+        ``source="kilonova-{model}"``: ``"bulla23"`` (POSSIS grid of
+        Bulla 2023) [default] or ``"bulla19"`` (Bulla 2019).
     **kwargs
-        Goes to `scene.get_scene()`.
+        Goes to `~slicersim.scene.get_scene`. Main point source parameters
+        are:
+
+        - ``redshift``: redshift of the kilonova (default 0.2).
+        - ``phase``: days since merger (default 1.4).
+        - ``theta``: viewing angle in degrees (default 0, i.e. pole-on).
+        - ``magabs``: peak absolute magnitude in ``band`` (default -15.8).
+        - ``magobs``: peak observed magnitude in ``band`` (overrides
+          ``magabs``).
+        - ``band``: bandpass of the normalisation (default ``"sdssr"``).
+        - ``position``: position in the IFU in spaxels (default
+          ``[1, 0.5]``).
+
+        ``instrument`` sets the instrument configuration.
 
     See Also
     --------
@@ -607,73 +690,60 @@ class Kilonova( VirtualTarget ):
         Parameters
         ----------
         model : str, optional
-            The kilonova model to use (it is passed to `scene.get_scene` as
-            ``source="kilonova-{model}"``):
-
-            - "bulla23": POSSIS grid from Bulla (2023) [default]
-            - "bulla19": POSSIS model from Bulla (2019)
+            The kilonova model. Default is ``"bulla23"``.
         **kwargs
-            - instrument: specify the instrument details.
-            Goes to `scene.get_scene()`, i.e. to the point source
-            configuration. Main parameters are (see
-            `~slicersim.scene.sources.kilonova.get_kilonova_flux`):
-
-            - redshift: redshift of the kilonova (default 0.2)
-            - phase: days since merger (default 1.4)
-            - theta: viewing angle in degrees (default 0, i.e. pole-on)
-            - magabs: peak absolute magnitude in `band` (default -15.8)
-            - magobs: peak observed magnitude in `band` (overrides `magabs`)
-            - band: bandpass for the normalization (default "sdssr")
-            - position: position in the IFU in spaxels (default [1, 0.5])
+            Goes to `~slicersim.scene.get_scene`; ``instrument`` sets the
+            instrument configuration.
         """
         simulation = self._source_to_simulation_(source=f"kilonova-{model}", **kwargs)
         super().__init__(simulation=simulation)
 
 # Kilonova
 class BlackBody( VirtualTarget ):
-    """Target class for BlackBody.
+    """Black body point source target.
 
     Parameters
     ----------
-    temperature : str, optional
-        The blackbody temperature (in Kelvin)
+    temperature : float
+        Black body temperature in Kelvin.
     **kwargs
-        Goes to `scene.get_scene()`.
-        - mag
-        - band
-        - magsys
+        Goes to `~slicersim.scene.get_scene`, mainly the point source
+        parameters ``mag`` and ``band`` (normalisation, e.g.
+        ``band="sdssr"``), ``magsys`` (e.g. ``"ab"``) and ``position``
+        (spaxels). ``instrument`` sets the instrument configuration.
 
     See Also
     --------
     slicersim.lazuli.LazuliBlackBody : The Lazuli flavour of this target.
     """
     def __init__(self, temperature, **kwargs):
-        """Initialize the Kilonova.
+        """Initialize the BlackBody.
 
         Parameters
         ----------
-        temperature : str, optional
-            The blackbody temperature (in Kelvin)
+        temperature : float
+            Black body temperature in Kelvin.
         **kwargs
-            Goes to `scene.get_scene()`.
-            - mag: magnitude
-            - band: band where the magnitude is computed (e.g. "sdssr")
-            - magsys: "ab"
-            - position: position in the IFU in spaxels (default [1, 0.5])
+            Goes to `~slicersim.scene.get_scene`; ``instrument`` sets the
+            instrument configuration.
         """
         simulation = self._source_to_simulation_(source=f"blackbody-{temperature}", **kwargs)
         super().__init__(simulation=simulation)
 
 # PowerLaw
 class PowerLaw( VirtualTarget ):
-    """Target class for power-law spectra.
+    """Power-law point source target.
 
     Parameters
     ----------
     alpha : float, optional
-        Power-law index, see `~slicersim.scene.sources.generic.get_powerlaw_flux`.
+        Power-law index, see
+        `~slicersim.scene.sources.generic.get_powerlaw_flux`.
+        Default is None.
     **kwargs
-        Goes to `scene.get_scene()`, e.g. ``mag``, ``band`` and ``position``.
+        Goes to `~slicersim.scene.get_scene`, e.g. ``mag`` and ``band``
+        (normalisation), ``lambda_ref`` (Angstrom) and ``position``
+        (spaxels). ``instrument`` sets the instrument configuration.
 
     See Also
     --------
@@ -683,65 +753,70 @@ class PowerLaw( VirtualTarget ):
     _SOURCES = calspecsource
 
     def __init__(self, alpha=None, **kwargs):
-        """Initialize the LazuliCalSpec.
+        """Initialize the PowerLaw.
 
         Parameters
         ----------
-        name : str
-            Name of the CalSpec star.
-        background : str, optional
-            Background to use. Default is "zodi".
+        alpha : float, optional
+            Power-law index. Default is None.
         **kwargs
-            Goes to `simulation.Simulation.from_source()`.
+            Goes to `~slicersim.scene.get_scene`; ``instrument`` sets the
+            instrument configuration.
         """
         simulation = self._source_to_simulation_(source=f"powerlaw-{alpha}", **kwargs)
         super().__init__(simulation=simulation)
 
 # CalSpec Stars
 class CalSpec( VirtualTarget ):
-    """Lazuli class for CalSpec stars.
+    """HST CalSpec spectrophotometric standard star target.
 
     Parameters
     ----------
     name : str
-        Name of the CalSpec star.
+        Name (or short name) of the CalSpec star, e.g. ``"bd_17"`` or
+        ``"gd_71"`` (see `source_names`).
     **kwargs
-        Goes to `simulation.Simulation.from_source()`.
+        Goes to `~slicersim.scene.get_scene`, e.g. ``position`` (spaxels)
+        or ``background``. ``instrument`` sets the instrument configuration.
+
+    See Also
+    --------
+    slicersim.lazuli.LazuliCalSpec : The Lazuli flavour of this target.
     """
     from .scene.sources.calspec import calspecsource
     _SOURCES = calspecsource
 
     def __init__(self, name, **kwargs):
-        """Initialize the LazuliCalSpec.
+        """Initialize the CalSpec.
 
         Parameters
         ----------
         name : str
             Name of the CalSpec star.
-        background : str, optional
-            Background to use. Default is "zodi".
         **kwargs
-            Goes to `simulation.Simulation.from_source()`.
+            Goes to `~slicersim.scene.get_scene`; ``instrument`` sets the
+            instrument configuration.
         """
         simulation = self._source_to_simulation_(source=f"calspec-{name}", **kwargs)
         super().__init__(simulation=simulation)
 
     @classmethod
     def from_name(cls, name, **kwargs):
-        """Build a `LazuliCalSpec` from the name of the star.
+        """Build the target from the name of the star.
+
+        Equivalent to calling the class directly.
 
         Parameters
         ----------
         name : str
             Name of the CalSpec star.
         **kwargs
-            Goes to `simulation.Simulation.from_source()`.
+            Goes to the class initialisation.
 
         Returns
         -------
-        LazuliCalSpec
+        ~slicersim.target.CalSpec
             An instance of the class.
-
         """
         # this is actually a wrapper of the init
         return cls(name, **kwargs)
@@ -751,5 +826,5 @@ class CalSpec( VirtualTarget ):
     # ============== #
     @property
     def source_names(self):
-        """List of available CalSpec sources."""
+        """Names of the available CalSpec stars (array of str, one entry per spectrum)."""
         return self._SOURCES.source.index.values.astype(str)

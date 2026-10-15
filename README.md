@@ -1,178 +1,162 @@
-[![PyPI](https://img.shields.io/pypi/v/slicersim.svg?style=flat-square)](https://pypi.python.org/pypi/slicersim)
-[![codecov](https://codecov.io/github/MickaelRigault/slicersim/graph/badge.svg?token=A78ZDQQ9N3)](https://codecov.io/github/MickaelRigault/slicersim)
-[![Run unit tests](https://github.com/MickaelRigault/slicersim/actions/workflows/ci.yml/badge.svg)](https://github.com/MickaelRigault/slicersim/actions/workflows/ci.yml)
-[![Documentation Status](https://readthedocs.org/projects/slicersim/badge/?version=latest)](https://slicersim.readthedocs.io/en/latest/?badge=latest)
+<p align="center">
+  <img src="docs/_static/slicersim_logo.png" alt="slicersim" width="320">
+</p>
 
-# slicersim
-Simulation of Slicer observations
+<p align="center">
+  <b>Realistic simulations of integral field spectrograph observations — the Lazuli image slicer simulator.</b>
+</p>
+
+<p align="center">
+  <a href="https://pypi.python.org/pypi/slicersim"><img src="https://img.shields.io/pypi/v/slicersim.svg?style=flat-square" alt="PyPI"></a>
+  <a href="https://slicersim.readthedocs.io/en/latest/?badge=latest"><img src="https://readthedocs.org/projects/slicersim/badge/?version=latest" alt="Documentation Status"></a>
+  <a href="https://github.com/MickaelRigault/slicersim/actions/workflows/ci.yml"><img src="https://github.com/MickaelRigault/slicersim/actions/workflows/ci.yml/badge.svg" alt="Run unit tests"></a>
+  <a href="https://codecov.io/github/MickaelRigault/slicersim"><img src="https://codecov.io/github/MickaelRigault/slicersim/graph/badge.svg?token=A78ZDQQ9N3" alt="codecov"></a>
+</p>
+
+`slicersim` turns a spectrum on the sky into the spectrum you would actually
+measure. It propagates a scene through the telescope, the spectrograph and the
+detector, adds every noise source, and tells you how long you need to expose to
+reach a given signal-to-noise.
+
+It is the reference simulator of the [Lazuli Space Observatory](https://scixplorer.org/abs/2026arXiv260706391R/abstract)
+image slicer, but its core is generic and applies to any slicer or micro-lens array IFU.
 
 📖 **Documentation: https://slicersim.readthedocs.io**
 
-***
+- **Exposure time calculator**: exposure time and detector read-out mode to reach a requested signal-to-noise, in one call.
+- **Realistic spectra and cubes**: photon, read-out, dark, thermal and background noise all accounted for.
+- **Built-in sources**: Type Ia supernovae (SALT, Twins Embedding), kilonovae (POSSIS), CalSpec standards, black bodies, power laws, or your own spectrum.
+- **Every knob is accessible**: detector, spectrograph sampling, throughput, scene… and see at once how each noise source contributes.
 
-# reference
-See the dedicated paper: [Rigault et al. (2026)](https://scixplorer.org/abs/2026arXiv260706391R/abstract)
+## Installation
 
-***
-# Installation
 ```bash
 pip install slicersim
 ```
-***
-# Top level ETC
+
+Python ≥ 3.10 is required. See the [installation page](https://slicersim.readthedocs.io/en/latest/installation.html) for development installs.
+
+## Exposure time in one line
 
 ```python
->>> import slicersim
 >>> import numpy as np
+>>> import slicersim
 
 ```
 
-## Any spectra
-
-Compute the exposure time needed any input spectrum:
+**Any spectrum**, here a flat spectrum normalised to B = 21 mag:
 
 ```python
->>> lbda_ref = np.linspace(3000, 20_000, 500) # larger than lazuli bandpass
->>> flux_ref = np.ones(lbda_ref.shape) # flat spectrum
->>> exptime, lazulitarget = slicersim.lazuli_etc(lbda_ref, flux_ref, snr=20, mag=21, band="bessellb")
->>> print(exptime)
-237.72
+>>> lbda_ref = np.linspace(3000, 20_000, 500)  # [Å], larger than the Lazuli bandpass
+>>> flux_ref = np.ones(lbda_ref.shape)         # flat spectrum
+>>> exptime, target = slicersim.lazuli_etc(lbda_ref, flux_ref, snr=20, mag=21, band="bessellb")
+>>> print(round(exptime, 2))  # [s]
+328.28
 
 ```
 
-## Supernova
-
-Compute the exposure time needed to observe a Supernovae:
+**A Type Ia supernova** (SALT model):
 
 ```python
->>> exptime, snia_target = slicersim.lazuli_sn_etc(snr=20, model="salt", redshift=1.2, x1=1.5, c=0.2, phase=-2.2)
->>> print(exptime)
-5795.84
+>>> exptime, snia = slicersim.lazuli_sn_etc(snr=20, model="salt", redshift=1.2, x1=1.5, c=0.2, phase=-2.2)
+>>> print(round(exptime, 2))  # [s]
+10142.72
+>>> snia.get_readout_config()
+{'nmd': (64, 8, 0), 'nramps': 7}
 
 ```
 
-***
-# Quick look
+## Quick look
 
 ```python
 import slicersim
-# load a SN Ia (see also: `slicersim.LazuliTarget(lbda, flux)`)
+
+# a SN Ia (see also LazuliKilonova, LazuliCalSpec, LazuliBlackBody, LazuliTarget(lbda, flux)...)
 snia = slicersim.LazuliSupernova(redshift=0.8, c=0.2, x1=-1.2, phase=1.5)
 
-# update configuration to reach a signal-to-noise of 20
+# set the detector read-out to reach a signal-to-noise of 20
 _ = snia.setup_to_snr(20)
 
-# grab the expected observed spectrum
+# the expected observed spectrum
 lbda, flux_1, variance_1 = snia.get_spectrum(unit="adu")
 
-# change the target property
-# warning: without updating the setting, this new target won't have a snr=20
+# change the target properties
+# (the read-out is not updated: this new target will not have snr=20)
 snia.change_properties(redshift=1.2)
 lbda, flux_2, variance_2 = snia.get_spectrum(unit="adu")
 ```
 
-and show your simulated spectra
+and show the simulated spectra:
+
 ```python
 import matplotlib.pyplot as plt
 import numpy as np
-fig, ax = plt.subplots(figsize=[7,3])
 
-ax.plot(lbda, flux_1)
-ax.fill_between(lbda, 
-                flux_1-np.sqrt(variance_1),
-                flux_1+np.sqrt(variance_1), alpha=0.3,
-               label="z=0.8")
+fig, ax = plt.subplots(figsize=[7, 3])
+for flux, variance, label in [(flux_1, variance_1, "z=0.8"), (flux_2, variance_2, "z=1.2")]:
+    ax.plot(lbda, flux)
+    ax.fill_between(lbda, flux - np.sqrt(variance), flux + np.sqrt(variance),
+                    alpha=0.3, label=label)
 
-ax.plot(lbda, flux_2)
-ax.fill_between(lbda, 
-                flux_2-np.sqrt(variance_2),
-                flux_2+np.sqrt(variance_2), alpha=0.3,
-               label="z=1.2")
 ax.legend(frameon=False, fontsize="small")
 ax.set(xlabel=r"wavelength [$\AA$]", ylabel="flux [ADU]")
 ```
-![readme example](docs/gallery/spectra_examples.png)
-  
-***
-# Tutorials
 
-## Beginner
-- [ETC and simuated spectra: top level function](docs/notebooks/beginner_ETC_lazulitarget.ipynb)
-  - Exposure time calculator for any target or a supernovae
-  - get the simulated spectrum and variance
-- [LazuliTarget (Any target, Type Ia Supernovae, CalSpec)](docs/notebooks/beginner_LazuliTargets.ipynb):
-  - Specify the desired signal to noise
-  - get exposure time, and read-mode
-  - get simulated spectra
-- [Check the origin of the variance sources](docs/notebooks/beginner_variancesource.ipynb)
-  - origin of variance (read-out noise, target poisson noise, dark-current etc)
-  - switch off any contribution and see resulting variance
-  - scan all variance contributions, get the resulting dataframe and plot the result.
-- [Change properties of the target](docs/notebooks/beginner_change_properties.ipynb):
-  - change any supernovae properties
-  - change the magnitude of a loaded target
+![Two simulated SN Ia spectra](docs/gallery/spectra_examples.png)
 
-## Advanced
-- [Change the detector read-out mode or spectrograph spatial sampling](docs/notebooks/advanced_change_detector_and_spectrograph.ipynb)
-  - change the detector mode: max-group, n-frames per group
-  - force the read-our mode (and see which SNR you eventually get)
-  - change the spectrograph sampling (fine and medium grid)
-- [Access the detector QE, throughtput, effective spectral resolution...](docs/notebooks/advanced_access_qe_spectral_resolution_etc.ipynb) 
-- Access any property of any simulation element, and change them !
+## Going deeper: the `Simulation`
 
-  
-## Experts
-- Noise Equivalent area
-- Build you own “scene” 
-- Build your own configuration
-***
-# Lower-level: Simulator & config.
-
-Example: Study origin of variance
-
-You can load a slicersim object at a lower level than an lazuli object: a Simulator. This object is at the core of slicersim and combines information of all sources needed to simulate our observations: a scene (what is observed), a mirror, a spectrograph and a detector.
-
-The Simulator combine these to be able to generate a datacube with realistic noise, and extract a realistic spectrum from it.
-
-Once your simulator is loaded, you have several method to check the variance origin. 
-- `estimate_variance_contribution`: that probe the variance origin for a given wavelength rate
-- `estimate_variance_contribution_spectra`: similar but for whole spectrum
-- `show_variance_sources`: plotting function associated to `estimate_variance_contribution_spectra`
+Every target is backed by a `Simulation`, which chains a scene (what is
+observed), a telescope, a spectrograph and a detector. It gives access to
+every parameter and to the origin of the variance:
 
 ```python
 import slicersim
-# load the correct simulator
-config = slicersim.get_config(instrument='lazuli_cbe.toml')
+
+config = slicersim.get_config(instrument="lazuli_cbe.toml")
 sim = slicersim.Simulation.from_config(config)
 
-# Set the target you want
-sim.update(target__redshift=1., target__x1=0, target__c=0)
+# set the target you want
+sim.update(pointsource__redshift=1.0, x1=0, c=0)
 
-# look for the config needed to get an average SNR of 20 in [4000, 6800] rest-frame
-new_config, snr, integration_time = sim.fetch_snr(20, lbda_range=[4000, 6800], frame='rest')
-sim.update(**new_config) # let's set it
+# find the read-out mode reaching a mean SNR of 20 in [4000, 6800] Å rest-frame
+new_config, snr, exptime = sim.fetch_snr(20, lbda_range=[4000, 6800], frame="rest")
+sim.update(**new_config)
 
-# get the expected spectrum (in ADU)
+# expected spectrum [ADU] and the contribution of each noise source
 lbda, flux, variance = sim.get_spectrum()
-
-# Show details
 fig = sim.show_variance_sources(flux_calibrated=False)
 ```
-![readme example](docs/gallery/spectra_variance.png)
 
-***
-# PSF & Noise equivalent area
+![Variance sources](docs/gallery/spectra_variance.png)
 
-by default, the code assumes gaussian PSF both for spatial (at the slicer/mla) and cross-dispersion (at pixels) level.
+`sim.mutable_parameters` lists everything you can change with `sim.update(...)`.
 
-`slicersim.profiles` contains additional PSF model (from [astropy.modeling](https://docs.astropy.org/en/latest/modeling/predef_models2D.html) 
-that can be used to build 2D model or estimate the PSF noise equivalent area (nea).
+## Tutorials
 
-*(more to come..., see: `slicersim.profiles.get_2dpsf_nea()`)*
+All tutorials are rendered in the [documentation](https://slicersim.readthedocs.io/en/latest/tutorials.html).
 
+**Beginner**
+- [Exposure time calculator](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_ETC_lazulitarget.html): exposure time and spectrum in one call.
+- [Lazuli targets](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_LazuliTargets.html): supernovae, CalSpec stars or any spectrum; reach a SNR and get the read-out mode.
+- [Changing target properties](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_change_properties.html): redshift, phase, magnitude.
+- [Origin of the variance](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_variancesource.html): which noise source dominates.
+- [Kilonovae](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_kilonova.html): POSSIS models, viewing angle and phase.
+- [Populations with `Sample`](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_sample_multiple_targets.html): exposure time and data volume across many targets.
 
+**Advanced**
+- [Detector and spectrograph](https://slicersim.readthedocs.io/en/latest/notebooks/advanced_change_detector_and_spectrograph.html) and [MACC read-out modes](https://slicersim.readthedocs.io/en/latest/notebooks/advanced_macc_readout_modes.html)
+- [Instrument properties: QE, throughput, spectral resolution](https://slicersim.readthedocs.io/en/latest/notebooks/advanced_access_qe_spectral_resolution_etc.html)
+- [Dispersion resolution](https://slicersim.readthedocs.io/en/latest/notebooks/advanced_change_resolution_dispersion.html) and [resolution vs. spot size](https://slicersim.readthedocs.io/en/latest/notebooks/advanced_dispersion_resolution_and_spotsize.html)
+- [CalSpec standard stars](https://slicersim.readthedocs.io/en/latest/notebooks/advanced_calspec_and_stdstars.html)
+- [Building a scene](https://slicersim.readthedocs.io/en/latest/notebooks/advanced_scene_tutorial.html) and [adding a host galaxy](https://slicersim.readthedocs.io/en/latest/notebooks/advanced_host_galaxy.html)
 
+## Citing
 
-***
-# Credits
-Developped by M. Rigault ; _adapted from the original MLAPerf v:0.18.0 developed by Y. Copin and M. Rigault_
+If `slicersim` is useful for your work, please cite
+[Rigault et al. (2026)](https://scixplorer.org/abs/2026arXiv260706391R/abstract).
+
+## Credits
+
+Developed by M. Rigault, adapted from the original MLAPerf (v0.18.0) developed by Y. Copin and M. Rigault.
+Released under the Apache 2.0 license.

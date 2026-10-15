@@ -1,4 +1,4 @@
-""" Scene: scene module.
+"""Scene: scene module.
 
 `Scene` gathers the scene elements (point source, background, host) that
 are observed together, and dispatches parameter updates to them.
@@ -17,36 +17,39 @@ class Scene:
     """Scene description.
 
     A scene can contain three elements:
-    - a pointsource point source (e.g., a supernova or a standard star).
-    - a uniform background (e.g., the zodiacal background).
-    - a structured background (e.g., the host galaxy).
+
+    - a point source (e.g. a supernova or a standard star), see
+      `~slicersim.scene.pointsource.PointSource`.
+    - a uniform background (e.g. the zodiacal light), see
+      `~slicersim.scene.background.Background`.
+    - a structured background (e.g. the host galaxy), see
+      `~slicersim.scene.host.Host`.
 
     .. warning::
         The scene does not include the thermal background from the telescope.
+
+    Parameters
+    ----------
+    pointsource : slicersim.scene.pointsource.PointSource, optional
+        Point source. Default is None.
+    background : slicersim.scene.background.Background, optional
+        Uniform background. Default is None.
+    host : slicersim.scene.host.Host, optional
+        Structured background. Default is None.
+    lbda : array_like, optional
+        Default wavelength array in Angstrom. Default is None.
+    meta : dict, optional
+        Dictionary of metadata for the scene. Default is an empty dict.
+
+    See Also
+    --------
+    from_config : Load the scene from a configuration dictionary.
     """
 
     def __init__(
         self, pointsource=None, background=None, host=None, lbda=None, meta={}
     ):
-        """Initialize the Scene.
-
-        Parameters
-        ----------
-        pointsource : PointSource, optional
-            Pointsource point source. Default is None.
-        background : Background, optional
-            Uniform background. Default is None.
-        host : Host, optional
-            Structured background. Default is None.
-        lbda : array_like, optional
-            Wavelength array in Angstrom. Default is None.
-        meta : dict, optional
-            Dictionary of metadata for the scene. Default is {}.
-
-        See Also
-        --------
-        from_config : Load the scene from a configuration file.
-        """
+        """Initialize the Scene."""
 
         self._pointsource = pointsource
         self._background = background
@@ -61,16 +64,26 @@ class Scene:
         Parameters
         ----------
         config : dict
-            Configuration dictionary containing (or not)
-            `{"pointsource": {}, "background": {}, "host":{}}`.
-            A missing element has no contribution to the scene.
+            Configuration dictionary with the optional keys
+            ``"pointsource"``, ``"background"`` and ``"host"``, each being
+            the configuration dict of the corresponding element (see the
+            ``from_config`` method of
+            `~slicersim.scene.pointsource.PointSource`,
+            `~slicersim.scene.background.Background` and
+            `~slicersim.scene.host.Host`). A missing or empty element has no
+            contribution to the scene. Any other entry is stored in the scene
+            meta.
         lbda : array_like, optional
-            Wavelength array in Angstrom. Default is None.
+            Default wavelength array in Angstrom. Default is None.
 
         Returns
         -------
         Scene
-            An instance of the Scene class.
+            An instance of the `Scene` class.
+
+        See Also
+        --------
+        slicersim.scene.get_scene : Build a scene configuration.
         """
         from . import background, pointsource
         from .host import Host
@@ -123,21 +136,27 @@ class Scene:
         """Update mutable parameters.
 
         For convenience, the update method respects the django ``__`` format,
-        such that, e.g. ``pointsource__phase`` is understood as ``pointsource.phase``.
-        This way, one can do:
-
-        >>> scene.update(pointsource__phase=-1)  # doctest: +SKIP
-
-        For convenience and backward compatiblity, you can use
-        ``target__`` in place of ``pointsource__``.
+        such that, e.g. ``pointsource__phase`` is understood as
+        ``pointsource.phase``. For backward compatibility, ``target__`` can
+        be used in place of ``pointsource__``.
 
         Parameters
         ----------
         reset_others : bool, optional
-            If True, parameters not given in `kwargs` are reset to their
+            If True, parameters not given in ``kwargs`` are reset to their
             initial values. Default is False.
         **kwargs
-            Parameters to update.
+            Parameters to update, see `mutable_parameters`. ``lbda`` updates
+            the scene default wavelength. None values are skipped.
+
+        Warns
+        -----
+        UserWarning
+            If a given parameter is not mutable (it is then ignored).
+
+        Examples
+        --------
+        >>> scene.update(pointsource__phase=-1)  # doctest: +SKIP
         """
         updates_pointsource = {}
         updates_host = {}
@@ -190,20 +209,27 @@ class Scene:
         which : str
             Name of the element ("pointsource", "background", "host").
         lbda : array_like, optional
-            Wavelength array in Angstrom. If None, `self.lbda` is used.
-            Default is None.
+            Wavelength array in Angstrom. If None, the scene default
+            wavelength is used. Default is None.
         fillna : float, optional
             Value to fill the spectrum with if the element is not present.
             Default is 0.
         **kwargs
-            Additional arguments passed to the element's `get_spectrum` method.
+            Additional arguments passed to the element's ``get_spectrum``
+            method (e.g. ``phase`` for the point source).
 
         Returns
         -------
         lbda : array_like
             Wavelength array in Angstrom.
-        spec : array_like
-            Spectrum of the element.
+        spec : numpy.ndarray
+            Spectrum of the element, in erg/s/cm^2/A
+            (erg/s/cm^2/A/arcsec^2 for the background).
+
+        Raises
+        ------
+        ValueError
+            If ``lbda`` is None and no default wavelength is set.
         """
         if lbda is None:
             lbda = self._lbda
@@ -221,13 +247,11 @@ class Scene:
     def get_stacked_spectra(self, lbda=None, fillna=0):
         """Get the stack of all scene element spectra.
 
-        The stack contains the spectra of the pointsource, host, and background.
-
         Parameters
         ----------
         lbda : array_like, optional
-            Wavelength array in Angstrom. If None, `self.lbda` is used.
-            Default is None.
+            Wavelength array in Angstrom. If None, the scene default
+            wavelength is used. Default is None.
         fillna : float, optional
             Value to fill the spectra with if an element is not present.
             Default is 0.
@@ -236,8 +260,15 @@ class Scene:
         -------
         lbda : array_like
             Wavelength array in Angstrom.
-        spectra : array_like
-            Stacked spectra of the scene elements.
+        spectra : numpy.ndarray
+            Array of shape ``(3, nlbda)`` with, in that order, the point
+            source, host and background spectra (see
+            `get_element_spectrum` for units).
+
+        Raises
+        ------
+        ValueError
+            If ``lbda`` is None and no default wavelength is set.
         """
         if lbda is None:
             lbda = self._lbda
@@ -254,20 +285,22 @@ class Scene:
     def plot_background(self, ax=None, in_log=True, **kwargs):
         """Plot the background spectrum.
 
+        The flux (erg/s/cm^2/A/arcsec^2) is plotted as a function of wavelength in micron.
+
         Parameters
         ----------
         ax : matplotlib.axes.Axes, optional
             Axes to plot on. If None, a new figure and axes are created.
             Default is None.
         in_log : bool, optional
-            If True, plot the spectrum in log-scale. Default is True.
+            If True, plot the log10 of the flux. Default is True.
         **kwargs
-            Additional arguments passed to `ax.plot()`.
+            Additional arguments passed to `matplotlib.axes.Axes.plot`.
 
         Returns
         -------
-        matplotlib.axes.Axes
-            The axes with the plot.
+        matplotlib.figure.Figure
+            The figure containing the plot.
         """
 
         if ax is None:
@@ -295,7 +328,9 @@ class Scene:
         return fig
 
     def plot_pointsource(self, ax=None, in_log=True, **kwargs):
-        """Plot the pointsource spectrum.
+        """Plot the point source spectrum.
+
+        The flux (erg/s/cm^2/A) is plotted as a function of wavelength in micron.
 
         Parameters
         ----------
@@ -303,14 +338,14 @@ class Scene:
             Axes to plot on. If None, a new figure and axes are created.
             Default is None.
         in_log : bool, optional
-            If True, plot the spectrum in log-scale. Default is True.
+            If True, plot the log10 of the flux. Default is True.
         **kwargs
-            Additional arguments passed to `ax.plot()`.
+            Additional arguments passed to `matplotlib.axes.Axes.plot`.
 
         Returns
         -------
-        matplotlib.axes.Axes
-            The axes with the plot.
+        matplotlib.figure.Figure
+            The figure containing the plot.
         """
 
         if ax is None:
@@ -345,22 +380,22 @@ class Scene:
     # =============== #
     @property
     def pointsource(self):
-        """The scene's point source."""
+        """The scene's point source (None if not set)."""
         return self._pointsource
 
     @property
     def background(self):
-        """The scene's spatially flat background."""
+        """The scene's spatially flat background (None if not set)."""
         return self._background
 
     @property
     def host(self):
-        """The scene's structured background."""
+        """The scene's structured background, i.e. the host (None if not set)."""
         return self._host
 
     @property
     def mutable_parameters(self):
-        """List of mutable parameters."""
+        """List of mutable parameters, as ``"lbda"`` and ``"{element}.{parameter}"``."""
         # lbda is special. it is a shared parameters
         if self.pointsource is not None:
             pointsource_ = [
@@ -393,7 +428,7 @@ class Scene:
 
     @property
     def meta(self):
-        """Metaparameters of the scene."""
+        """Meta parameters of the scene, including the meta of each element."""
         return {
             "pointsource": self.pointsource.meta
             if self.pointsource is not None
@@ -404,5 +439,5 @@ class Scene:
 
     @property
     def pointsource_position(self):
-        """Position of the pointsource."""
+        """Position of the point source ``(x, y)``, in spaxels."""
         return self.pointsource.position

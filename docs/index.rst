@@ -21,6 +21,11 @@ but its core is generic and applies to any slicer or micro-lens array IFU.
    exptime = sn.get_exposure_time()                    # [s]
    lbda, flux, variance = sn.get_spectrum(unit="flambda")
 
+.. image:: gallery/spectra_examples.png
+   :alt: Two simulated Lazuli spectra of a Type Ia supernova, at z = 0.8 and
+         z = 1.2, with their 1-sigma uncertainties.
+   :align: center
+
 .. grid:: 1 2 2 2
    :gutter: 3
    :class-container: sd-mt-4
@@ -61,7 +66,7 @@ See :doc:`installation` for development installs.
 Where to go next
 ----------------
 
-.. grid:: 1 1 3 3
+.. grid:: 1 2 2 2
    :gutter: 3
 
    .. grid-item-card:: :octicon:`rocket;1.5em` Getting started
@@ -80,6 +85,14 @@ Where to go next
       Notebooks, from first exposure time calculations to custom scenes and
       detector read-out modes.
 
+   .. grid-item-card:: :octicon:`telescope;1.5em` The Lazuli instrument model
+      :link: instrument
+      :link-type: doc
+      :class-card: sd-shadow-sm
+
+      Fields, detector, throughput and noise: what the simulations assume,
+      and how to change it.
+
    .. grid-item-card:: :octicon:`code-square;1.5em` API reference
       :link: api/index
       :link-type: doc
@@ -91,7 +104,13 @@ Citing slicersim
 ----------------
 
 If ``slicersim`` is useful for your work, please cite `Rigault et al. (2026)
-<https://scixplorer.org/abs/2026arXiv260706391R/abstract>`_.
+<https://scixplorer.org/abs/2026arXiv260706391R/abstract>`_
+(arXiv:2607.06391); the BibTeX entry can be exported from the linked page.
+
+``slicersim`` is developed by M. Rigault, building on the original
+``MLAPerf`` simulator by Y. Copin and M. Rigault. It is open source
+(Apache 2.0) and `hosted on GitHub <https://github.com/MickaelRigault/slicersim>`_:
+bug reports and contributions are welcome.
 
 .. toctree::
    :hidden:
@@ -100,6 +119,7 @@ If ``slicersim`` is useful for your work, please cite `Rigault et al. (2026)
    installation
    quickstart
    concepts
+   instrument
    tutorials
 
 .. toctree::

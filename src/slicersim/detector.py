@@ -17,51 +17,68 @@ from .utils import complete_dims
 
 
 class SaturationWarning(AstropyWarning):
-    """ Base class for saturation warnings. """
+    """Warning issued when detector pixels saturate."""
 
 class Detector:
-    """Simulates a detector for a spectrograph.
+    """Near-infrared detector read out in MACC (up-the-ramp) mode.
 
-    This class handles signal and variance estimation from input flux and provides
-    methods for optimal extraction of spectra.
+    This class converts incident photon fluxes into integrated detector
+    signals and estimates the associated variance, accounting for the
+    quantum efficiency, gain, read-out noise, dark current, ROIC glow,
+    thermal emission from the surrounding optics and saturation.
 
     Parameters
     ----------
     tframe : float
-        Frame time in seconds.
+        Frame (single read) time in seconds.
     dark : float
-        Dark current in electrons per second.
+        Detector dark current in e-/s/pixel.
     ron : float
-        Read-out noise per frame in electrons.
+        Read-out noise per frame in e- (RMS).
     qe : float or callable
-        Quantum efficiency, either as a constant or a function of wavelength.
+        Quantum efficiency in e-/ph, either as a constant or as a function of
+        wavelength (in Angstrom).
     pixel_size : float
-        Size of each pixel in micrometers.
+        Physical pixel size in micrometers.
     gain : float, optional
-        Gain in ADU per electron. Default is 1.
+        Detector gain in ADU/e-. Default is 1.
     saturation : int, optional
-        Saturation level in ADU. Default is 65635.
-    nmd : tuple, optional
-        Number of groups, frames per group, and drops. Default is (64, 8, 0).
-    lbda_range : array_like, optional
-        Wavelength range accepted by the detector in Angstroms.
+        Saturation level in ADU. Default is 65535.
+    roic_glow : float, optional
+        ROIC glow in e-/pixel/frame. Default is 0.
+    nmd : tuple of int, optional
+        MACC read-out mode ``(ngroups, nframes_per_group, ndrops)``.
+        Default is ``(64, 8, 0)``.
+    lbda_range : array_like or None, optional
+        Wavelength range ``[lmin, lmax]`` seen by the detector, in Angstrom.
+        If None, the first and last values of `lbda` are used.
+        Default is None.
     min_group : int, optional
-        Minimal number of groups per ramp. Default is 2.
+        Minimum number of groups per ramp. Default is 2.
     max_group : int, optional
         Maximum number of groups per ramp. Default is 64.
-    lbda : float, optional
-        Wavelength in Angstroms. Default is 10000.
+    lbda : float or array_like, optional
+        Wavelength(s) in Angstrom at which chromatic quantities (e.g. the QE)
+        are evaluated. Default is 10000.
     variance_model : str, optional
-        Variance model to use. Default is "rauscher07".
-    thermaloptics : object, optional
-        Object handling thermal optics.
+        Variance model used for noise estimation, ``"rauscher07"`` or
+        ``"kubik16"``. Default is ``"rauscher07"``.
+    thermaloptics : `~slicersim.thermal.ThermalOptics` or None, optional
+        Optics whose thermal emission reaches the detector (thermal dark).
+        Default is None (no thermal dark).
+    ron_floor : float, optional
+        Read-out noise floor in e-, added in quadrature to the effective
+        read-out noise of the ramp. Default is 0.
+    shape : list of int, optional
+        Detector shape in pixels ``[ny, nx]``. Default is ``[4096, 4096]``.
     meta : dict, optional
-        Metadata dictionary.
+        Additional metadata. The detector parameters above are stored in it.
+        Default is an empty dict.
 
     Attributes
     ----------
-    mutable_parameters : list
-        List of parameters that can be changed after initialization.
+    mutable_parameters : list of str
+        Parameters that can be changed after initialization with `update`.
     """
     #: Mutable parameters (list)
     mutable_parameters = ['ngroup', "nframe_per_group",
@@ -81,52 +98,7 @@ class Detector:
                      ron_floor=0,
                      shape=[4096, 4096],
                      meta={} ):
-        """Initialize the Detector.
-
-        Parameters
-        ----------
-        tframe : float
-            Frame time in seconds.
-        dark : float
-            Dark current in electrons per second per pixel.
-        ron : float
-            Read-out noise per frame in electrons (RMS).
-        qe : float or callable
-            Quantum efficiency, either as a constant value or a function of
-            wavelength (in Angstroms).
-        pixel_size : float
-            Physical size of each pixel in micrometers.
-        gain : float, optional
-            Detector gain in ADU per electron. Default is 1.
-        saturation : int, optional
-            Saturation level in ADU. Default is 65635.
-        roic_glow : float, optional
-            ROIC glow contribution in electrons per read. Default is 0.
-        nmd : tuple of int, optional
-            MACC readout parameters ``(ngroups, nframes_per_group, ndrops)``.
-            Default is ``(64, 8, 0)``.
-        lbda_range : array_like or None, optional
-            Wavelength range accepted by the detector in Angstroms ``[lmin, lmax]``.
-            Default is None (no restriction).
-        min_group : int, optional
-            Minimum number of groups per ramp. Default is 2.
-        max_group : int, optional
-            Maximum number of groups per ramp. Default is 64.
-        lbda : float, optional
-            Reference wavelength in Angstroms used for QE evaluation.
-            Default is 10000.
-        variance_model : str, optional
-            Variance model used for noise estimation. Default is ``"rauscher07"``.
-        thermaloptics : object or None, optional
-            Object providing thermal background emission from the optics.
-            Default is None.
-        ron_floor : float, optional
-            Floor value for read-out noise in electrons. Default is 0.
-        shape : list of int, optional
-            Detector shape in pixels ``[ny, nx]``. Default is ``[4096, 4096]``.
-        meta : dict, optional
-            Additional metadata. Default is an empty dict.
-        """
+        """Initialize the Detector (see the class docstring for parameters)."""
         # from other components
         self._lbda = lbda
         self._thermaloptics = thermaloptics
@@ -163,23 +135,37 @@ class Detector:
         Parameters
         ----------
         config : dict
-            Configuration dictionary containing detector parameters.
-            It must contain at least:
-            - nmd / readout_mode
-            - ron
-            - dark
-            - tframe
-            - qe
-            - pixel_size
+            Configuration dictionary containing detector parameters
+            (e.g. the ``[detector]`` section of a configuration file).
+            It must contain:
+
+            - ``"nmd"`` or ``"readout_mode"``: MACC read-out mode,
+            - ``"ron"`` or ``"readout_noise"``: read-out noise per frame [e-],
+            - ``"dark"``: dark current [e-/s/pixel],
+            - ``"tframe"``: frame time [s],
+            - ``"QE"``: quantum efficiency, either a float or the name of an
+              ECSV file with ``wavelength`` and ``qe`` columns,
+            - ``"pixel_size"``: pixel size [micrometer].
+
+            Optional keys are ``"shape"``, ``"max_group"``, ``"min_group"``,
+            ``"roic_glow"`` [e-/pixel/frame], ``"gain"`` [ADU/e-] and
+            ``"variance_model"``. Other keys are ignored.
         lbda : float or array_like, optional
-            Wavelength in Angstroms. Default is 10000.
-        thermaloptics : object, optional
-            Thermal optics object.
+            Wavelength(s) in Angstrom. Default is 10000.
+        thermaloptics : `~slicersim.thermal.ThermalOptics` or None, optional
+            Optics whose thermal emission reaches the detector.
+            Default is None.
 
         Returns
         -------
         Detector
-            An instance of the Detector class.
+            The detector instance.
+
+        Warns
+        -----
+        UserWarning
+            If both ``"nmd"`` and ``"readout_mode"`` are given (``"readout_mode"``
+            is then ignored and removed from ``config``), or if neither is given.
         """
         from . import iotools
 
@@ -254,16 +240,25 @@ class Detector:
     #   Methods      #
     # ============== #
     def update(self, reset_others=False, **kwargs):
-        """Change any mutable attribute of the detector.
+        """Change any mutable parameter of the detector.
 
-        (see self.mutable_parameters)
+        See `mutable_parameters` for the list of accepted names.
+        ``readout_noise`` is accepted as an alias of ``ron``; ``ngroup`` and
+        ``nframe_per_group`` only change the corresponding element of `nmd`.
+        ``lbda`` is also accepted and passed to `update_lbda`.
 
         Parameters
         ----------
         reset_others : bool, optional
-            If True, reset other parameters to their initial values. Default is False.
-        **kwargs : dict
-            Keyword arguments representing the mutable attributes to update.
+            If True, parameters not given in ``kwargs`` are reset to their
+            initial values. Default is False.
+        **kwargs
+            Mutable parameters to update. Parameters set to None are ignored.
+
+        Warns
+        -----
+        UserWarning
+            If a given parameter is not mutable (it is then ignored).
         """
         lbda = kwargs.pop("lbda", None)  # removes it from the kwargs
 
@@ -304,12 +299,12 @@ class Detector:
             self._meta = self._meta | updates
 
     def update_lbda(self, lbda):
-        """Update chromatic components.
+        """Update the wavelength(s) used by chromatic components.
 
         Parameters
         ----------
-        lbda : array_like or float
-            Wavelength in Angstroms.
+        lbda : float or array_like
+            Wavelength(s) in Angstrom.
         """
         self._lbda = lbda
 
@@ -321,13 +316,14 @@ class Detector:
 
         Only the recorded groups contribute: within a group the ``m`` frames
         are co-added on board and the ``d`` dropped frames are never read out,
-        so the volume scales with the number of groups ``n`` of the MACC mode.
+        so the volume scales with the number of groups ``n`` of the MACC mode
+        and with the number of detector pixels (`shape`).
 
         Parameters
         ----------
         units : str, optional
             Unit of the returned volume. Must be a known astropy data unit
-            (e.g., "bit", "byte", "MB", "GB"). Default is "GB".
+            (e.g. ``"bit"``, ``"byte"``, ``"MB"``, ``"GB"``). Default is ``"GB"``.
         nbit_record : int, optional
             Number of bits recorded per pixel and per group. Default is 16.
 
@@ -351,13 +347,14 @@ class Detector:
 
         Parameters
         ----------
-        lbda : array_like or float, optional
-            Wavelength in Angstroms. If None, use the current wavelength.
+        lbda : float or array_like or None, optional
+            Wavelength(s) in Angstrom. If None, `lbda` is used. Ignored if
+            the QE is a constant. Default is None.
 
         Returns
         -------
-        float or array_like
-            Quantum efficiency.
+        float or numpy.ndarray
+            Quantum efficiency in e-/ph.
         """
         # as float
         if not callable(self.qe):
@@ -375,8 +372,8 @@ class Detector:
         Parameters
         ----------
         unit : str, optional
-            Unit for the pixel size. Must be a known astropy unit.
-            Default is "micrometer".
+            Unit for the pixel size. Must be a known astropy length unit.
+            Default is ``"micrometer"``.
 
         Returns
         -------
@@ -388,25 +385,42 @@ class Detector:
 
     def get_thermal_dark(self, thermaloptics=None, as_sum=True, units="ph/s", lbda_range=None,
                              cached=False):
-        """Get the thermal dark current.
+        """Get the thermal dark current of a detector pixel.
 
-        This is based on the `thermaloptics` object, if provided.
+        This is the thermal emission of the non-dispersed optical elements of
+        ``thermaloptics`` (those flagged False in its ``meta["dispersed"]``),
+        integrated over ``lbda_range`` and received by one pixel.
 
         Parameters
         ----------
-        thermaloptics : object, optional
-            Thermal optics object. Uses self.thermaloptics is not provided.
+        thermaloptics : `~slicersim.thermal.ThermalOptics` or None, optional
+            Optics emitting the thermal signal. If None, `thermaloptics` is
+            used. Default is None.
         as_sum : bool, optional
-            If True, return the sum of signals. Default is True.
+            If True, return the sum of the contributions of all optical
+            elements. Otherwise, return one value per element.
+            Default is True.
         units : str, optional
-            Units for the output, either "ph/s" or "e/s". Default is "ph/s".
-        lbda_range : array_like, optional
-            Wavelength range in Angstroms. If None, use the current wavelength range.
+            Output units, either ``"ph/s"`` or ``"e/s"`` (alias ``"e-/s"``).
+            In the latter case, the QE is applied. Default is ``"ph/s"``.
+        lbda_range : array_like or None, optional
+            Wavelength range ``[lmin, lmax]`` in Angstrom. If None,
+            `lbda_range` is used. Default is None.
+        cached : bool, optional
+            If True, store the result (per unit) and reuse it in later calls
+            made with ``cached=True`` and ``as_sum=True``; the cache is not
+            invalidated when parameters change. Default is False.
 
         Returns
         -------
-        float or array_like
-            Thermal dark current (see units)
+        float or numpy.ndarray
+            Thermal dark current per pixel, in ``units``. 0 if no thermal
+            optics are available.
+
+        Raises
+        ------
+        ValueError
+            If ``units`` is not one of the accepted values.
         """
         if as_sum and cached and hasattr(self, "_cached_thermal") and self._cached_thermal is not None:
             # cached by unit
@@ -457,23 +471,38 @@ class Detector:
         return signals
 
     def get_effective_ron(self, nmd=None, variance_model="default", ron=None, as_variance=False):
-        """ compute the effective impact of the read-out noise (ron)
+        """Compute the effective read-out noise of a ramp.
+
+        Following Rauscher et al. (2007), the read-out noise variance of the
+        up-the-ramp fit is ``12 (n - 1) / (m n (n + 1)) * ron**2``, to which
+        ``ron_floor**2`` is added.
 
         Parameters
         ----------
-        nmd: list, None
-            MACC model (ngroups, nframes_per_group, ndrops). If None, self.nmd used.
-        ron: float, None
-            read-out noise per frame to use. If None, self.ron used.
+        nmd : tuple of int or None, optional
+            MACC read-out mode ``(ngroups, nframes_per_group, ndrops)``.
+            If None, `nmd` is used. Default is None.
         variance_model : str, optional
-            Variance model to use (e.g., 'rauscher07', 'kubik16').
-            If "default", `self.variance_model` is used. Default is "default".
+            Variance model to use. Only the Rauscher model (``"rauscher07"``)
+            is implemented. If ``"default"``, `variance_model` is used.
+            Default is ``"default"``.
+        ron : float or None, optional
+            Read-out noise per frame in e-. If None, `ron` is used.
+            Default is None.
+        as_variance : bool, optional
+            If True, return the variance (e-^2) instead of the standard
+            deviation (e-). Default is False.
 
         Returns
         -------
-        ron: float
-            effective ron up the ramp.
+        float
+            Effective read-out noise of the ramp in e- (or its variance in
+            e-^2 if ``as_variance=True``). 0 if ``ron`` is 0.
 
+        Raises
+        ------
+        NotImplementedError
+            If ``variance_model`` is not a Rauscher model.
         """
         # which ron
         if ron is None:
@@ -506,16 +535,23 @@ class Detector:
         return np.sqrt(effective_ron_variance)
 
     def get_effective_dark(self, cached_thermal=False, incl_thermal=True):
-        """ get the total effective dark signal.
+        """Get the total effective dark current.
 
-        This is a combination from the actual true detector dark (self.dark),
-        that induce by the roic glow (self.roic_glow e-/frame) and the thermal dark
-        from surrounding elements' radiations.
+        This is the sum of the detector dark current (`dark`), the ROIC glow
+        (`roic_glow` / `tframe`) and, optionally, the thermal dark from the
+        surrounding optics (`get_thermal_dark`).
+
+        Parameters
+        ----------
+        cached_thermal : bool, optional
+            Passed as ``cached`` to `get_thermal_dark`. Default is False.
+        incl_thermal : bool, optional
+            If True, include the thermal dark. Default is True.
 
         Returns
         -------
-        effective_dark: float
-            e-/s total dark signal.
+        float
+            Total effective dark current in e-/s/pixel.
         """
         roic_glow_e_per_sec = self.roic_glow / self.tframe # e-/frame => e-/s
 
@@ -531,30 +567,51 @@ class Detector:
                                   saturation="default",
                                   cached_thermal=False,
                                   npix_per_spaxel=1):
-        """Estimate measured signal and variance from incident flux.
+        """Estimate the measured signal and variance from an incident flux.
+
+        The flux of each voxel is spread over ``npix_per_spaxel`` detector
+        pixels; the signal, effective dark (see `get_effective_dark`, thermal
+        dark included), variance and saturation are computed per pixel, then
+        summed back per voxel. Signals are integrated over `integration_time`.
+        The number of saturated detector pixels is stored in the
+        ``nsaturated_detpx`` attribute.
 
         Parameters
         ----------
         flux : array_like
-            Incident flux in ph/s/voxel (arbitrary shape, e.g., (nlbda, ny, nx)).
-        lbda : array_like, optional
-            Wavelength array in Angstrom. If None, `self.lbda` is used.
-            Default is None.
+            Incident flux in ph/s/voxel (arbitrary shape, e.g.
+            ``(nlbda, ny, nx)``).
+        lbda : array_like or None, optional
+            Wavelengths in Angstrom used to evaluate the QE, along the first
+            axis of ``flux``. If None, `lbda` is used. Default is None.
         withdark : bool, optional
-            Include dark contribution to output signal. Default is False.
+            If True, keep the dark contribution in the output signal (it is
+            always included in the variance and in the saturation test).
+            Default is False.
         variance_model : str, optional
-            Variance model to use (e.g., 'rauscher07', 'kubik16').
-            If "default", `self.variance_model` is used. Default is "default".
-        saturation : int or str, optional
-            Saturation level in ADU. If given, this attempts to detect saturation.
-            If "default", `self.saturation` is used.
-            If None, no saturation is applied. Default is "default".
+            Variance model to use (``"rauscher07"`` or ``"kubik16"``).
+            If ``"default"``, `variance_model` is used. Default is ``"default"``.
+        saturation : float or str or None, optional
+            Saturation level in ADU per pixel. Saturated pixels get a NaN
+            signal and an infinite variance. If ``"default"``, `saturation` is
+            used. If None, saturation is not tested. Default is ``"default"``.
+        cached_thermal : bool, optional
+            Passed as ``cached`` to `get_thermal_dark`. Default is False.
+        npix_per_spaxel : float, optional
+            Number of detector pixels over which the flux of one voxel is
+            spread. Default is 1.
 
         Returns
         -------
-        tuple of array_like
-            - Pixel signal [ADU/voxel].
-            - Variance [ADU²/voxel].
+        signal : numpy.ndarray or float
+            Integrated signal in ADU/voxel.
+        variance : numpy.ndarray or float
+            Signal variance in ADU^2/voxel.
+
+        Raises
+        ------
+        NotImplementedError
+            If ``variance_model`` is unknown.
         """
         if variance_model == "default":
             variance_model = self.variance_model
@@ -604,22 +661,35 @@ class Detector:
         return signal, variance  # [ADU/voxel], [ADU²/voxel]
 
     def estimate_variance(self, flux, model=None, incl_thermal=True, cached_thermal=False):
-        """Estimate the variance associated with the input flux.
+        """Estimate the variance of the integrated signal of a pixel.
+
+        The variance accounts for the photon noise of the input flux and of
+        the effective dark current (see `get_effective_dark`), and for the
+        read-out noise, given the current MACC mode `nmd`.
 
         Parameters
         ----------
         flux : array_like
-            Incident flux in e-/s.
-        model : str, optional
-            Variance model to use. If None, `self.variance_model` is used.
-            Default is None.
+            Incident flux in e-/s/pixel.
+        model : str or None, optional
+            Variance model, ``"rauscher07"`` (Rauscher et al. 2007, corrected
+            in 2010) or ``"kubik16"`` (Kubik et al. 2016). If None,
+            `variance_model` is used. Default is None.
         incl_thermal : bool, optional
-            Include thermal contribution. Default is True.
+            If True, include the thermal dark in the dark current.
+            Default is True.
+        cached_thermal : bool, optional
+            Passed as ``cached`` to `get_thermal_dark`. Default is False.
 
         Returns
         -------
-        array_like
-            Variance in ADU².
+        numpy.ndarray or float
+            Variance in ADU^2.
+
+        Raises
+        ------
+        NotImplementedError
+            If ``model`` is unknown.
         """
         if model is None:
             model = self.variance_model
@@ -640,29 +710,34 @@ class Detector:
 
     # - conversion
     def photonflux_to_adu(self, lbda=None):
-        """Conversion factor from photon flux [ph/s] to integrated signal [ADU].
+        """Get the conversion factor from photon flux [ph/s] to signal [ADU].
 
-        This is effective exposure time [s] * QE [e-/ph] * gain [ADU/e-].
+        This is `integration_time` [s] * QE [e-/ph] * `gain` [ADU/e-].
 
         Parameters
         ----------
-        lbda : array_like, optional
-            used to estimated the qe (see.get_qe())
-            Wavelength array in Angstrom. If None, `self.lbda` is used.
-            Default is None.
+        lbda : float or array_like or None, optional
+            Wavelength(s) in Angstrom used to evaluate the QE (see `get_qe`).
+            If None, `lbda` is used. Default is None.
 
         Returns
         -------
-        adu: array
+        float or numpy.ndarray
+            Conversion factor in ADU/(ph/s).
         """
         qe = self.get_qe(lbda=lbda) # applied the lbda if needed.
         return self.integration_time * qe * self.gain
 
     # could be propery but not to consistancy with photonflux_to_adu
     def electronpers_to_adu(self):
-        """Conversion factor from electron/s to integrated signal [ADU].
+        """Get the conversion factor from electron flux [e-/s] to signal [ADU].
 
-        This is effective exposure time [s] * gain [ADU/e-].
+        This is `integration_time` [s] * `gain` [ADU/e-].
+
+        Returns
+        -------
+        float
+            Conversion factor in ADU/(e-/s).
         """
         return self.integration_time * self.gain
 
@@ -670,16 +745,11 @@ class Detector:
     def _estimate_variance_rauscher07(self, flux, nmd, tframe, ron, dark, gain):
         """Variance from Rauscher+2007 (corrected in Rauscher+2010).
 
-        Note
-        ----
-        In Rauscher+07, the flux estimate (eqs 2, 3 & 4) is unbiased and
-        naturally falls back to the incident flux in the noiseless limit.
-
         Parameters
         ----------
         flux : array_like
             Flux in e-/s.
-        nmd : tuple
+        nmd : tuple of int
             MACC(N=#group, M=#frame, D=#drop).
         tframe : float
             Frame time in seconds.
@@ -692,8 +762,13 @@ class Detector:
 
         Returns
         -------
-        array_like
-            Total variance in ADU².
+        numpy.ndarray or float
+            Total variance in ADU^2.
+
+        Notes
+        -----
+        In Rauscher+07, the flux estimate (eqs 2, 3 & 4) is unbiased and
+        naturally falls back to the incident flux in the noiseless limit.
         """
         n, m, d = nmd
         if (n == 0) or (m == 0):
@@ -712,13 +787,13 @@ class Detector:
 
     @staticmethod
     def _estimate_variance_kubik16(flux, nmd, tframe, ron, dark, gain):
-        """Variance from Kubik+2016 (as updated by ).
+        """Variance from Kubik+2016.
 
         Parameters
         ----------
         flux : array_like
             Flux in e-/s.
-        nmd : tuple
+        nmd : tuple of int
             MACC(N=#group, M=#frame, D=#drop).
         tframe : float
             Frame time in seconds.
@@ -731,8 +806,8 @@ class Detector:
 
         Returns
         -------
-        array_like
-            Total variance in ADU².
+        numpy.ndarray or float
+            Total variance in ADU^2.
         """
         n, m, d = nmd
 
@@ -757,17 +832,17 @@ class Detector:
     # - Core
     @property
     def lbda(self):
-        """Wavelength in Angstroms."""
+        """Wavelength(s) in Angstrom at which chromatic quantities are evaluated."""
         return self._lbda
 
     @property
     def thermaloptics(self):
-        """ThermalOptics object producing signal onto the detector."""
+        """`~slicersim.thermal.ThermalOptics` producing the thermal dark, or None."""
         return self._thermaloptics
 
     @property
     def meta(self):
-        """Metadata containing the current detector parameters."""
+        """Metadata dictionary holding the current detector parameters."""
         # info: self._meta_in contains the input meta.
         return self._meta
 
@@ -776,25 +851,26 @@ class Detector:
     #
     @property
     def name(self):
-        """Name of the detector, if any."""
+        """Name of the detector (``"unknown"`` if not set in `meta`)."""
         return self.meta.get("name", "unknown")
 
     @property
     def shape(self):
-        """ shape of the detector """
+        """Detector shape in pixels ``[ny, nx]``."""
         return self.meta.get("shape", None)
 
 
     @property
     def variance_model(self):
-        """Variance model name."""
+        """Name of the variance model (``"rauscher07"`` or ``"kubik16"``)."""
         return self.meta.get("variance_model")
 
     @property
     def lbda_range(self):
-        """Wavelength range accepted by the detector.
+        """Wavelength range ``[lmin, lmax]`` seen by the detector, in Angstrom.
 
-        This is the first and last value of `self.lbda` if not specified.
+        If not specified at initialization, the first and last values of
+        `lbda` are used.
         """
         lbda_range = self.meta.get("lbda_range", None)
         if lbda_range is None:
@@ -804,36 +880,31 @@ class Detector:
     # - pixels properties
     @property
     def dark(self):
-        """Detector dark current in e-/s.
+        """Detector dark current in e-/s/pixel.
 
-        Note
-        ----
-        The total effective dark current is `self.dark` + `self.get_thermal_dark()`.
+        The total effective dark current, including the ROIC glow and the
+        thermal dark, is given by `get_effective_dark`.
         """
         return self.meta.get("dark")
 
     @property
     def roic_glow(self):
-        """ Roic glow in e-/frame.
+        """ROIC glow in e-/pixel/frame.
 
-        Note
-        ----
-        This is the additional signal induced by the roic read.
+        This is the additional signal induced by each read of the ROIC.
         """
         return self.meta.get("roic_glow", 0)
 
     @property
     def ron(self):
-        """Detector Read-Out Noise per frame in e-."""
+        """Detector read-out noise per frame in e- (RMS)."""
         return self.meta.get("ron")
 
     @property
     def qe(self):
-        """Quantum efficiency (float, array, or function).
+        """Quantum efficiency in e-/ph, as a float or a callable of wavelength.
 
-        Note
-        ----
-        Use `self.get_qe()` to get the actual QE for the input `self.lbda`.
+        Use `get_qe` to evaluate it at the current wavelength(s) `lbda`.
         """
         return self.meta.get("qe")
 
@@ -860,48 +931,51 @@ class Detector:
     # - read-out model and co.
     @property
     def nmd(self):
-        """Read-out mode (n, m, d).
+        """MACC read-out mode ``(n, m, d)``.
 
-        n: number of groups
-        m: frames per group
-        d: dropped frames
+        ``n`` is the number of groups, ``m`` the number of frames per group and
+        ``d`` the number of dropped frames between groups.
         """
         return self.meta.get("nmd")
 
     @property
     def macc(self):
-        """Read-out mode in MACC description 'N:M:D'."""
+        """MACC read-out mode as a ``"N:M:D"`` string."""
         return ':'.join([ str(_) for _ in self.nmd ])
 
     @property
     def min_group(self):
-        """Minimal allowed number of groups per ramp (n_min, m, d)."""
+        """Minimum allowed number of groups per ramp."""
         return self.meta.get("min_group")
 
     @property
     def max_group(self):
-        """Maximum allowed number of groups per ramp (n_max, m, d)."""
+        """Maximum allowed number of groups per ramp."""
         return self.meta.get("max_group")
 
     @property
     def nframes(self):
-        """Total number of individual frames in the ramp."""
+        """Total number of frames in the ramp, ``n * (m + d) - d``."""
         n, m, d = self.nmd
         return (n * (m + d) - d)
 
     @property
     def tgroup(self):
-        """Time between two groups, including drops."""
+        """Time between the starts of two groups in seconds, ``(m + d) * tframe``."""
         n, m, d = self.nmd
         return (m + d) * self.tframe
 
     @property
     def integration_time(self):
-        """Effective integration time for flux computations."""
+        """Effective integration time in seconds, ``(n - 1) * tgroup``.
+
+        This is the time between the first and last groups, used to convert
+        fluxes into integrated signals.
+        """
         n, m, d = self.nmd
         return (n - 1) * (m + d) * self.tframe  # = (n - 1) * tgroup
 
     @property
     def exposure_time(self):
-        """Total integration time for sequences."""
+        """Total duration of the ramp in seconds, ``nframes * tframe``."""
         return self.nframes * self.tframe

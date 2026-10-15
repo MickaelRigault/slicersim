@@ -61,6 +61,17 @@ napoleon_google_docstring = False
 napoleon_numpy_docstring = True
 napoleon_use_rtype = False
 napoleon_use_ivar = True
+# Link the types of the Parameters / Returns sections.
+napoleon_preprocess_types = True
+napoleon_type_aliases = {
+    "array_like": ":term:`array_like <numpy:array_like>`",
+    "callable": ":term:`callable <python:callable>`",
+    "DataFrame": "pandas.DataFrame",
+    "Series": "pandas.Series",
+}
+# These words are not Python objects: do not try to link them.
+nitpick_ignore = [("py:class", name) for name in
+                  ("optional", "default", "or", "of", "shape")]
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
@@ -91,6 +102,7 @@ copybutton_prompt_is_regexp = True
 html_theme = "sphinx_book_theme"
 html_title = "slicersim"
 html_logo = "_static/slicersim_logo.png"
+html_favicon = "_static/slicersim_logo.png"
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
 
@@ -106,4 +118,16 @@ html_theme_options = {
     "show_navbar_depth": 1,
     "home_page_in_toc": False,
     "navigation_with_keys": False,
+    "icon_links": [
+        {
+            "name": "PyPI",
+            "url": "https://pypi.org/project/slicersim",
+            "icon": "fa-brands fa-python",
+        },
+        {
+            "name": "Paper (Rigault et al. 2026)",
+            "url": "https://scixplorer.org/abs/2026arXiv260706391R/abstract",
+            "icon": "fa-solid fa-book-open",
+        },
+    ],
 }

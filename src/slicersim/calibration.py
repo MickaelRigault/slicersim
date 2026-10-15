@@ -1,4 +1,10 @@
-""" This modules handles calibration exposures """
+"""Calibration exposures.
+
+Calibration targets illuminate the full IFU field with a spatially uniform
+source (no point source, no host), e.g. a lamp seen directly or through a
+Fabry-Perot etalon. See `~slicersim.lazuli.Lazuli3DFlat` for the Lazuli
+flavour.
+"""
 import numpy as np
 
 from .target import VirtualTarget
@@ -7,12 +13,22 @@ from .target import VirtualTarget
 class VirtualFlat(VirtualTarget):
     """Abstract base class for flat-field calibration targets.
 
-    Subclasses must implement :meth:`get_spectrum` and :meth:`setup_to_snr`
-    for their specific flat-field geometry.
+    Subclasses must implement `get_spectrum` and `setup_to_snr` for their
+    specific flat-field geometry.
+
+    Parameters
+    ----------
+    simulation : slicersim.simulation.Simulation, optional
+        The simulation the target wraps. Default is None.
     """
 
     def get_spectrum(self, *args, **kwargs):
         """Not implemented for the generic VirtualFlat class.
+
+        Parameters
+        ----------
+        *args, **kwargs
+            Ignored.
 
         Raises
         ------
@@ -24,6 +40,11 @@ class VirtualFlat(VirtualTarget):
     def setup_to_snr(self, *args, **kwargs):
         """Not implemented for the generic VirtualFlat class.
 
+        Parameters
+        ----------
+        *args, **kwargs
+            Ignored.
+
         Raises
         ------
         NotImplementedError
@@ -33,11 +54,22 @@ class VirtualFlat(VirtualTarget):
 
 
 class Flat3DCalibration(VirtualFlat):
-    """3D flat-field calibration target built from a spatially uniform background source.
+    """3D flat-field calibration target, from a spatially uniform source.
 
-    Wraps a :class:`~slicersim.simulation.Simulation` whose scene contains only a
-    background component (no point source, no host), allowing the full IFU spatial
-    field to be illuminated uniformly for wavelength-dependent flat-field calibration.
+    Wraps a `~slicersim.simulation.Simulation` whose scene contains only a
+    background component (no point source, no host), so that the full IFU
+    field is illuminated uniformly, for wavelength-dependent flat-field
+    calibration. It is normally built with `from_spectrum`, `from_blackbody`
+    or `from_febryperot`.
+
+    Parameters
+    ----------
+    simulation : slicersim.simulation.Simulation, optional
+        The simulation the target wraps. Default is None.
+
+    See Also
+    --------
+    slicersim.lazuli.Lazuli3DFlat : The Lazuli flavour of this target.
     """
 
     @classmethod
@@ -56,16 +88,16 @@ class Flat3DCalibration(VirtualFlat):
         flux : array_like
             Flux of the reference spectrum in erg/s/cm^2/A.
         instrument : str or dict, optional
-            Instrument configuration. If None, the class default
-            ``_INSTRUMENT`` is used. Default is None.
+            Instrument configuration (file name or dict). If None, the
+            class default ``_INSTRUMENT`` is used. Default is None.
         **kwargs
-            Additional parameters passed to
-            `~slicersim.scene.background.Background.from_spectrum`, overriding
-            the defaults ``mag=None``, ``band="bessellb"`` and ``meta={}``.
+            Goes to `~slicersim.scene.background.Background.from_spectrum`,
+            overriding the defaults ``mag=None``, ``band="bessellb"`` and
+            ``meta={}``.
 
         Returns
         -------
-        Flat3DCalibration
+        ~slicersim.calibration.Flat3DCalibration
             An instance of the class, wrapping the corresponding simulation.
 
         Raises
@@ -112,18 +144,18 @@ class Flat3DCalibration(VirtualFlat):
         temperature : float
             Temperature of the blackbody in Kelvin.
         instrument : str or dict, optional
-            Instrument configuration. If None, the class default
-            ``_INSTRUMENT`` is used. Default is None.
+            Instrument configuration (file name or dict). If None, the
+            class default ``_INSTRUMENT`` is used. Default is None.
         mag : float, optional
             Magnitude the blackbody spectrum is normalised to. Default is 15.
         band : str, optional
-            Name of the bandpass used for the normalisation (must be known by
-            `sncosmo`). Default is "sdssr".
+            Name of the bandpass used for the normalisation (any sncosmo
+            bandpass name). Default is ``"sdssr"``.
         magsys : str, optional
-            Name of the magnitude system (see `sncosmo`). Default is "ab".
-        lbda_range : list, optional
-            (min, max) wavelength range in Angstrom.
-            Default is [3_000, 20_000].
+            Name of the sncosmo magnitude system. Default is ``"ab"``.
+        lbda_range : list of float, optional
+            ``[min, max]`` wavelength range in Angstrom.
+            Default is ``[3_000, 20_000]``.
         lbda_bin : int, optional
             Number of wavelength samples. Default is 2000.
         **kwargs
@@ -131,8 +163,14 @@ class Flat3DCalibration(VirtualFlat):
 
         Returns
         -------
-        Flat3DCalibration
+        ~slicersim.calibration.Flat3DCalibration
             An instance of the class.
+
+        Raises
+        ------
+        ValueError
+            If no instrument is given and the class defines no default
+            ``_INSTRUMENT``.
 
         See Also
         --------
@@ -162,19 +200,19 @@ class Flat3DCalibration(VirtualFlat):
         fp_throughput : callable
             Fabry-Perot transmission as a function of wavelength in Angstrom.
         instrument : str or dict, optional
-            Instrument configuration. If None, the class default
-            ``_INSTRUMENT`` is used. Default is None.
+            Instrument configuration (file name or dict). If None, the
+            class default ``_INSTRUMENT`` is used. Default is None.
         mag : float, optional
             Magnitude the blackbody spectrum is normalised to, before the
             Fabry-Perot transmission is applied. Default is 15.
         band : str, optional
-            Name of the bandpass used for the normalisation (must be known by
-            `sncosmo`). Default is "sdssr".
+            Name of the bandpass used for the normalisation (any sncosmo
+            bandpass name). Default is ``"sdssr"``.
         magsys : str, optional
-            Name of the magnitude system (see `sncosmo`). Default is "ab".
-        lbda_range : list, optional
-            (min, max) wavelength range in Angstrom.
-            Default is [3_000, 20_000].
+            Name of the sncosmo magnitude system. Default is ``"ab"``.
+        lbda_range : list of float, optional
+            ``[min, max]`` wavelength range in Angstrom.
+            Default is ``[3_000, 20_000]``.
         lbda_bin : int, optional
             Number of wavelength samples. Default is 2000.
         **kwargs
@@ -182,8 +220,14 @@ class Flat3DCalibration(VirtualFlat):
 
         Returns
         -------
-        Flat3DCalibration
+        ~slicersim.calibration.Flat3DCalibration
             An instance of the class.
+
+        Raises
+        ------
+        ValueError
+            If no instrument is given and the class defines no default
+            ``_INSTRUMENT``.
 
         See Also
         --------

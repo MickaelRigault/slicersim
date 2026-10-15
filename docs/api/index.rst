@@ -63,7 +63,6 @@ Populations and calibrations
    :nosignatures:
 
    ~sample.Sample
-   ~lazuli.LazuliFlat
    ~lazuli.Lazuli3DFlat
 
 Instrument-agnostic targets
@@ -123,6 +122,15 @@ Instrument
    ~thermal.ThermalOptics
    ~thermal.ThermalRadiation
    ~mapper.SlicerMapper
+
+Configuration files
+-------------------
+
+.. autosummary::
+   :nosignatures:
+
+   ~iotools.read_config
+   ~iotools.read_calspec
 
 .. toctree::
    :hidden:

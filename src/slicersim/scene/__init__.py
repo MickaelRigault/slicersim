@@ -1,59 +1,77 @@
-""" module containing the scene elements.
+"""Scene elements: point source, backgrounds and host.
 
 The scene is made of a point source (e.g. a supernova or a kilonova, see
 `slicersim.scene.sources`), a spatially flat background, and an optional
-structured background (host). Use `get_scene` to build a scene configuration.
+structured background (host). Use `get_scene` to build a scene configuration
+and `~slicersim.scene.scene.Scene` to load it.
 """
 import warnings
 from .pointsource import PointSource  # noqa: F401
 from .scene import Scene  # noqa: F401
 
 def get_scene(source, background="zodi", host={}, **kwargs):
-    """ Get a scene configuration.
+    """Get a scene configuration.
 
     This function generates a dictionary that defines a scene containing a
-    source, a background, and a host galaxy. The scene can then be used
+    point source, a background, and a host galaxy. The scene can then be used
     to generate a simulation.
 
     Parameters
     ----------
-    source : str
+    source : str or tuple
         The kind of point source, optionally followed by the model to use,
-        separated by "-" (``"{kind}-{model}"``). For instance, "snia-salt"
-        means a SN Ia modeled with SALT, "kilonova-bulla19" a kilonova
+        separated by "-" (``"{kind}-{model}"``). For instance, ``"snia-salt"``
+        means a SN Ia modeled with SALT, ``"kilonova-bulla19"`` a kilonova
         modeled with the Bulla (2019) POSSIS model.
         Available kinds and models are:
 
-        - snia: salt [default], twin, or any sncosmo salt source name
-          (see `sources.supernovae.get_snia_pointsource`).
-        - kilonova: bulla23 [default], bulla19
-          (see `sources.kilonova.get_kilonova_pointsource`).
-        - calspec: any HST CalSpec name (e.g. bd_17 , gd_71, p177d, etc.). No default.
-        - blackbody: any temperature in Kelvin (e.g. blackbody-6000 [default], blackbody-10000, etc.)
-        - powerlaw: alpha coefficient (e.g. blackbody--2 (-2), blackbody-0.5 (0.5), etc.)
+        - ``snia``: ``salt`` [default], ``twin``, or any ``sncosmo`` SALT
+          source name (see
+          `~slicersim.scene.sources.supernovae.get_snia_pointsource`).
+        - ``kilonova``: ``bulla23`` [default], ``bulla19`` (see
+          `~slicersim.scene.sources.kilonova.get_kilonova_pointsource`).
+        - ``calspec``: any HST CalSpec star name (e.g. ``bd_17``, ``gd71``,
+          ``p177d``). No default (see
+          `~slicersim.scene.sources.stars.get_calspec_pointsource`).
+        - ``blackbody``: temperature in K (e.g. ``"blackbody-6000"``,
+          ``"blackbody-10000"``), see
+          `~slicersim.scene.sources.blackbody.get_blackbody_flux`.
+        - ``powerlaw``: power-law index ``alpha`` of F_lambda (e.g.
+          ``"powerlaw--2"`` for alpha=-2, ``"powerlaw-0.5"`` for alpha=0.5),
+          see `~slicersim.scene.sources.generic.get_powerlaw_flux`.
 
-        Hence "snia" is equivalent to "snia-salt" and "kilonova" to
-        "kilonova-bulla23".
+        Hence ``"snia"`` is equivalent to ``"snia-salt"`` and ``"kilonova"``
+        to ``"kilonova-bulla23"``.
+        Alternatively, ``source`` can be a ``(lbda, flux)`` tuple (or list)
+        defining a tabulated spectrum, with ``lbda`` in Angstrom (see
+        `~slicersim.scene.pointsource.PointSource.from_spectrum`).
     background : str or dict, optional
-        The background configuration. "zodi" is a shortcut for the
-        Aldering (2001) zodiacal light model. Defaults to "zodi".
+        The background configuration (see
+        `~slicersim.scene.background.Background.from_config`). ``"zodi"`` is
+        a shortcut for the Aldering (2001) zodiacal light model
+        (``"Aldering01.BB5800"``, scaled by 2). Default is ``"zodi"``.
     host : dict, optional
-        A dictionary defining the host galaxy. Defaults to an empty dict.
+        A dictionary defining the host galaxy (see
+        `~slicersim.scene.host.Host.from_config`). Default is an empty dict,
+        i.e. no host.
     **kwargs
-        Additional keyword arguments to pass to the source model
-        (e.g. redshift, phase, position, or model specific parameters such
-        as x1 and c for SALT or theta and magabs for kilonovae).
+        Additional parameters of the point source configuration (e.g.
+        ``redshift``, ``phase``, ``position``, or model specific parameters
+        such as ``x1`` and ``c`` for SALT, ``theta`` and ``magabs`` for
+        kilonovae, ``mag`` and ``band`` for blackbody, power-law or CalSpec
+        sources).
 
     Returns
     -------
     dict
-        A dictionary defining the scene, with keys for the point source,
-        background, and host.
+        A dictionary ``{"scene": {"pointsource": ..., "background": ...,
+        "host": ...}}`` defining the scene.
 
     Raises
     ------
     NotImplementedError
-        If the source kind is neither "snia" nor "kilonova".
+        If ``source`` is a str of unknown kind, or neither a str nor a
+        ``(lbda, flux)`` tuple or list.
 
     Examples
     --------
@@ -124,7 +142,7 @@ def get_scene(source, background="zodi", host={}, **kwargs):
                     }}
 
 def get_sn_scene(model="salt", background="zodi", host={}, **kwargs):
-    """ Get a scene configuration for a supernova model.
+    """Get a scene configuration for a supernova model.
 
     .. deprecated:: 1.3.1
         Use ``get_scene(source="snia-{model}", ...)`` instead.
@@ -136,20 +154,20 @@ def get_sn_scene(model="salt", background="zodi", host={}, **kwargs):
     Parameters
     ----------
     model : str, optional
-        The name of the supernova model to use. Can be "salt" or any other
-        sncosmo salt source name. Defaults to "salt".
-    background : str, optional
-        The name of the background model to use. Defaults to "zodi".
+        The name of the supernova model to use. Can be ``"salt"``,
+        ``"twin"`` or any other ``sncosmo`` SALT source name.
+        Default is ``"salt"``.
+    background : str or dict, optional
+        The background configuration, see `get_scene`. Default is ``"zodi"``.
     host : dict, optional
-        A dictionary defining the host galaxy. Defaults to an empty dict.
+        A dictionary defining the host galaxy. Default is an empty dict.
     **kwargs
         Additional keyword arguments to pass to the supernova model.
 
     Returns
     -------
     dict
-        A dictionary defining the scene, with keys for the point source,
-        background, and host.
+        A dictionary defining the scene, see `get_scene`.
 
     Warns
     -----

@@ -1,4 +1,4 @@
-""" This module handles Blackbody sources """
+"""This module handles blackbody sources."""
 
 from astropy import units
 from astropy.modeling.models import BlackBody
@@ -19,13 +19,14 @@ def get_blackbody_flux(lbda, temperature, mag,
     lbda : array_like or astropy.units.Quantity
         Wavelength array. Assumed to be in Angstrom if it carries no unit.
     temperature : float
-        Temperature of the blackbody in Kelvin.
+        Temperature of the blackbody in K.
     mag : float
         Target magnitude in the given band.
     band : str, optional
-        Name of the bandpass (must be known by `sncosmo`). Default is "sdssr".
+        Name of the bandpass (must be known by ``sncosmo``).
+        Default is ``"sdssr"``.
     magsys : str, optional
-        Name of the magnitude system (see `sncosmo`). Default is "ab".
+        Name of the magnitude system (see ``sncosmo``). Default is ``"ab"``.
 
     Returns
     -------
