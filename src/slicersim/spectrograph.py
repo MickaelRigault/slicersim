@@ -1120,7 +1120,12 @@ class Spectrograph:
             return None # nothing to do | should a warning be added ? This should not happen
 
         # additional contribution (assumed gaussian) for the effective spotsize
-        extra_pixels = np.sqrt(spotsize**2 - expected_size**2)
+        # The divided by 2 is because extra_pixel is consistent with a gaussian sigma.
+        extra_pixels = np.sqrt(spotsize**2 - expected_size**2) / 2.
+
+        # now including anamorphose:
+        if self.type == "slicer":
+            extra_pixels /= self._ANAMORPHOSE # anamorphose is > 1, so this reduces the extra_pixels
 
         # get the scatter scale in pixels/spaxels
         # pixels/spaxels: same for a slicer in that direction

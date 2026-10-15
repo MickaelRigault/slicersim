@@ -113,8 +113,8 @@ class Sample:
         """
         from . import LazuliSupernova
         data = pandas.DataFrame({"redshift": redshifts,
-                                 "stretch": stretchs,
-                                 "color": colors})
+                                 "x1": stretchs,
+                                 "c": colors})
         targets = [LazuliSupernova(**(this.to_dict() | kwargs)) for _, this in data.iterrows()]
         return cls(targets)
 
