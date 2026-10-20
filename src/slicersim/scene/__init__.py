@@ -90,7 +90,13 @@ def get_scene(source, background="zodi", host={}, **kwargs):
 
     # Name short cuts
     if type(source) == str:
-        if "snia" in source:
+        # galaxy
+        if "galaxy" in source:
+            if "sersic" in source:
+
+
+        # transient
+        elif "snia" in source:
             from .sources.supernovae import get_snia_pointsource
             # default is SALT.
             pointsource = get_snia_pointsource(source=_parse_source_(source), **kwargs)
@@ -137,9 +143,10 @@ def get_scene(source, background="zodi", host={}, **kwargs):
         background = {'name': 'zodi', 'model': 'Aldering01.BB5800', 'scale': 2.0}
 
     return {"scene": {"pointsource": pointsource,
-                        "background": background,
-                        "host": host
+                      "background": background,
+                      "host": host
                     }}
+
 
 def get_sn_scene(model="salt", background="zodi", host={}, **kwargs):
     """Get a scene configuration for a supernova model.

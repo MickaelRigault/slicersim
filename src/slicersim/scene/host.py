@@ -13,6 +13,17 @@ from astropy.cosmology import Planck18 as cosmology
 
 from .base import SceneElement
 
+
+def get_sersic_config():
+    """ """
+    mag = absmag + cosmo.distmod(redshift).value
+    return {"refmodel": "blackbody-5000",
+            "mag": mag,
+            "band": "sdssr",
+            "r_kpc": r_kpc, "redshift": redshift,
+            "n": 2, "ellip": 0.3, "theta": -30} | kwargs
+
+
 def get_sersic_profile(r_eff, n=1.0, ellip=0.0, theta=0.0, flux=1,
                        pixel_scale=0.1, shape=(10, 10), position=None,
                        oversample=4):
