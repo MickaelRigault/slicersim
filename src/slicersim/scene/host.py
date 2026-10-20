@@ -13,6 +13,30 @@ from astropy.cosmology import Planck18 as cosmology
 from .base import SceneElement
 from ..utils import inspect_func
 
+def get_host_config(modelname, redshift=0.1, **kwargs):
+    """ """
+    if ":" in modelname:
+        spatialmodel, spectralmodel = modelname.split(":", 1)
+        config = {"refmodel": modelname, "redshift": redshift}
+
+        if "sersic" in spatialmodel:
+            config |= { "r_kpc": 5, "n": 2, "ellip": 0.3, "theta": -30}
+        else:
+            raise NotImplementedError(f"spatial model '{spatialmodel}' is not recognized. Must be 'sersic'.")
+
+        if "bb" in spectralmodel or "blackbody" in spectralmodel:
+            config |= {"magabs": -21, "band": "sdssr",}
+            if "-" not in spectralmodel:
+                config |= {f"temperature": 5000}
+        else:
+            raise NotImplementedError(f"spectral model '{spectralmodel}' is not recognized. Must be 'blackbody-<temperature>' or 'brown-<galname>'.")
+
+    else:
+        raise NotImplementedError(f"modelname '{modelname}' is not recognized. Must be 'spatial:spectral'.")
+
+    return config | kwargs
+
+
 def get_sersic_profile(r_kpc=5, redshift=0.1, cosmology=cosmology,
                        r_eff=None,
                        n=1.0, ellip=0.0, theta=0.0, flux=1,
@@ -167,8 +191,6 @@ class Host(SceneElement):
         # do not affect the input config
         config = deepcopy(config)
 
-        # build it.
-
         # Parse the model
         refmodel = config.pop("refmodel", "sersic:bb-5000")
         if ":" in refmodel:
@@ -192,7 +214,7 @@ class Host(SceneElement):
                 from astropy.io import fits
                 from wcc_etc.io import get_any_astro_name
                 galdata = fits.getdata( get_any_astro_name(galname) )
-                config["lbda_ref"], config["flux_ref"] = galdata["wavelength"],galdata["flux"]
+                config["lbda_ref"], config["flux_ref"] = galdata["wavelength"], galdata["flux"]
                 spectral_func = generic_get_flux
             else:
                 raise NotImplementedError(f"spectral model '{spectralmodel}' is not recognized. Must be 'blackbody-<temperature>' or 'brown-<galname>'.")
@@ -206,7 +228,7 @@ class Host(SceneElement):
     @classmethod
     def _from_spatial_and_spectral_func(cls, spatial_func, spectral_func, **kwargs):
         """ """
-        this = cls(None, meta = kwargs )
+        this = cls("None", meta = kwargs )
         this._model_func_spectral = spectral_func
         this._model_func_spatial = spatial_func
         return this
@@ -214,6 +236,12 @@ class Host(SceneElement):
     #
     # convinience from_ functions.
     #
+    @classmethod
+    def from_modelname(cls, modelname, redshift=0.1, **kwargs):
+        """ """
+        config = get_host_config(modelname, redshift=redshift, **kwargs)
+        return cls.from_config(config)
+
     @classmethod
     def from_sersic_and_blackbody(cls, temperature, mag=None, band="sdssr", redshift=0.1,
                                  r_eff=0.1, n=1.0, ellip=0.0, theta=0.0,
@@ -313,9 +341,9 @@ class Host(SceneElement):
     # ========== #
     #  Methods   #
     # ========== #
-    def _model_func(self, lbda, *args, **kwargs):
+    def _model_func(self, lbda, **kwargs):
         """ """
-        flux = self._model_func_spectral(lbda, **kwargs)
+        flux = self._model_func_spectral(lbda, **(self._meta_spectral | kwargs) )
         spatial = self._current_spatial_model
         return flux[:, None, None] * spatial[None, :, :]
 
@@ -396,7 +424,7 @@ class Host(SceneElement):
     @property
     def _current_spatial_model(self):
         """ """
-        if self._spatial_model is None:
+        if not hasattr(self,"._spatial_model") or self._spatial_model is None:
             self._update_spatial_model()
 
         return self._spatial_model

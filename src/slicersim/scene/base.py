@@ -32,7 +32,9 @@ class SceneElement:
 
     def __init__(self, model_func, lbda=None, meta={}):
         """Initialize the SceneElement."""
-        self._model_func = model_func
+        if model_func is not "None":
+            self._model_func = model_func
+
         self._meta = deepcopy(meta)
         self._meta_in = deepcopy(meta)
         self._lbda = lbda
