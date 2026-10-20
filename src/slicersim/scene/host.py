@@ -191,7 +191,7 @@ class Host(SceneElement):
         return cls.from_sersic_and_spectrum(lbda, flux, mag=mag, **config)
 
     @classmethod
-    def from_sersic_and_spectrum(cls, lbda, flux, mag=None, band="sdssr", redshift=0,
+    def from_sersic_and_spectrum(cls, lbda, flux, mag=None, band="sdssr", redshift=0.1,
                                  r_eff=0.1, n=1.0, ellip=0.0, theta=0.0,
                                  pixel_scale=0.1, shape=(10, 10), position=None,
                                 oversample=4,
@@ -278,7 +278,10 @@ class Host(SceneElement):
         this = cls(None, meta= meta | kwargs)
 
         # internal function
-        def _internal_get_flux(lbda, mag, band, r_eff=1., n=1.0, ellip=0.0, theta=0.0,
+        def _internal_get_flux(lbda, band="sdssr",
+                            magobs=None, magabs=None,
+                            redshift=0.1, cosmology=cosmology,
+                            r_eff=1., n=1.0, ellip=0.0, theta=0.0,
                             pixel_scale=0.1, shape=(10, 10), position=None,
                             oversample=4):
             """Internal model function: spectrum modulated by the Sersic profile.
@@ -315,12 +318,17 @@ class Host(SceneElement):
                 3D datacube of shape ``(len(lbda), ny, nx)``: the flux at each
                 wavelength scaled by the (flux-normalized) Sersic profile.
             """
-            if mag is None:
+            if magabs is None and magobs is None:
                 flux_ratio = 1
             else:
+                if magobs is None: # but magabs given
+                    magobs = magabs + cosmology.distmod(redshift).value
+                elif magabs is not None:
+                    warnings.warn("both magobs and magabs are given. magobs is used.")
+
                 in_mag = Spectrum(meta["lbda_ref"]*(1+redshift), meta["flux_ref"]
                                   ).bandmag(band, "ab")
-                flux_ratio = 10 ** (-0.4 * (mag - in_mag))
+                flux_ratio = 10 ** (-0.4 * (magobs - in_mag))
 
             flux_ = np.interp(lbda, meta["lbda_ref"]*(1+redshift), meta["flux_ref"],
                               left=np.nan, right=np.nan)
