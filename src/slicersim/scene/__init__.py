@@ -92,7 +92,7 @@ def get_scene(source, background="zodi", host={}, **kwargs):
     if type(source) == str:
         # galaxy
         if "galaxy" in source:
-            if "sersic" in source:
+            raise NotImplementedError(f"Unknown source name: {source!r}. 'galaxy' not implemented yet.")
 
 
         # transient

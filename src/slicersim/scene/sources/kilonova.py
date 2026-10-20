@@ -51,7 +51,7 @@ def get_kilonova_pointsource(source=None, **kwargs):
     **kwargs
         Additional parameters to update the configuration, i.e. any
         parameter of `get_kilonova_flux` (e.g. ``redshift``, ``phase``,
-        ``theta``, ``magabs``, ``magobs``, ``band``) or ``position``.
+        ``theta``, ``magabs``, ``mag``, ``band``) or ``position``.
 
     Returns
     -------
@@ -355,7 +355,7 @@ def get_kilonova_model(filename=None,
 
 def get_kilonova_flux(lbda, phase=0,
                        redshift=0.1, theta=0,
-                       magobs=None, magabs=-15.8,
+                       mag=None, magabs=-15.8,
                        band="sdssr", magsys="ab",
                        source="bulla19", cosmo=cosmology):
     """Get the flux of a kilonova source.
@@ -375,14 +375,14 @@ def get_kilonova_flux(lbda, phase=0,
     theta : float, optional
         Viewing angle in degrees (0 is pole-on, 90 is edge-on).
         Default is 0.
-    magobs : float, optional
+    mag : float, optional
         Peak apparent magnitude in ``band``, set with
         ``sncosmo.Model.set_source_peakmag`` (i.e. evaluated on the rest-frame
         source spectrum). If given, ``magabs`` is ignored.
         Default is None.
     magabs : float, optional
         Peak absolute magnitude in rest-frame ``band``, converted to an
-        apparent magnitude using ``cosmo``. Ignored if ``magobs`` is given.
+        apparent magnitude using ``cosmo``. Ignored if ``mag`` is given.
         If both are None the model is not normalized.
         Default is -15.8.
     band : str, optional
@@ -415,7 +415,7 @@ def get_kilonova_flux(lbda, phase=0,
     Warns
     -----
     UserWarning
-        If both ``magobs`` and ``magabs`` are not None.
+        If both ``mag`` and ``magabs`` are not None.
 
     See Also
     --------
@@ -447,10 +447,10 @@ def get_kilonova_flux(lbda, phase=0,
     model = get_kilonova_model(filename)
     model.set(theta=theta, z=redshift, t0=0)
 
-    if magobs is not None:
+    if mag is not None:
         if magabs is not None:
-            warnings.warn("magobs and magabs have been specified. magabs ignored.")
-        model.set_source_peakmag(m=magobs, band=band, magsys=magsys)
+            warnings.warn("mag and magabs have been specified. magabs ignored.")
+        model.set_source_peakmag(m=mag, band=band, magsys=magsys)
     elif magabs is not None:
         model.set_source_peakabsmag(absmag=magabs,
                                     band=band, magsys=magsys,

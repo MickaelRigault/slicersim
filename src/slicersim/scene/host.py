@@ -5,26 +5,17 @@ target: a spatially extended source whose spectrum (reference spectrum
 rescaled to a given magnitude) is modulated by a Sersic surface-brightness
 profile, see `get_sersic_profile`.
 """
-import warnings
 from copy import deepcopy
 import numpy as np
 from astropy.modeling.models import Sersic2D
 from astropy.cosmology import Planck18 as cosmology
 
 from .base import SceneElement
+from ..utils import inspect_func
 
-
-def get_sersic_config():
-    """ """
-    mag = absmag + cosmo.distmod(redshift).value
-    return {"refmodel": "blackbody-5000",
-            "mag": mag,
-            "band": "sdssr",
-            "r_kpc": r_kpc, "redshift": redshift,
-            "n": 2, "ellip": 0.3, "theta": -30} | kwargs
-
-
-def get_sersic_profile(r_eff, n=1.0, ellip=0.0, theta=0.0, flux=1,
+def get_sersic_profile(r_kpc=5, redshift=0.1, cosmology=cosmology,
+                       r_eff=None,
+                       n=1.0, ellip=0.0, theta=0.0, flux=1,
                        pixel_scale=0.1, shape=(10, 10), position=None,
                        oversample=4):
     """Render a Sersic profile onto a pixel grid, flux-normalized.
@@ -64,6 +55,13 @@ def get_sersic_profile(r_eff, n=1.0, ellip=0.0, theta=0.0, flux=1,
         only if the profile is fully contained in the grid.
     """
     from scipy.special import gamma, gammaincinv
+
+    if r_eff is None:
+        if r_kpc is not None and redshift is not None:
+            r_eff = r_kpc * cosmology.arcsec_per_kpc_proper( float(redshift) ).value
+        else:
+            raise ValueError("either r_eff or (r_kpc and redshift) must be given")
+
     nx, ny = shape
     center = ((nx - 1) / 2.0, (ny - 1) / 2.0)
 
@@ -170,43 +168,78 @@ class Host(SceneElement):
         config = deepcopy(config)
 
         # build it.
-        refmodel = config.pop("refmodel", "blackbody-5000")
-        mag = config.pop("mag", 20)
 
-        # use kpc scale
-        r_kpc = config.pop("r_kpc", None)
-        if r_kpc is not None:
-            redshift = config.get("redshift", None) # kept: also redshifts the spectrum
-            if redshift is None:
-                warnings.warn("r_kpc is given but redshift is not. r_kpc is ignored.")
+        # Parse the model
+        refmodel = config.pop("refmodel", "sersic:bb-5000")
+        if ":" in refmodel:
+            spatialmodel, spectralmodel = refmodel.split(":", 1)
+            if spatialmodel == "sersic":
+                spatial_func = get_sersic_profile
             else:
-                if "r_eff" in config:
-                    warnings.warn("r_kpc+redshift and r_eff are both given. r_eff is ignored.")
+                raise NotImplementedError(f"spatial model '{spatialmodel}' is not recognized. Must be 'sersic'.")
 
-                config["r_eff"] = r_kpc * cosmology.arcsec_per_kpc_proper(float(redshift)).value
+            if spectralmodel.startswith("blackbody") or spectralmodel.startswith("bb"):
+                from .sources.blackbody import get_blackbody_flux
+                if "-" in spectralmodel:
+                    temperature = float(spectralmodel.split("-")[1])
+                    config["temperature"] = temperature
 
-        # use known spectrum.
-        if "blackbody" in refmodel:
-            from .sources.blackbody import get_blackbody_flux
-            temperature = float( refmodel.split("-")[1] )
-            lbda = np.linspace(1000, 30_000, 2000) # rest-frame, wide enough to be redshifted
-            flux = get_blackbody_flux(lbda, temperature=temperature, mag=mag)
+                spectral_func = get_blackbody_flux
 
-        elif "brown-" in refmodel:
-            galname = refmodel.split("-")[1]
-            from astropy.io import fits
-            from wcc_etc.io import get_any_astro_name
-            galdata = fits.getdata( get_any_astro_name(galname) )
-            lbda, flux = galdata["wavelength"],galdata["flux"]
+            elif spectralmodel.startswith("brown-"):
+                galname = spectralmodel.split("-")[1]
+                from .sources.generic import generic_get_flux
+                from astropy.io import fits
+                from wcc_etc.io import get_any_astro_name
+                galdata = fits.getdata( get_any_astro_name(galname) )
+                config["lbda_ref"], config["flux_ref"] = galdata["wavelength"],galdata["flux"]
+                spectral_func = generic_get_flux
+            else:
+                raise NotImplementedError(f"spectral model '{spectralmodel}' is not recognized. Must be 'blackbody-<temperature>' or 'brown-<galname>'.")
 
-        return cls.from_sersic_and_spectrum(lbda, flux, mag=mag, **config)
+        else:
+            raise NotImplementedError(f"refmodel '{refmodel}' is not recognized. Must be 'spatial:spectral'.")
+
+        # Spatial source.
+        return cls._from_spatial_and_spectral_func(spatial_func, spectral_func, **config)
+
+    @classmethod
+    def _from_spatial_and_spectral_func(cls, spatial_func, spectral_func, **kwargs):
+        """ """
+        this = cls(None, meta = kwargs )
+        this._model_func_spectral = spectral_func
+        this._model_func_spatial = spatial_func
+        return this
+
+    #
+    # convinience from_ functions.
+    #
+    @classmethod
+    def from_sersic_and_blackbody(cls, temperature, mag=None, band="sdssr", redshift=0.1,
+                                 r_eff=0.1, n=1.0, ellip=0.0, theta=0.0,
+                                 pixel_scale=0.1, shape=(10, 10), position=None,
+                                 oversample=4,
+                                 **kwargs):
+        """Build a `Host` from a Sersic surface-brightness profile and a blackbody spectrum.
+
+        Parameters
+        ----------
+        """
+        meta = {key: values for key, values in locals().items()
+                       if key not in ["cls" ,"kwargs"]
+                } | kwargs
+
+        return cls._from_spatial_and_spectral_func(spatial_func=get_sersic_profile,
+                                                   spectral_func=get_blackbody_flux,
+                                                   meta=meta)
+
 
     @classmethod
     def from_sersic_and_spectrum(cls, lbda, flux, mag=None, band="sdssr", redshift=0.1,
                                  r_eff=0.1, n=1.0, ellip=0.0, theta=0.0,
                                  pixel_scale=0.1, shape=(10, 10), position=None,
-                                oversample=4,
-                                **kwargs):
+                                 oversample=4,
+                                 **kwargs):
         """Build a `Host` from a Sersic surface-brightness profile and a reference spectrum.
 
         The host's spectral shape is taken from a reference spectrum
@@ -268,90 +301,27 @@ class Host(SceneElement):
             ``theta``, ``pixel_scale``, ``shape``, ``position`` and
             ``oversample``.
         """
-        from sncosmo import Spectrum
-        meta = {}
-        # flux input
-        meta["mag"] = mag
-        meta["band"] = band
-        meta["lbda_ref"] = lbda
-        meta["flux_ref"] = flux
+        meta = {key: values for key, values in locals().items()
+                       if key not in ["cls", "lbda", "flux","kwargs"]
+                } | kwargs
 
-        # profile input (sersic)
-        meta["r_eff"] = r_eff
-        meta["n"] = n
-        meta["ellip"] = ellip
-        meta["theta"] = theta
-        meta["pixel_scale"] = pixel_scale
-        meta["shape"] = shape
-        meta["position"] = position
-        meta["oversample"] = oversample
+        return cls._from_spatial_and_spectral_func(spatial_func=get_sersic_profile,
+                                                   spectral_func=generic_get_flux,
+                                                   **meta)
 
-        this = cls(None, meta= meta | kwargs)
 
-        # internal function
-        def _internal_get_flux(lbda, band="sdssr",
-                            magobs=None, magabs=None,
-                            redshift=0.1, cosmology=cosmology,
-                            r_eff=1., n=1.0, ellip=0.0, theta=0.0,
-                            pixel_scale=0.1, shape=(10, 10), position=None,
-                            oversample=4):
-            """Internal model function: spectrum modulated by the Sersic profile.
+    # ========== #
+    #  Methods   #
+    # ========== #
+    def _model_func(self, lbda, *args, **kwargs):
+        """ """
+        flux = self._model_func_spectral(lbda, **kwargs)
+        spatial = self._current_spatial_model
+        return flux[:, None, None] * spatial[None, :, :]
 
-            Parameters
-            ----------
-            lbda : array_like
-                Wavelength array in Angstrom.
-            mag : float or None
-                Target magnitude. If None, the reference spectrum is used
-                as-is (no rescaling).
-            band : str
-                Bandpass name.
-            r_eff : float, optional
-                Effective (half-light) radius, in arcsec. Default is 1.
-            n : float, optional
-                Sersic index. Default is 1.0.
-            ellip : float, optional
-                Ellipticity, 1 - b/a. Default is 0.0.
-            theta : float, optional
-                Position angle, in degrees. Default is 0.0.
-            pixel_scale : float, optional
-                Arcsec per pixel of the output grid. Default is 0.1.
-            shape : tuple of int, optional
-                Output cube spatial shape as ``(nx, ny)``. Default is ``(10, 10)``.
-            position : tuple of float, optional
-                Centroid offset ``(dx, dy)`` in pixels. Default is None.
-            oversample : int, optional
-                Oversampling factor per axis. Default is 4.
-
-            Returns
-            -------
-            numpy.ndarray
-                3D datacube of shape ``(len(lbda), ny, nx)``: the flux at each
-                wavelength scaled by the (flux-normalized) Sersic profile.
-            """
-            if magabs is None and magobs is None:
-                flux_ratio = 1
-            else:
-                if magobs is None: # but magabs given
-                    magobs = magabs + cosmology.distmod(redshift).value
-                elif magabs is not None:
-                    warnings.warn("both magobs and magabs are given. magobs is used.")
-
-                in_mag = Spectrum(meta["lbda_ref"]*(1+redshift), meta["flux_ref"]
-                                  ).bandmag(band, "ab")
-                flux_ratio = 10 ** (-0.4 * (magobs - in_mag))
-
-            flux_ = np.interp(lbda, meta["lbda_ref"]*(1+redshift), meta["flux_ref"],
-                              left=np.nan, right=np.nan)
-            flux_ *= flux_ratio
-
-            profile = get_sersic_profile(r_eff=r_eff, n=n, ellip=ellip, theta=theta,
-                                        pixel_scale=pixel_scale, shape=shape, position=position,
-                                        oversample=oversample, flux=1)
-            return flux_[:, None, None] * profile[None, :, :]
-
-        this._model_func = _internal_get_flux
-        return this
+    def _update_spatial_model(self):
+        """ """
+        self._spatial_model = self._model_func_spatial(**self._meta_spatial)
 
     # ========== #
     #  Getter    #
@@ -396,6 +366,7 @@ class Host(SceneElement):
         model_kwargs = self._parse_model_kwargs_() | kwargs
         return lbda, self.model_func(lbda, **model_kwargs)
 
+
     def get_spectrum(self, lbda=None):
         """Get the host spectrum, integrated over its own grid.
 
@@ -417,3 +388,41 @@ class Host(SceneElement):
         """
         lbda, cube = self.get_cube(lbda)
         return lbda, np.sum(cube, axis=(-2, -1))
+
+
+    # ============ #
+    # properties   #
+    # ============ #
+    @property
+    def _current_spatial_model(self):
+        """ """
+        if self._spatial_model is None:
+            self._update_spatial_model()
+
+        return self._spatial_model
+
+    @property
+    def _mutable_parameters_spatial(self):
+        """ """
+        return inspect_func(self._model_func_spatial )[0]
+
+    @property
+    def _mutable_parameters_spectral(self):
+        """ """
+        all_spectral = inspect_func(self._model_func_spectral )[0]
+        return [key for key in all_spectral if key not in  ["lbda"] ]
+
+    @property
+    def mutable_parameters(self):
+        """ """
+        return list(self._mutable_parameters_spatial) + list(self._mutable_parameters_spectral)
+
+    @property
+    def _meta_spatial(self):
+        """ """
+        return {k: self.meta[k] for k in self._mutable_parameters_spatial if k in self.meta}
+
+    @property
+    def _meta_spectral(self):
+        """ """
+        return {k: self.meta[k] for k in self._mutable_parameters_spectral if k in self.meta}

@@ -1,13 +1,19 @@
 """This module handles blackbody sources."""
 
+import numpy as np
+
 from astropy import units
+from astropy.cosmology import Planck18 as cosmology
 from astropy.modeling.models import BlackBody
+
 from sncosmo import Spectrum
 
 _FLAMBDA_units = units.erg / (units.cm ** 2 * units.s * units.AA)
 
-def get_blackbody_flux(lbda, temperature, mag,
-                       band="sdssr", magsys="ab"):
+def get_blackbody_flux(lbda, temperature, mag=None,
+                        magabs=None, redshift=0,
+                        cosmology=cosmology,
+                        band="sdssr", magsys="ab"):
     """Get the flux of a blackbody source.
 
     The Planck function is evaluated at the requested wavelengths and rescaled
@@ -55,10 +61,20 @@ def get_blackbody_flux(lbda, temperature, mag,
     flux = flux_nu.to(_FLAMBDA_units, units.spectral_density(lbda))
 
     # let's get it to the target mag using sncosmo
-    spec_in = Spectrum(wave=lbda.value, flux=flux.value)
+    print(f"{redshift=}")
+    spec_in = Spectrum(wave=lbda.value * (1+redshift), flux=flux.value)
+
     # the "whatever mag"
     native_mag = spec_in.bandmag(band, magsys)
     # conver the flux to the good amplitude
+    if mag is None:
+        if magabs is None:
+            raise ValueError("either mag or magabs must be given.")
+        # convert to apparent magnitude
+        mag = cosmology.distmod(redshift).value + magabs
+
     fluxcoef_for_target_mag = 10 ** (-0.4 * (mag - native_mag))
+    if redshift > 0:
+        return np.interp(lbda.value, lbda.value*(1+redshift), flux.value) * fluxcoef_for_target_mag  # numpy array
 
     return flux.value * fluxcoef_for_target_mag  # numpy array
