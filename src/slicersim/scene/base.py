@@ -104,6 +104,8 @@ class SceneElement:
         else:
             self._meta = self._meta | model_update
 
+        return list( model_update.keys() )
+
     def get_spectrum(self, lbda=None):
         """Get the spectrum of the scene element.
 

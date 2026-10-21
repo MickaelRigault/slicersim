@@ -197,14 +197,25 @@ class Host(SceneElement):
 
         # Parse the model
         refmodel = config.pop("refmodel", "sersic:bb-5000")
+
+        # Model with the structure 'spatial:spectral', e.g. 'sersic:bb-5000'
         if ":" in refmodel:
             spatialmodel, spectralmodel = refmodel.split(":", 1)
+            # --------------------- #
+            # => Spatial structure  #
+            # --------------------- #
+            # spatial structure is Sersic
             if spatialmodel == "sersic":
                 spatial_func = get_sersic_profile
             else:
                 raise NotImplementedError(f"spatial model '{spatialmodel}' is not recognized. Must be 'sersic'.")
 
-            if spectralmodel.startswith("blackbody") or spectralmodel.startswith("bb"):
+
+            # --------------------- #
+            # => Spectral structure #
+            # --------------------- #
+            # Blackbody
+            if np.any( [spectralmodel.startswith(bb) for bb in ["bb", "blackbody"]] ):
                 from .sources.blackbody import get_blackbody_flux
                 if "-" in spectralmodel:
                     temperature = float(spectralmodel.split("-")[1])
@@ -212,6 +223,7 @@ class Host(SceneElement):
 
                 spectral_func = get_blackbody_flux
 
+            # Brown et al. galaxy spectral
             elif spectralmodel.startswith("brown-"):
                 galname = spectralmodel.split("-")[1]
                 from .sources.generic import generic_get_flux
@@ -220,6 +232,7 @@ class Host(SceneElement):
                 galdata = fits.getdata( get_any_astro_name(galname) )
                 config["lbda_ref"], config["flux_ref"] = galdata["wavelength"], galdata["flux"]
                 spectral_func = generic_get_flux
+
             else:
                 raise NotImplementedError(f"spectral model '{spectralmodel}' is not recognized. Must be 'blackbody-<temperature>' or 'brown-<galname>'.")
 
@@ -236,6 +249,7 @@ class Host(SceneElement):
         this._model_func_spectral = spectral_func
         this._model_func_spatial = spatial_func
         return this
+
 
     #
     # convinience from_ functions.
@@ -345,6 +359,14 @@ class Host(SceneElement):
     # ========== #
     #  Methods   #
     # ========== #
+    def update(self, reset_others=False, **kwargs):
+        """ """
+        updated_parameters = super().update(**kwargs)
+        if np.any([key in self._mutable_parameters_spatial for key in updated_parameters]):
+            self._update_spatial_model()
+
+        return updated_parameters
+
     def _model_func(self, lbda, **kwargs):
         """ """
         flux = self._model_func_spectral(lbda, **(self._meta_spectral | kwargs) )
