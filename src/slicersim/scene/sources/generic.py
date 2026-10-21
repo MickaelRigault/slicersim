@@ -8,53 +8,56 @@ from sncosmo import Spectrum
 # internal function
 #
 def generic_get_flux(lbda, lbda_ref, flux_ref,
-                    magobs=None, magabs=None,
+                    mag=None, magabs=None,
                     band="sdssr",
                     redshift=0.1, cosmology=cosmology):
-    """Internal model function: spectrum modulated by the Sersic profile.
+    """Get the flux of a reference spectrum, redshifted and normalized to a magnitude.
 
     Parameters
     ----------
     lbda : array_like
-        Wavelength array in Angstrom.
-    mag : float or None
-        Target magnitude. If None, the reference spectrum is used
-        as-is (no rescaling).
-    band : str
-        Bandpass name.
-    r_eff : float, optional
-        Effective (half-light) radius, in arcsec. Default is 1.
-    n : float, optional
-        Sersic index. Default is 1.0.
-    ellip : float, optional
-        Ellipticity, 1 - b/a. Default is 0.0.
-    theta : float, optional
-        Position angle, in degrees. Default is 0.0.
-    pixel_scale : float, optional
-        Arcsec per pixel of the output grid. Default is 0.1.
-    shape : tuple of int, optional
-        Output cube spatial shape as ``(nx, ny)``. Default is ``(10, 10)``.
-    position : tuple of float, optional
-        Centroid offset ``(dx, dy)`` in pixels. Default is None.
-    oversample : int, optional
-        Oversampling factor per axis. Default is 4.
+        Observer-frame wavelength array in Angstrom.
+    lbda_ref : array_like
+        Rest-frame wavelength array of the reference spectrum, in Angstrom.
+    flux_ref : array_like
+        Flux of the reference spectrum, sampled at ``lbda_ref``, in
+        erg/s/cm^2/A.
+    mag : float or None, optional
+        Target (observed) AB magnitude in ``band``. Default is None.
+    magabs : float or None, optional
+        Target absolute AB magnitude, used if ``mag`` is None:
+        ``mag = magabs + distmod(redshift)`` (no K-correction).
+        If both ``mag`` and ``magabs`` are None, the reference spectrum is
+        used as is (no rescaling). Default is None.
+    band : str, optional
+        Bandpass name (must be known by ``sncosmo``). Default is ``"sdssr"``.
+    redshift : float, optional
+        Redshift applied to the reference wavelengths (wavelength stretch
+        only, the dimming is in ``mag``). Default is 0.1.
+    cosmology : astropy.cosmology.Cosmology, optional
+        Cosmology used to convert ``magabs``. Default is Planck18.
 
     Returns
     -------
     numpy.ndarray
-        3D datacube of shape ``(len(lbda), ny, nx)``: the flux at each
-        wavelength scaled by the (flux-normalized) Sersic profile.
+        The flux in erg/s/cm^2/A at ``lbda``, NaN outside of the
+        (redshifted) reference wavelength range.
+
+    Warns
+    -----
+    UserWarning
+        If both ``mag`` and ``magabs`` are given (``magabs`` is then ignored).
     """
-    if magabs is None and magobs is None:
+    if magabs is None and mag is None:
         flux_ratio = 1
     else:
-        if magobs is None: # but magabs given
-            magobs = magabs + cosmology.distmod(redshift).value
+        if mag is None: # but magabs given
+            mag = magabs + cosmology.distmod(redshift).value
         elif magabs is not None:
-            warnings.warn("both magobs and magabs are given. magobs is used.")
+            warnings.warn("mag and magabs have been specified. magabs ignored.")
 
         in_mag = Spectrum(lbda_ref*(1+redshift), flux_ref).bandmag(band, "ab")
-        flux_ratio = 10 ** (-0.4 * (magobs - in_mag))
+        flux_ratio = 10 ** (-0.4 * (mag - in_mag))
 
     flux_ = np.interp(lbda, lbda_ref*(1+redshift), flux_ref,
                       left=np.nan, right=np.nan)

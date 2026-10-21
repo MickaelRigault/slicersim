@@ -865,8 +865,8 @@ class LazuliKilonova( VirtualLazuliTarget, Kilonova ):
         ``"bulla23"`` [default] or ``"bulla19"``.
     **kwargs
         Point source parameters, mainly ``redshift``, ``phase`` (days since
-        merger), ``theta`` (viewing angle in degrees), ``magabs`` or
-        ``magobs`` (peak magnitude in ``band``) and ``position`` (spaxels).
+        merger), ``theta`` (viewing angle in degrees), ``magabs`` (peak absolute
+        magnitude in ``band``) or ``mag`` (peak observed magnitude) and ``position`` (spaxels).
 
     Examples
     --------

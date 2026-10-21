@@ -355,7 +355,7 @@ def get_kilonova_model(filename=None,
 
 def get_kilonova_flux(lbda, phase=0,
                        redshift=0.1, theta=0,
-                       mag=None, magabs=-15.8,
+                       mag=None, magabs=None,
                        band="sdssr", magsys="ab",
                        source="bulla19", cosmo=cosmology):
     """Get the flux of a kilonova source.
@@ -451,8 +451,10 @@ def get_kilonova_flux(lbda, phase=0,
         if magabs is not None:
             warnings.warn("mag and magabs have been specified. magabs ignored.")
         model.set_source_peakmag(m=mag, band=band, magsys=magsys)
+
     elif magabs is not None:
         model.set_source_peakabsmag(absmag=magabs,
                                     band=band, magsys=magsys,
                                     cosmo=cosmo)
+
     return model.flux(phase, lbda)

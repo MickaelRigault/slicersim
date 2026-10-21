@@ -712,7 +712,7 @@ class Kilonova( VirtualTarget ):
         - ``phase``: days since merger (default 1.4).
         - ``theta``: viewing angle in degrees (default 0, i.e. pole-on).
         - ``magabs``: peak absolute magnitude in ``band`` (default -15.8).
-        - ``magobs``: peak observed magnitude in ``band`` (overrides
+        - ``mag``: peak observed magnitude in ``band`` (overrides
           ``magabs``).
         - ``band``: bandpass of the normalisation (default ``"sdssr"``).
         - ``position``: position in the IFU in spaxels (default
