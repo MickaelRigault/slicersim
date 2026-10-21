@@ -15,15 +15,19 @@ from ..utils import inspect_func
 
 def get_host_config(modelname, redshift=0.1, **kwargs):
     """ """
+
+    # This is a spatial & Spectral structure 'spatial:spectral'
     if ":" in modelname:
         spatialmodel, spectralmodel = modelname.split(":", 1)
         config = {"refmodel": modelname, "redshift": redshift}
 
+        # Spatial is Sersic
         if "sersic" in spatialmodel:
             config |= { "r_kpc": 5, "n": 2, "ellip": 0.3, "theta": -30}
         else:
             raise NotImplementedError(f"spatial model '{spatialmodel}' is not recognized. Must be 'sersic'.")
 
+        # Spectral is Blackbody
         if "bb" in spectralmodel or "blackbody" in spectralmodel:
             config |= {"magabs": -21, "band": "sdssr",}
             if "-" not in spectralmodel:
@@ -31,6 +35,7 @@ def get_host_config(modelname, redshift=0.1, **kwargs):
         else:
             raise NotImplementedError(f"spectral model '{spectralmodel}' is not recognized. Must be 'blackbody-<temperature>' or 'brown-<galname>'.")
 
+    # nothing else implemented so far
     else:
         raise NotImplementedError(f"modelname '{modelname}' is not recognized. Must be 'spatial:spectral'.")
 
@@ -105,10 +110,9 @@ def get_sersic_profile(r_kpc=5, redshift=0.1, cosmology=cosmology,
 
     y_grid, x_grid = np.mgrid[0:ny_os, 0:nx_os]
 
-    model = Sersic2D(
-        amplitude=1.0, r_eff=r_eff_os, n=n,
-        x_0=x0_os, y_0=y0_os, ellip=ellip, theta=np.deg2rad(theta),
-    )
+    model = Sersic2D( amplitude=1.0, r_eff=r_eff_os, n=n,
+                      x_0=x0_os, y_0=y0_os, ellip=ellip,
+                      theta=np.deg2rad(theta))
     img_os = model(x_grid, y_grid)
 
     img = img_os.reshape(ny, oversample, nx, oversample).mean(axis=(1, 3))

@@ -523,7 +523,7 @@ class VirtualLazuliTarget:
             if source_original_position is not None:
                 self.simulation.update(pointsource__position = source_pos_wide)
 
-            if source_original_position is not None:
+            if host_original_position is not None:
                 self.simulation.update(host__position = host_pos_wide)
 
             cubes_wide = self.simulation.get_cube(**kwargs)

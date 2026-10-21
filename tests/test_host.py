@@ -1,4 +1,6 @@
 
+import pytest
+import numpy as np
 from slicersim.scene import host
 
 # default_config is defined as a fixture in conftest
@@ -19,3 +21,10 @@ def test_get_host_config():
 def test_instanciation(default_host):
     """ """
     assert isinstance(default_host, host.Host), "failed to instanciate the Host"
+
+def test_get_cube(default_host):
+    """ """
+    lbda = np.linspace(1_000, 30_000, 1_000)
+    _, cube = default_host.get_cube(lbda)
+    assert cube.ndim == 3, "cube is not 3D"
+    assert cube.shape[0] == len(lbda), "cube wavelength axis does not match"
