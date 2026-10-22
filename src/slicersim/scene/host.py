@@ -66,6 +66,9 @@ def get_host_config(modelname, redshift=0.1, **kwargs):
     >>> config = get_host_config("sersic:bb-6000", redshift=1, position=(15, -15))
     >>> host = Host.from_config(config)  # doctest: +SKIP
     """
+    if np.any([modelname.startswith(key) for key in ["ngc", "NGC"]]) and not ":" in modelname:
+        # format is simply modelname="ngc0628", lets make sure for now it is understood as ngc0628:ngc0628
+        modelname = f"{modelname}:{modelname}"
 
     # This is a spatial & Spectral structure 'spatial:spectral'
     if ":" in modelname:
@@ -197,6 +200,9 @@ class Host(SceneElement):
 
         # Parse the model
         refmodel = config.pop("refmodel", "sersic:bb-5000")
+        if np.any([refmodel.startswith(key) for key in ["ngc", "NGC"]]) and not ":" in refmodel:
+            # format is simply refmodel="ngc0628", lets make sure for now it is understood as ngc0628:ngc0628
+            refmodel = f"{refmodel}:{refmodel}"
 
         # Model with the structure 'spatial:spectral', e.g. 'sersic:bb-5000'
         if ":" in refmodel:
@@ -556,7 +562,6 @@ class Host(SceneElement):
     def show_spectrum(self, lbda=None, ax=None, **kwargs):
         """ """
         import matplotlib.pyplot as plt
-        from matplotlib.colors import LogNorm
         if ax is None:
             fig, ax = plt.subplots()
         else:
