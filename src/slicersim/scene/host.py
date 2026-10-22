@@ -229,8 +229,12 @@ class Host(SceneElement):
 
             # Brown et al. galaxy spectral
             elif spectralmodel.startswith("ngc") or spectralmodel.startswith("NGC"):
-                from ..io import get_galaxy_filepath
-                galdata = get_galaxy_filepath(spectralmodel, which="spectrum")
+                from astropy.io import fits
+                from ..iotools import get_galaxy_filepath
+                from .sources.generic import generic_get_flux
+                galspecfile = get_galaxy_filepath(spectralmodel, which="spectrum")
+                galdata = fits.getdata(galspecfile)
+
                 config["lbda_ref"], config["flux_ref"] = galdata["wavelength"], galdata["flux"]
                 spectral_func = generic_get_flux
 
@@ -501,7 +505,7 @@ class Host(SceneElement):
         return lbda, self.model_func(lbda, **kwargs)
 
 
-    def get_spectrum(self, lbda=None):
+    def get_spectrum(self, lbda=None, from_cube=False):
         """Get the host spectrum, integrated over its own grid.
 
         This is `get_cube` summed over the spatial axes, i.e. the flux
@@ -514,6 +518,11 @@ class Host(SceneElement):
             Wavelength array in Angstrom. If None, the default wavelength
             (``lbda`` attribute) is used. Default is None.
 
+        from_cube : bool, optional
+            If True, the spectrum is computed from the datacube (see
+            `get_cube`), otherwise it is computed directly from the spectral
+            function. Default is False.
+
         Returns
         -------
         lbda : array_like
@@ -521,8 +530,13 @@ class Host(SceneElement):
         flux : numpy.ndarray
             Flux in erg/s/cm^2/A.
         """
-        lbda, cube = self.get_cube(lbda)
-        return lbda, np.sum(cube, axis=(-2, -1))
+        if from_cube:
+            lbda, cube = self.get_cube(lbda)
+            spec = np.sum(cube, axis=(-2, -1))
+        else:
+            spec = self._model_func_spectral(lbda, **self._meta_spectral)
+
+        return lbda, spec
 
     def show_image(self, ax=None, **kwargs):
         """ """
@@ -536,6 +550,25 @@ class Host(SceneElement):
         image = self._current_spatial_model
         prop = dict(origin="lower", cmap="cividis", norm=LogNorm(image.max() * 1e-4))
         ax.imshow(image, **( prop | kwargs))
+        return fig
+
+
+    def show_spectrum(self, lbda=None, ax=None, **kwargs):
+        """ """
+        import matplotlib.pyplot as plt
+        from matplotlib.colors import LogNorm
+        if ax is None:
+            fig, ax = plt.subplots()
+        else:
+            fig = ax.figure
+
+        if lbda is None:
+            lbda = self.meta.get("lbda_ref", None)
+            if lbda is None:
+                raise ValueError("No lbda given, none available")
+
+        _, spectrum = self.get_spectrum(lbda)
+        ax.plot(lbda, spectrum, **kwargs)
         return fig
 
     # ============ #
