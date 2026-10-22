@@ -18,11 +18,11 @@ Use `get_host_config` to get a default configuration for a model name, and
 """
 from copy import deepcopy
 import numpy as np
-from astropy.modeling.models import Sersic2D
-from astropy.cosmology import Planck18 as cosmology
 
 from .base import SceneElement
+from .sources import galaxy
 from ..utils import inspect_func
+
 
 def get_host_config(modelname, redshift=0.1, **kwargs):
     """Get a default host configuration for a given model name.
@@ -75,8 +75,10 @@ def get_host_config(modelname, redshift=0.1, **kwargs):
         # Spatial is Sersic
         if "sersic" in spatialmodel:
             config |= { "r_kpc": 5, "n": 2, "ellip": 0.3, "theta": -30}
+        elif "ngc" in spatialmodel:
+            config |= {}
         else:
-            raise NotImplementedError(f"spatial model '{spatialmodel}' is not recognized. Must be 'sersic'.")
+            raise NotImplementedError(f"spatial model '{spatialmodel}' is not recognized. Must be 'sersic' or an ngc galaxy.")
 
         # Spectral is Blackbody
         if "bb" in spectralmodel or "blackbody" in spectralmodel:
@@ -85,7 +87,7 @@ def get_host_config(modelname, redshift=0.1, **kwargs):
                 config |= {"temperature": 5000}
 
         # Spectral is a Brown et al. galaxy template
-        elif spectralmodel.startswith("brown-"):
+        elif spectralmodel.startswith("ngc") or spectralmodel.startswith("NGC"):
             config |= {"magabs": -21, "band": "sdssr",}
 
         else:
@@ -101,109 +103,6 @@ def get_host_config(modelname, redshift=0.1, **kwargs):
 
     return config | kwargs
 
-
-def get_sersic_profile(r_kpc=5, redshift=0.1, cosmology=cosmology,
-                       r_eff=None,
-                       n=1.0, ellip=0.0, theta=0.0, flux=1,
-                       pixel_scale=0.1, shape=(10, 10), position=None,
-                       oversample=4):
-    """Render a Sersic profile onto a pixel grid, flux-normalized.
-
-    The size of the profile is either given in kpc (``r_kpc``, converted
-    into arcsec at ``redshift``) or directly in arcsec (``r_eff``), the
-    latter taking precedence.
-
-    Parameters
-    ----------
-    r_kpc : float, optional
-        Effective (half-light) radius, in kpc (proper). Used only if
-        ``r_eff`` is None. Default is 5.
-    redshift : float, optional
-        Redshift used to convert ``r_kpc`` into arcsec. Default is 0.1.
-    cosmology : astropy.cosmology.Cosmology, optional
-        Cosmology used to convert ``r_kpc`` into arcsec. Default is Planck18.
-    r_eff : float or None, optional
-        Effective (half-light) radius, in arcsec. If given, ``r_kpc`` and
-        ``redshift`` are ignored. Default is None.
-    n : float, optional
-        Sersic index (1 = exponential disk, 4 = de Vaucouleurs).
-        Default is 1.0.
-    ellip : float, optional
-        Ellipticity, 1 - b/a. Default is 0.0.
-    theta : float, optional
-        Position angle, in degrees (astropy math convention: from +x axis,
-        counterclockwise — remap at the call site if you need on-sky PA).
-        Default is 0.0.
-    flux : float, optional
-        Total integrated flux of the profile (integrated to infinity, so
-        the part falling outside of the grid is lost). Default is 1.
-    pixel_scale : float, optional
-        Arcsec per pixel of the output grid. Default is 0.1.
-    shape : tuple of int, optional
-        Output image shape as ``(nx, ny)``. Default is ``(10, 10)``.
-    position : tuple of float, optional
-        Centroid offset ``(dx, dy)`` in pixels relative to the geometric
-        center of the grid, where positive ``dx`` increases the column index
-        and positive ``dy`` the row index. Default is None, i.e. ``(0, 0)``.
-    oversample : int, optional
-        Oversampling factor per axis, for approximating pixel integration.
-        Default is 4.
-
-    Returns
-    -------
-    numpy.ndarray
-        2D image of shape ``(ny, nx)``, flux per pixel. It sums to ``flux``
-        only if the profile is fully contained in the grid.
-
-    Raises
-    ------
-    ValueError
-        If ``r_eff`` is None and ``r_kpc`` or ``redshift`` is None.
-    """
-    from scipy.special import gamma, gammaincinv
-
-    if r_eff is None:
-        if r_kpc is not None and redshift is not None:
-            r_eff = r_kpc * cosmology.arcsec_per_kpc_proper( float(redshift) ).value
-        else:
-            raise ValueError("either r_eff or (r_kpc and redshift) must be given")
-
-    nx, ny = shape
-    center = ((nx - 1) / 2.0, (ny - 1) / 2.0)
-
-    if position is None:
-        position = (0.0, 0.0)
-
-    dx, dy = position
-    x0 = center[0] + dx
-    y0 = center[1] + dy
-
-    nx_os, ny_os = nx * oversample, ny * oversample
-
-    # Convert everything to oversampled-pixel units
-    r_eff_os = (r_eff / pixel_scale) * oversample
-    x0_os = (x0 + 0.5) * oversample - 0.5
-    y0_os = (y0 + 0.5) * oversample - 0.5
-
-    y_grid, x_grid = np.mgrid[0:ny_os, 0:nx_os]
-
-    model = Sersic2D( amplitude=1.0, r_eff=r_eff_os, n=n,
-                      x_0=x0_os, y_0=y0_os, ellip=ellip,
-                      theta=np.deg2rad(theta))
-    img_os = model(x_grid, y_grid)
-
-    img = img_os.reshape(ny, oversample, nx, oversample).mean(axis=(1, 3))
-
-    # analytic total flux of the (amplitude=1) profile, in pixel units.
-    # normalizing by it (and not by img.sum()) conserves the surface
-    # brightness when the galaxy extends beyond the grid.
-    r_eff_pix = r_eff / pixel_scale
-    b_n = gammaincinv(2 * n, 0.5)
-    total = (2 * np.pi * n * np.exp(b_n) * b_n**(-2 * n) * gamma(2 * n)
-             * (1 - ellip) * r_eff_pix**2)
-
-    img *= flux / total
-    return img
 
 
 class Host(SceneElement):
@@ -307,8 +206,13 @@ class Host(SceneElement):
             # --------------------- #
             # spatial structure is Sersic
             if spatialmodel == "sersic":
-                spatial_func = get_sersic_profile
+                spatial_func = galaxy.get_sersic_profile
+
+            elif "ngc" in spatialmodel.lower():
+                galmodel = galaxy.GalaxySpatialModel.from_name(spatialmodel)
+                spatial_func = galmodel.project_to
             else:
+
                 raise NotImplementedError(f"spatial model '{spatialmodel}' is not recognized. Must be 'sersic'.")
 
             # --------------------- #
@@ -324,12 +228,9 @@ class Host(SceneElement):
                 spectral_func = get_blackbody_flux
 
             # Brown et al. galaxy spectral
-            elif spectralmodel.startswith("brown-"):
-                galname = spectralmodel.split("-")[1]
-                from .sources.generic import generic_get_flux
-                from astropy.io import fits
-                from wcc_etc.io import get_any_astro_name
-                galdata = fits.getdata( get_any_astro_name(galname) )
+            elif spectralmodel.startswith("ngc") or spectralmodel.startswith("NGC"):
+                from ..io import get_galaxy_filepath
+                galdata = get_galaxy_filepath(spectralmodel, which="spectrum")
                 config["lbda_ref"], config["flux_ref"] = galdata["wavelength"], galdata["flux"]
                 spectral_func = generic_get_flux
 
@@ -623,6 +524,19 @@ class Host(SceneElement):
         lbda, cube = self.get_cube(lbda)
         return lbda, np.sum(cube, axis=(-2, -1))
 
+    def show_image(self, ax=None, **kwargs):
+        """ """
+        import matplotlib.pyplot as plt
+        from matplotlib.colors import LogNorm
+        if ax is None:
+            fig, ax = plt.subplots()
+        else:
+            fig = ax.figure
+
+        image = self._current_spatial_model
+        prop = dict(origin="lower", cmap="cividis", norm=LogNorm(image.max() * 1e-4))
+        ax.imshow(image, **( prop | kwargs))
+        return fig
 
     # ============ #
     # properties   #

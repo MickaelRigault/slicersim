@@ -17,7 +17,7 @@ class CalSpecSource:
     This class downloads the list of CalSpec files from the STScI archive and
     provides methods to get the URL, the fits data and the spectrum of a
     given star. A module-level instance, ``calspecsource``, is created at
-    import (None if the archive cannot be reached).
+    import; the file list is only downloaded at first access of `source`.
 
     References
     ----------
@@ -29,9 +29,10 @@ class CalSpecSource:
     def __init__(self):
         """Initialize the CalSpecSource instance.
 
-        The list of CalSpec files is downloaded from the STScI archive.
+        The list of CalSpec files is downloaded from the STScI archive
+        at first access of `source` (not at import, to keep it fast).
         """
-        self._df_source = self.download_filelist()
+        self._df_source = None
 
     @classmethod
     def download_filelist(cls):
@@ -44,7 +45,8 @@ class CalSpecSource:
             ``"basename"`` column.
         """
         import requests
-        calspeclit = requests.get(cls._ARCHIVE_URL)
+        calspeclit = requests.get(cls._ARCHIVE_URL, timeout=30)
+        calspeclit.raise_for_status()
         list_of_files= [entry.split("</a>")[0].split(">")[-1]
                         for entry in calspeclit.text.splitlines() if ".fits" in entry]
         df = pandas.DataFrame(list_of_files, columns=["basename"])
@@ -168,12 +170,9 @@ class CalSpecSource:
     @property
     def source(self):
         """DataFrame of the CalSpec files, indexed by star name."""
+        if self._df_source is None:
+            self._df_source = self.download_filelist()
         return self._df_source
 
 # ================ #
-try:
-    calspecsource = CalSpecSource() # loads it.
-except: # noqa: E722
-    calspecsource = None
-    import warnings
-    warnings.warn("Cannot run calspecsource = CalSpecSource()")
+calspecsource = CalSpecSource() # file list downloaded lazily.

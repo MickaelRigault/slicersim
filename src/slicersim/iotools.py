@@ -1,7 +1,7 @@
 """Read configuration and data files.
 
 Files given without a directory are looked for in the package configuration
-directory ``PACKAGE_PATH`` (``slicersim/config``).
+directory ``PACKAGE_PATH.joinpath("config")`` (``slicersim/config``).
 """
 
 import os
@@ -18,14 +18,13 @@ try:
 except ModuleNotFoundError:
     import tomli as tomllib  # External
 
-
-PACKAGE_PATH = files("slicersim.config")     #: Path to data & config files.
+PACKAGE_PATH = files("slicersim")     #: Path to data & config files.
 
 def expand_path(filename):
     """Get the full file path, including the config path if necessary.
 
     If the input filename does not specifically include a directory, it is
-    looked for in the default ``PACKAGE_PATH`` directory.
+    looked for in the default ``PACKAGE_PATH.joinpath("config")`` directory.
 
     Parameters
     ----------
@@ -36,13 +35,13 @@ def expand_path(filename):
     -------
     str or pathlib.Path
         ``filename`` itself if it includes a directory, otherwise the path to
-        ``filename`` in ``PACKAGE_PATH``.
+        ``filename`` in ``PACKAGE_PATH.joinpath("config")``.
     """
 
     if os.path.dirname(filename):  # filename includes a path
         fname = filename
-    else:                          # use PACKAGE_PATH as default
-        fname = PACKAGE_PATH.joinpath(filename)
+    else:                          # use PACKAGE_PATH.joinpath("config") as default
+        fname = PACKAGE_PATH.joinpath("config").joinpath(filename)
 
     return fname
 
@@ -121,7 +120,7 @@ def read_config(filename, verbose=False):
     """Read a single configuration file.
 
     - If the input filename does not specifically include a directory, it is
-      looked for in the default ``PACKAGE_PATH`` directory.
+      looked for in the default ``PACKAGE_PATH.joinpath("config")`` directory.
     - Currently, only ``.toml`` configuration files are supported.
 
     Parameters
@@ -301,7 +300,45 @@ def read_ecsv(filename, colnames=None, description=''):
         return tab                # Return full table
 
 
-#: CalSpec repository URL
+# ============= #
+#  Galaxies     #
+# ============= #
+def get_galaxy_filepath(name, which="spectrum"):
+    """Get the path(s) to the spectrum and/or thumbnail files of a galaxy.
+
+    Files are looked for in the package data directory
+    ``PACKAGE_PATH.joinpath("data")``.
+
+    Parameters
+    ----------
+    name : str
+        Galaxy name (case insensitive). Currently, only NGC galaxies are
+        supported, given as ``"ngcXXXX"`` or ``"ngc_XXXX"``.
+    which : str, optional
+        Which file(s) to return: ``"spectrum"`` (or ``"spec"``) for the
+        spectrum file, ``"image"`` (or ``"thumbnail"``) for the thumbnail
+        image file, or ``"both"`` for both. Default is ``"spectrum"``.
+
+    Returns
+    -------
+    pathlib.Path or list of pathlib.Path
+        Path to the requested file if a single file is requested, otherwise
+        the list ``[spectrum_path, image_path]``.
+
+    Examples
+    --------
+    >>> spec, image = get_galaxy_filepath("NGC4321", which="both")  # doctest: +SKIP
+    """
+    try:
+        from lazuli_astrosim_data.io import get_galaxy_filepath
+    except ImportError:
+        raise ImportError("lazuli_astrosim_data is required to access galaxy data. Please install it via pip.") from None
+
+    return get_galaxy_filepath(name, which=which)
+
+# ============= #
+#  CalSpec      #
+# ============= #
 CALSPEC_URL = "https://archive.stsci.edu/hlsps/reference-atlases/cdbs/current_calspec/"
 
 def read_calspec(filename, url=CALSPEC_URL, wrange=[3_990, 17_010],
@@ -312,7 +349,7 @@ def read_calspec(filename, url=CALSPEC_URL, wrange=[3_990, 17_010],
     ----------
     filename : str
         Name of the reference flux file. If it is not found locally (or in
-        ``PACKAGE_PATH``), it is read from ``url``.
+        ``PACKAGE_PATH.joinpath("config")``), it is read from ``url``.
     url : str, optional
         Base URL of the remote CalSpec repository. Default is
         ``CALSPEC_URL``.
@@ -368,6 +405,7 @@ def read_calspec(filename, url=CALSPEC_URL, wrange=[3_990, 17_010],
     wsel = ~((wcol < wmin) | (wcol > wmax))  # Wavelength select
 
     return tab[wsel]['wavelength', 'flux']
+
 
 def chromatic_interpolator(wavelength, quantity,
                            k=3, ext='raise', inverse=False):
