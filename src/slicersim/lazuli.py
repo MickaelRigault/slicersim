@@ -785,7 +785,7 @@ class VirtualLazuliTarget:
         bbox_n = axn.get_position()
         bbox_w = axw.get_position()
         spacing = 0.06/0.04  *bbox_n.height/58
-        print(spacing)
+
         axw.set_position([bbox_w.x0, bbox_n.y0-bbox_w.height-spacing, bbox_w.width, bbox_w.height])
 
 

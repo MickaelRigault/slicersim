@@ -53,8 +53,9 @@ class Scene:
 
         self._pointsource = pointsource
         self._background = background
-        self._host = host
         self._lbda = lbda
+
+        self.set_host(host) # special as it may adapt to the pointsource if any.
         self._scene_meta = meta.copy()
 
     @classmethod
@@ -104,7 +105,10 @@ class Scene:
             background = None
 
         if host_config:  # initialize host from config
-            host = Host.from_config(host_config)
+            if type(host_config) is str:
+                host = Host.from_modelname(host_config)
+            else:
+                host = Host.from_config(host_config)
         else:
             host = None
 
@@ -124,6 +128,9 @@ class Scene:
         # no setting test as you are already pretty deep inside the code.
         # It's likely you know what you are doing.
         self._host = host
+        if host is not None and self.has_element("pointsource") and \
+            ((redshift := self.pointsource.redshift) is not None):
+            self.update(host__redshift = redshift)
 
     def has_element(self, element):
         """Check if an element is present in the scene.

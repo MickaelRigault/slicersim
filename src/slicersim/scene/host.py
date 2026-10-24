@@ -470,9 +470,11 @@ class Host(SceneElement):
 
         return flux[:, None, None] * spatial[None, :, :]
 
+
     def _update_spatial_model(self):
         """Recompute the cached image from the current meta."""
         self._spatial_model = self._model_func_spatial(**self._meta_spatial)
+
 
     # ========== #
     #  Getter    #
