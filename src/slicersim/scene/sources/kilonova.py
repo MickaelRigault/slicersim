@@ -355,7 +355,7 @@ def get_kilonova_model(filename=None,
 
 def get_kilonova_flux(lbda, phase=0,
                        redshift=0.1, theta=0,
-                       mag=None, magabs=None,
+                       mag=None, magabs=-15.8,
                        band="sdssr", magsys="ab",
                        source="bulla19", cosmo=cosmology):
     """Get the flux of a kilonova source.

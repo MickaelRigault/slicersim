@@ -749,7 +749,6 @@ class VirtualLazuliTarget:
         """
 
         import matplotlib.pyplot as plt
-        from matplotlib import colors
         from astropy.visualization import ImageNormalize, AsinhStretch, PercentileInterval
 
         if axes is None:
