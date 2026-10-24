@@ -116,6 +116,15 @@ class Scene:
             meta=config,
         )  # config don't contains elements anymore.
 
+    # =========== #
+    #  Method     #
+    # =========== #
+    def set_host(self, host):
+        """ Set the host element of the scene. """
+        # no setting test as you are already pretty deep inside the code.
+        # It's likely you know what you are doing.
+        self._host = host
+
     def has_element(self, element):
         """Check if an element is present in the scene.
 
@@ -131,6 +140,7 @@ class Scene:
         """
 
         return getattr(self, element, None) is not None
+
 
     def update(self, reset_others=False, **kwargs):
         """Update mutable parameters.
@@ -201,6 +211,7 @@ class Scene:
         if self.host is not None:
             self.host.update(reset_others=reset_others, **updates_host)
 
+
     def get_element_spectrum(self, which, lbda=None, fillna=0, **kwargs):
         """Get the spectrum of a given element.
 
@@ -244,6 +255,7 @@ class Scene:
 
         return lbda, spec
 
+
     def get_stacked_spectra(self, lbda=None, fillna=0):
         """Get the stack of all scene element spectra.
 
@@ -282,7 +294,11 @@ class Scene:
 
         return lbda, np.stack(spectra)
 
-    def plot_background(self, ax=None, in_log=True, **kwargs):
+
+    # -------- #
+    #  PLOTTER #
+    # -------- #
+    def show_background(self, ax=None, in_log=True, **kwargs):
         """Plot the background spectrum.
 
         The flux (erg/s/cm^2/A/arcsec^2) is plotted as a function of wavelength in micron.
@@ -302,7 +318,6 @@ class Scene:
         matplotlib.figure.Figure
             The figure containing the plot.
         """
-
         if ax is None:
             import matplotlib.pyplot as plt
             fig, ax = plt.subplots()
@@ -317,17 +332,26 @@ class Scene:
             ylabel = "Flux [fλ/arcsec²]"
 
         default = dict()  # ds='steps-mid')
-        model_name = self.meta.get("background").get("model")
-        ax.plot(self.lbda / 1e4, flux, **{**default, **kwargs})
-        ax.set(
-            xlabel="Wavelength [µm]",
-            ylabel=ylabel,
-            title=f"Background spectrum ({model_name})",
-        )
+        model_name = self.meta.get("background", {}).get("model", "unknown")
+        ax.plot(self.lbda / 1e4, flux, **(default | kwargs) )
+        ax.set( xlabel="Wavelength [µm]",
+                ylabel=ylabel,
+                title=f"Background spectrum ({model_name})",
+                )
 
         return fig
 
-    def plot_pointsource(self, ax=None, in_log=True, **kwargs):
+    def show_host(self, ax=None, **kwargs):
+        """ Plot the host spectrum. """
+        if not self.has_element("host"):
+            raise ValueError("No host element in the scene.")
+
+        if not hasattr(self.host, "show"):
+            raise ValueError("The host element does not have a 'show' method.")
+
+        return self.host.show(ax=ax, **kwargs)
+
+    def show_pointsource(self, ax=None, in_log=True, **kwargs):
         """Plot the point source spectrum.
 
         The flux (erg/s/cm^2/A) is plotted as a function of wavelength in micron.

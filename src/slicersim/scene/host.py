@@ -274,7 +274,14 @@ class Host(SceneElement):
         -------
         Host
         """
-        this = cls("None", meta = kwargs )
+        # takes default values as initial setting
+        default_meta_spatial = inspect_func(spatial_func)[1]
+        default_meta_spectral = inspect_func(spectral_func)[1]
+        # overwrite them by any equivalent entry in kwargs.
+        # => Note if 2 entries have the same name in spatial and spectral, spectral wins.
+        meta = default_meta_spatial | default_meta_spectral | kwargs
+
+        this = cls("None", meta = meta )
         this._model_func_spectral = spectral_func
         this._model_func_spatial = spatial_func
         return this
@@ -399,6 +406,7 @@ class Host(SceneElement):
         meta = {key: values for key, values in locals().items()
                        if key not in ["cls", "lbda", "flux", "kwargs", "generic_get_flux"]
                 } | {"lbda_ref": lbda, "flux_ref": flux} | kwargs
+
 
         return cls._from_spatial_and_spectral_func(spatial_func=get_sersic_profile,
                                                    spectral_func=generic_get_flux,
