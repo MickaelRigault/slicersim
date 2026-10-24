@@ -17,7 +17,6 @@ spectrum.
 import os
 
 import numpy as np
-import matplotlib.pyplot as plt
 
 from .iotools import get_config
 from .simulation import Simulation
@@ -631,7 +630,7 @@ class VirtualLazuliTarget:
         using the position= arguments one the corresponding field has been set.
         """
         if position is None:
-            position = np.asarray(self.simulation.get_parameter("position"))
+            position = np.asarray(self.simulation.get_parameter("pointsource__position"))
         else:
             # make sure it is not a list of tuple and that it's indeed float-kind.
             position = np.asarray( position ).astype("float32")
@@ -687,6 +686,7 @@ class VirtualLazuliTarget:
         fig, (ax_narrow, ax_wide)
         """
         if fig is None:
+            import matplotlib.pyplot as plt
             fig = plt.figure(figsize=(8,8))
 
         width = right-left

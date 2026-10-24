@@ -38,7 +38,7 @@ class SceneElement:
 
     def __init__(self, model_func, lbda=None, meta={}):
         """Initialize the SceneElement."""
-        if not (type(model_func) == str or model_func == "None"):
+        if model_func is not None and not isinstance(model_func, str): # e.g. "None"
             self._model_func = model_func
 
         self._meta = deepcopy(meta)

@@ -73,7 +73,12 @@ class Scene:
             `~slicersim.scene.background.Background` and
             `~slicersim.scene.host.Host`). A missing or empty element has no
             contribution to the scene. Any other entry is stored in the scene
-            meta.
+            meta. The host can also be a model name (e.g. ``"ngc0628"`` or
+            ``"sersic:bb-5000"``); in both cases, the host is built with the
+            defaults of `~slicersim.scene.host.get_host_config`, overwritten
+            by the given entries (the model name is the ``"refmodel"`` entry).
+            If the scene has a point source with a redshift, the host takes
+            its redshift.
         lbda : array_like, optional
             Default wavelength array in Angstrom. Default is None.
 
@@ -106,9 +111,11 @@ class Scene:
 
         if host_config:  # initialize host from config
             if type(host_config) is str:
-                host = Host.from_modelname(host_config)
-            else:
-                host = Host.from_config(host_config)
+                host_config = {"refmodel": host_config}
+            # host defaults (get_host_config) overwritten by the input entries.
+            host_config = dict(host_config)
+            host = Host.from_modelname(host_config.pop("refmodel", "sersic:bb-5000"),
+                                       **host_config)
         else:
             host = None
 
@@ -349,14 +356,23 @@ class Scene:
         return fig
 
     def show_host(self, ax=None, **kwargs):
-        """ Plot the host spectrum. """
+        """Plot the total host spectrum (see `~slicersim.scene.host.Host.show_spectrum`).
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes, optional
+            Axes to draw into. If None, a new figure is created.
+        **kwargs
+            Goes to `matplotlib.axes.Axes.plot`.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
         if not self.has_element("host"):
             raise ValueError("No host element in the scene.")
 
-        if not hasattr(self.host, "show"):
-            raise ValueError("The host element does not have a 'show' method.")
-
-        return self.host.show(ax=ax, **kwargs)
+        return self.host.show_spectrum(lbda=self.lbda, ax=ax, **kwargs)
 
     def show_pointsource(self, ax=None, in_log=True, **kwargs):
         """Plot the point source spectrum.

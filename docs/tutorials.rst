@@ -105,7 +105,8 @@ Control the instrument and the scene.
       :link: notebooks/advanced_host_galaxy
       :link-type: doc
 
-      Add a structured host background and change its shape.
+      Supernova in its host: ``"ngc0628"`` or ``"sersic:bb-5000"``
+      models, and redshift consistency.
 
 .. toctree::
    :hidden:

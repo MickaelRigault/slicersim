@@ -226,8 +226,8 @@ class Simulation:
         this = cls.from_config(config, slicer=slicer)
 
         # update to expecting target
-        if redshift is not None:
-            this.update(pointsource__redshift=redshift)
+        if redshift is not None: # pointsource and host (if any)
+            this.update(redshift=redshift)
 
         if kwargs:
             this.update(**kwargs)
@@ -879,8 +879,11 @@ class Simulation:
                     if meta_scenelement is not None and which in meta_scenelement:
                         meta_in_scene[sceneelement] = meta_scenelement[which]
 
-                if len(meta_in_scene) == 1:
-                    return list(meta_in_scene.values())[0]
+                values = list(meta_in_scene.values())
+                # unique, or shared by all elements (e.g. redshift of pointsource and host)
+                if len(values) == 1 or (len(values) > 1 and
+                                        all(np.array_equal(v, values[0]) for v in values[1:])):
+                    return values[0]
 
                 elif len(meta_in_scene) >1 :
                     warnings.warn(f"several {which=} in scene ({meta_in_scene.keys()}). specify: scenelementname__which")

@@ -25,15 +25,18 @@ def generic_get_flux(lbda, lbda_ref, flux_ref,
     mag : float or None, optional
         Target (observed) AB magnitude in ``band``. Default is None.
     magabs : float or None, optional
-        Target absolute AB magnitude, used if ``mag`` is None:
-        ``mag = magabs + distmod(redshift)`` (no K-correction).
+        Target absolute AB magnitude in the rest-frame ``band``, used if
+        ``mag`` is None: the reference (rest-frame) spectrum is scaled to
+        ``magabs`` at 10 pc, then dimmed by ``distmod(redshift)`` and by
+        ``(1 + redshift)`` (flux density per unit wavelength), i.e. it is
+        K-corrected, as ``sncosmo.Model.set_source_peakabsmag``.
         If both ``mag`` and ``magabs`` are None, the reference spectrum is
         used as is (no rescaling). Default is None.
     band : str, optional
         Bandpass name (must be known by ``sncosmo``). Default is ``"sdssr"``.
     redshift : float, optional
-        Redshift applied to the reference wavelengths (wavelength stretch
-        only, the dimming is in ``mag``). Default is 0.1.
+        Redshift applied to the reference wavelengths. With ``mag``, it is a
+        wavelength stretch only (the dimming is in ``mag``). Default is 0.1.
     cosmology : astropy.cosmology.Cosmology, optional
         Cosmology used to convert ``magabs``. Default is Planck18.
 
@@ -50,10 +53,15 @@ def generic_get_flux(lbda, lbda_ref, flux_ref,
     """
     if magabs is None and mag is None:
         flux_ratio = 1
+
+    elif mag is None: # but magabs given
+        # rest-frame spectrum at 10pc has magabs in band,
+        # then it is dimmed by the distance modulus and by (1+z) [per Angstrom].
+        rest_mag = Spectrum(lbda_ref, flux_ref).bandmag(band, "ab")
+        flux_ratio = 10 ** (-0.4 * (magabs + cosmology.distmod(redshift).value - rest_mag)
+                            ) / (1 + redshift)
     else:
-        if mag is None: # but magabs given
-            mag = magabs + cosmology.distmod(redshift).value
-        elif magabs is not None:
+        if magabs is not None:
             warnings.warn("mag and magabs have been specified. magabs ignored.")
 
         in_mag = Spectrum(lbda_ref*(1+redshift), flux_ref).bandmag(band, "ab")

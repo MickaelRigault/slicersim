@@ -17,9 +17,11 @@ def get_blackbody_flux(lbda, temperature, mag=None,
     """Get the flux of a blackbody source.
 
     The Planck function is evaluated at the rest-frame wavelengths
-    (``lbda / (1 + redshift)``) and rescaled so that the resulting
-    (observer-frame) spectrum has the requested magnitude in the given band
-    and magnitude system. The normalization does not depend on ``lbda``.
+    (``lbda / (1 + redshift)``) and rescaled either to the observed
+    magnitude ``mag`` (observer-frame spectrum in ``band``) or to the
+    absolute magnitude ``magabs`` (rest-frame spectrum in ``band``, i.e.
+    K-corrected, as ``sncosmo.Model.set_source_peakabsmag``).
+    The normalization does not depend on ``lbda``.
 
     Parameters
     ----------
@@ -31,12 +33,14 @@ def get_blackbody_flux(lbda, temperature, mag=None,
     mag : float or None, optional
         Target (observed) magnitude in the given band. Default is None.
     magabs : float or None, optional
-        Target absolute magnitude, used if ``mag`` is None:
-        ``mag = magabs + distmod(redshift)`` (no K-correction).
-        Default is None.
+        Target absolute magnitude in the rest-frame ``band``, used if ``mag``
+        is None. The observed flux is then the rest-frame spectrum at 10 pc,
+        dimmed by ``distmod(redshift)`` and by ``(1 + redshift)`` (flux
+        density per unit wavelength). Default is None.
     redshift : float, optional
-        Redshift of the source (wavelength stretch only, the dimming is in
-        ``mag``). Default is 0.
+        Redshift of the source. With ``mag``, only the wavelengths are
+        stretched (the dimming is in ``mag``). With ``magabs``, it must be
+        strictly positive. Default is 0.
     cosmology : astropy.cosmology.Cosmology, optional
         Cosmology used to convert ``magabs``. Default is Planck18.
     band : str, optional
@@ -75,20 +79,23 @@ def get_blackbody_flux(lbda, temperature, mag=None,
 
     # observed flux with whatever magnitude.
     flux = _get_flux(lbda.to_value(units.AA) / (1 + redshift))
-
-    # the "whatever mag", computed on the band's own wavelength grid
     band_wave = get_bandpass(band).wave
-    native_mag = Spectrum(wave=band_wave, flux=_get_flux(band_wave / (1 + redshift))
-                          ).bandmag(band, magsys)
 
-    # conver the flux to the good amplitude
     if mag is None:
         if magabs is None:
             raise ValueError("either mag or magabs must be given.")
-        # convert to apparent magnitude
-        mag = cosmology.distmod(redshift).value + magabs
-    elif magabs is not None:
-        warnings.warn("mag and magabs have been specified. magabs ignored.")
+        # absolute magnitude: rest-frame spectrum at 10pc has magabs in band,
+        # then it is dimmed by the distance modulus and by (1+z) [per Angstrom].
+        rest_mag = Spectrum(wave=band_wave, flux=_get_flux(band_wave)
+                            ).bandmag(band, magsys)
+        fluxcoef = 10 ** (-0.4 * (magabs + cosmology.distmod(redshift).value - rest_mag)
+                          ) / (1 + redshift)
+    else:
+        if magabs is not None:
+            warnings.warn("mag and magabs have been specified. magabs ignored.")
+        # the "whatever mag", computed on the band's own wavelength grid
+        native_mag = Spectrum(wave=band_wave, flux=_get_flux(band_wave / (1 + redshift))
+                              ).bandmag(band, magsys)
+        fluxcoef = 10 ** (-0.4 * (mag - native_mag))
 
-    fluxcoef_for_target_mag = 10 ** (-0.4 * (mag - native_mag))
-    return flux * fluxcoef_for_target_mag  # numpy array
+    return flux * fluxcoef  # numpy array

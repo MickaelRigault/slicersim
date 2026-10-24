@@ -103,6 +103,38 @@ Any of its parameters can then be changed with
 .. image:: gallery/spectra_variance.png
    :alt: Simulated spectrum with the variance broken down by noise source.
 
+Host galaxy
+-----------
+
+Any target accepts a ``host``, a `~slicersim.scene.host.Host`: a spectrum
+times an image, rendered on the spaxel grid and convolved by the PSF. It is
+given by a model name ``"spatial:spectral"``:
+
+- **spatial**: ``sersic`` (analytic profile, size ``r_kpc``) or an NGC
+  galaxy, e.g. ``ngc0628`` (its image);
+- **spectral**: ``bb`` / ``blackbody``, optionally with a temperature
+  (``bb-5000``), or an NGC galaxy, e.g. ``ngc0628`` (its spectrum).
+
+A bare NGC name, ``"ngc0628"``, means ``"ngc0628:ngc0628"``. NGC data come
+from the ``lazuli_astrosim_data`` package.
+
+.. code-block:: python
+
+   sn = slicersim.LazuliSupernova(redshift=0.9, host="ngc0628")
+   sn = slicersim.LazuliSupernova(redshift=0.9, host="sersic:bb-5000")
+   sn = slicersim.LazuliSupernova(redshift=0.9,
+                                  host={"refmodel": "sersic:bb-5000", "r_kpc": 3})
+
+   sn.change_properties(host__position=(3, 2))   # host only
+   sn.change_properties(redshift=0.5)            # point source and host
+
+The host shares the redshift of the point source. Its brightness
+``magabs`` (default -21) is a rest-frame absolute magnitude in ``band``
+(K-corrected, as for the supernova), and its physical size is kept fixed, so
+changing the redshift moves the whole system consistently. See
+`~slicersim.scene.host.get_host_config` for the default parameters and the
+:doc:`notebooks/advanced_host_galaxy` tutorial.
+
 Noise sources
 -------------
 

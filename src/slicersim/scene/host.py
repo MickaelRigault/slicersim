@@ -6,12 +6,19 @@ multiplied by a 2D surface-brightness profile (spatial model).
 
 The model is named ``"spatial:spectral"``, e.g. ``"sersic:bb-5000"``:
 
-- spatial models: ``"sersic"`` (see `get_sersic_profile`);
+- spatial models: ``"sersic"`` (analytic profile, see
+  `~slicersim.scene.sources.galaxy.get_sersic_profile`) or an NGC galaxy
+  name, e.g. ``"ngc0628"`` (its r-band image, see
+  `~slicersim.scene.sources.galaxy.GalaxySpatialModel`);
 - spectral models: ``"bb"`` or ``"blackbody"``, optionally followed by the
   temperature in K (``"bb-5000"``, see
-  `~slicersim.scene.sources.blackbody.get_blackbody_flux`), or
-  ``"brown-<galname>"`` (Brown et al. galaxy template, requires ``wcc_etc``,
-  see `~slicersim.scene.sources.generic.generic_get_flux`).
+  `~slicersim.scene.sources.blackbody.get_blackbody_flux`), or an NGC
+  galaxy name, e.g. ``"ngc0628"`` (its spectral template, see
+  `~slicersim.scene.sources.generic.generic_get_flux`).
+
+A bare NGC name, e.g. ``"ngc0628"``, is understood as ``"ngc0628:ngc0628"``
+(image and spectrum of the same galaxy). NGC names are case insensitive and
+NGC data require the ``lazuli_astrosim_data`` package.
 
 Use `get_host_config` to get a default configuration for a model name, and
 `Host.from_config` (or `Host.from_modelname`) to build the host.
@@ -21,7 +28,59 @@ import numpy as np
 
 from .base import SceneElement
 from .sources import galaxy
+from .sources.galaxy import get_sersic_profile
 from ..utils import inspect_func
+
+
+def _is_ngc(name):
+    """Whether ``name`` is an NGC galaxy name (case insensitive)."""
+    return name.lower().startswith("ngc")
+
+
+def _is_blackbody(name):
+    """Whether ``name`` is a blackbody spectral model (``bb[-T]`` or ``blackbody[-T]``)."""
+    return name.split("-")[0].lower() in ["bb", "blackbody"]
+
+
+def parse_modelname(modelname):
+    """Split a host model name into its spatial and spectral models.
+
+    Parameters
+    ----------
+    modelname : str
+        Model name, ``"spatial:spectral"`` (e.g. ``"sersic:bb-5000"``,
+        ``"ngc0628:bb-6000"``) or a bare NGC name (e.g. ``"ngc0628"``, read
+        as ``"ngc0628:ngc0628"``).
+
+    Returns
+    -------
+    spatialmodel, spectralmodel : str
+        NGC names are lower-cased.
+
+    Raises
+    ------
+    NotImplementedError
+        If ``modelname`` is not in the ``"spatial:spectral"`` format, or if
+        the spatial or spectral model is not known.
+    """
+    if ":" not in modelname:
+        if not _is_ngc(modelname):
+            raise NotImplementedError(f"modelname '{modelname}' is not recognized. Must be 'spatial:spectral' or an NGC name.")
+        # simply modelname="ngc0628" => "ngc0628:ngc0628"
+        modelname = f"{modelname}:{modelname}"
+
+    spatialmodel, spectralmodel = modelname.split(":", 1)
+    if _is_ngc(spatialmodel):
+        spatialmodel = spatialmodel.lower()
+    elif spatialmodel != "sersic":
+        raise NotImplementedError(f"spatial model '{spatialmodel}' is not recognized. Must be 'sersic' or an NGC galaxy name.")
+
+    if _is_ngc(spectralmodel):
+        spectralmodel = spectralmodel.lower()
+    elif not _is_blackbody(spectralmodel):
+        raise NotImplementedError(f"spectral model '{spectralmodel}' is not recognized. Must be 'bb[-<temperature>]' or an NGC galaxy name.")
+
+    return spatialmodel, spectralmodel
 
 
 def get_host_config(modelname, redshift=0.1, **kwargs):
@@ -31,11 +90,12 @@ def get_host_config(modelname, redshift=0.1, **kwargs):
     ----------
     modelname : str
         Model name, in the format ``"spatial:spectral"``, e.g.
-        ``"sersic:bb"``, ``"sersic:bb-6000"`` or ``"sersic:brown-ngc_4536"``
-        (see the module documentation for the available models).
+        ``"sersic:bb"``, ``"sersic:bb-6000"``, ``"sersic:ngc4536"`` or simply
+        ``"ngc0628"`` (see `parse_modelname` and the module documentation).
     redshift : float, optional
         Redshift of the host. It sets both the angular size of the spatial
-        model (via ``r_kpc``) and the observed spectrum. Default is 0.1.
+        model (via ``r_kpc`` for ``"sersic"``, via the galaxy's distance for
+        an NGC image) and the observed spectrum. Default is 0.1.
     **kwargs
         Entries overwriting or completing the default configuration.
 
@@ -47,13 +107,14 @@ def get_host_config(modelname, redshift=0.1, **kwargs):
         chosen models:
 
         - ``"sersic"``: ``r_kpc=5``, ``n=2``, ``ellip=0.3``, ``theta=-30``;
+        - ``"ngcXXXX"`` (spatial): nothing (``position``, ``rotation``);
         - ``"bb"``/``"blackbody"``: ``magabs=-21``, ``band="sdssr"``, and
           ``temperature=5000`` if not given in the model name;
-        - ``"brown-<galname>"``: ``magabs=-21``, ``band="sdssr"``.
+        - ``"ngcXXXX"`` (spectral): ``magabs=-21``, ``band="sdssr"``.
 
-        ``mag`` is the observed magnitude and ``magabs`` the absolute one;
-        if ``mag`` is given (and not ``magabs``), the default ``magabs`` is
-        dropped.
+        ``mag`` is the observed magnitude and ``magabs`` the absolute one
+        (rest-frame ``band``); if ``mag`` is given (and not ``magabs``), the
+        default ``magabs`` is dropped.
 
     Raises
     ------
@@ -66,39 +127,17 @@ def get_host_config(modelname, redshift=0.1, **kwargs):
     >>> config = get_host_config("sersic:bb-6000", redshift=1, position=(15, -15))
     >>> host = Host.from_config(config)  # doctest: +SKIP
     """
-    if np.any([modelname.startswith(key) for key in ["ngc", "NGC"]]) and not ":" in modelname:
-        # format is simply modelname="ngc0628", lets make sure for now it is understood as ngc0628:ngc0628
-        modelname = f"{modelname}:{modelname}"
+    spatialmodel, spectralmodel = parse_modelname(modelname)
+    config = {"refmodel": f"{spatialmodel}:{spectralmodel}", "redshift": redshift}
 
-    # This is a spatial & Spectral structure 'spatial:spectral'
-    if ":" in modelname:
-        spatialmodel, spectralmodel = modelname.split(":", 1)
-        config = {"refmodel": modelname, "redshift": redshift}
+    # Spatial is Sersic (NGC images have no default parameter)
+    if spatialmodel == "sersic":
+        config |= {"r_kpc": 5, "n": 2, "ellip": 0.3, "theta": -30}
 
-        # Spatial is Sersic
-        if "sersic" in spatialmodel:
-            config |= { "r_kpc": 5, "n": 2, "ellip": 0.3, "theta": -30}
-        elif "ngc" in spatialmodel:
-            config |= {}
-        else:
-            raise NotImplementedError(f"spatial model '{spatialmodel}' is not recognized. Must be 'sersic' or an ngc galaxy.")
-
-        # Spectral is Blackbody
-        if "bb" in spectralmodel or "blackbody" in spectralmodel:
-            config |= {"magabs": -21, "band": "sdssr",}
-            if "-" not in spectralmodel:
-                config |= {"temperature": 5000}
-
-        # Spectral is a Brown et al. galaxy template
-        elif spectralmodel.startswith("ngc") or spectralmodel.startswith("NGC"):
-            config |= {"magabs": -21, "band": "sdssr",}
-
-        else:
-            raise NotImplementedError(f"spectral model '{spectralmodel}' is not recognized. Must be 'blackbody-<temperature>' or 'brown-<galname>'.")
-
-    # nothing else implemented so far
-    else:
-        raise NotImplementedError(f"modelname '{modelname}' is not recognized. Must be 'spatial:spectral'.")
+    # Spectral: blackbody or NGC galaxy template
+    config |= {"magabs": -21, "band": "sdssr"}
+    if _is_blackbody(spectralmodel) and "-" not in spectralmodel:
+        config |= {"temperature": 5000}
 
     # an observed magnitude replaces the default absolute one.
     if "mag" in kwargs and "magabs" not in kwargs:
@@ -152,11 +191,10 @@ class Host(SceneElement):
             Configuration dictionary, typically from `get_host_config`:
 
             - ``refmodel``: str, optional (default ``"sersic:bb-5000"``).
-              Model name ``"spatial:spectral"`` (see the module
-              documentation). For ``"bb-<temperature>"``, the temperature
-              (in K) overwrites any ``temperature`` entry. For
-              ``"brown-<galname>"``, the template is stored as ``lbda_ref``
-              and ``flux_ref``.
+              Model name ``"spatial:spectral"`` (see `parse_modelname`).
+              For ``"bb-<temperature>"``, the temperature (in K) overwrites
+              any ``temperature`` entry. For an NGC spectral model, the
+              template is stored as ``lbda_ref`` and ``flux_ref``.
 
             All other entries are the parameters of the spatial and spectral
             functions (stored in the instance meta), e.g. for
@@ -164,7 +202,10 @@ class Host(SceneElement):
 
             - spatial (see `get_sersic_profile`): ``r_kpc`` and ``redshift``
               or ``r_eff``, ``n``, ``ellip``, ``theta``, ``position``,
-              ``pixel_scale``, ``shape``, ``oversample``;
+              ``pixel_scale``, ``shape``, ``oversample``; for an NGC image
+              (see `~slicersim.scene.sources.galaxy.GalaxySpatialModel.project_to`):
+              ``redshift``, ``position``, ``rotation``, ``shape``,
+              ``pixel_scale``;
             - spectral (see
               `~slicersim.scene.sources.blackbody.get_blackbody_flux`):
               ``temperature``, ``mag`` (observed) or ``magabs`` (absolute,
@@ -198,57 +239,35 @@ class Host(SceneElement):
         # do not affect the input config
         config = deepcopy(config)
 
-        # Parse the model
-        refmodel = config.pop("refmodel", "sersic:bb-5000")
-        if np.any([refmodel.startswith(key) for key in ["ngc", "NGC"]]) and not ":" in refmodel:
-            # format is simply refmodel="ngc0628", lets make sure for now it is understood as ngc0628:ngc0628
-            refmodel = f"{refmodel}:{refmodel}"
+        # Parse the model 'spatial:spectral', e.g. 'sersic:bb-5000'
+        spatialmodel, spectralmodel = parse_modelname(config.pop("refmodel", "sersic:bb-5000"))
 
-        # Model with the structure 'spatial:spectral', e.g. 'sersic:bb-5000'
-        if ":" in refmodel:
-            spatialmodel, spectralmodel = refmodel.split(":", 1)
-            # --------------------- #
-            # => Spatial structure  #
-            # --------------------- #
-            # spatial structure is Sersic
-            if spatialmodel == "sersic":
-                spatial_func = galaxy.get_sersic_profile
+        # --------------------- #
+        # => Spatial structure  #
+        # --------------------- #
+        if spatialmodel == "sersic":
+            spatial_func = get_sersic_profile
+        else: # NGC galaxy image
+            galmodel = galaxy.GalaxySpatialModel.from_name(spatialmodel)
+            spatial_func = galmodel.project_to
 
-            elif "ngc" in spatialmodel.lower():
-                galmodel = galaxy.GalaxySpatialModel.from_name(spatialmodel)
-                spatial_func = galmodel.project_to
-            else:
+        # --------------------- #
+        # => Spectral structure #
+        # --------------------- #
+        if _is_blackbody(spectralmodel):
+            from .sources.blackbody import get_blackbody_flux
+            if "-" in spectralmodel:
+                config["temperature"] = float(spectralmodel.split("-")[1])
 
-                raise NotImplementedError(f"spatial model '{spatialmodel}' is not recognized. Must be 'sersic'.")
+            spectral_func = get_blackbody_flux
 
-            # --------------------- #
-            # => Spectral structure #
-            # --------------------- #
-            # Blackbody
-            if np.any( [spectralmodel.startswith(bb) for bb in ["bb", "blackbody"]] ):
-                from .sources.blackbody import get_blackbody_flux
-                if "-" in spectralmodel:
-                    temperature = float(spectralmodel.split("-")[1])
-                    config["temperature"] = temperature
-
-                spectral_func = get_blackbody_flux
-
-            # Brown et al. galaxy spectral
-            elif spectralmodel.startswith("ngc") or spectralmodel.startswith("NGC"):
-                from astropy.io import fits
-                from ..iotools import get_galaxy_filepath
-                from .sources.generic import generic_get_flux
-                galspecfile = get_galaxy_filepath(spectralmodel, which="spectrum")
-                galdata = fits.getdata(galspecfile)
-
-                config["lbda_ref"], config["flux_ref"] = galdata["wavelength"], galdata["flux"]
-                spectral_func = generic_get_flux
-
-            else:
-                raise NotImplementedError(f"spectral model '{spectralmodel}' is not recognized. Must be 'blackbody-<temperature>' or 'brown-<galname>'.")
-
-        else:
-            raise NotImplementedError(f"refmodel '{refmodel}' is not recognized. Must be 'spatial:spectral'.")
+        else: # NGC galaxy spectral template
+            from astropy.io import fits
+            from ..iotools import get_galaxy_filepath
+            from .sources.generic import generic_get_flux
+            galdata = fits.getdata(get_galaxy_filepath(spectralmodel, which="spectrum"))
+            config["lbda_ref"], config["flux_ref"] = galdata["wavelength"], galdata["flux"]
+            spectral_func = generic_get_flux
 
         # Spatial source.
         return cls._from_spatial_and_spectral_func(spatial_func, spectral_func, **config)
@@ -522,11 +541,12 @@ class Host(SceneElement):
 
 
     def get_spectrum(self, lbda=None, from_cube=False):
-        """Get the host spectrum, integrated over its own grid.
+        """Get the host spectrum.
 
-        This is `get_cube` summed over the spatial axes, i.e. the flux
-        falling within the host grid (``shape`` x ``pixel_scale`` in meta),
-        which can be less than the total spectrum.
+        By default, this is the total host spectrum (the spectral function).
+        With ``from_cube=True``, it is `get_cube` summed over the spatial
+        axes, i.e. the flux falling within the host grid (``shape`` x
+        ``pixel_scale`` in meta), which can be less than the total spectrum.
 
         Parameters
         ----------
@@ -546,6 +566,11 @@ class Host(SceneElement):
         flux : numpy.ndarray
             Flux in erg/s/cm^2/A.
         """
+        if lbda is None:
+            lbda = self._lbda
+            if lbda is None:
+                raise ValueError("no lbda given and None loading as self.lbda")
+
         if from_cube:
             lbda, cube = self.get_cube(lbda)
             spec = np.sum(cube, axis=(-2, -1))
@@ -555,7 +580,19 @@ class Host(SceneElement):
         return lbda, spec
 
     def show_image(self, ax=None, **kwargs):
-        """ """
+        """Show the current (cached) host image, in log scale.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes, optional
+            Axes to draw into. If None, a new figure is created.
+        **kwargs
+            Goes to `matplotlib.axes.Axes.imshow`.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
         import matplotlib.pyplot as plt
         from matplotlib.colors import LogNorm
         if ax is None:
@@ -570,7 +607,23 @@ class Host(SceneElement):
 
 
     def show_spectrum(self, lbda=None, ax=None, **kwargs):
-        """ """
+        """Plot the total host spectrum (see `get_spectrum`).
+
+        Parameters
+        ----------
+        lbda : array_like, optional
+            Wavelength array in Angstrom. If None, the reference template
+            wavelength (``lbda_ref`` in meta, NGC spectral models only) is
+            used. Default is None.
+        ax : matplotlib.axes.Axes, optional
+            Axes to draw into. If None, a new figure is created.
+        **kwargs
+            Goes to `matplotlib.axes.Axes.plot`.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
         import matplotlib.pyplot as plt
         if ax is None:
             fig, ax = plt.subplots()

@@ -674,7 +674,7 @@ class Supernova( VirtualTarget ):
 
 
 class Galaxy( VirtualTarget ):
-    def __init__(self, redshift, model="sersic:bb5000", **kwargs):
+    def __init__(self, redshift, model="sersic:bb-5000", **kwargs):
         """Initialize the Supernova.
 
         Parameters
