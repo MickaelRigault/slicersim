@@ -13,6 +13,13 @@ instrument model needed.
 .. grid:: 1 2 2 3
    :gutter: 3
 
+   .. grid-item-card:: The README examples
+      :link: notebooks/beginner_readme_examples
+      :link-type: doc
+
+      Every README example and figure: exposure time, spectra, a supernova
+      in its host and the variance sources.
+
    .. grid-item-card:: Exposure time calculator
       :link: notebooks/beginner_ETC_lazulitarget
       :link-type: doc
@@ -112,6 +119,7 @@ Control the instrument and the scene.
    :hidden:
    :caption: Beginner
 
+   notebooks/beginner_readme_examples
    notebooks/beginner_ETC_lazulitarget
    notebooks/beginner_LazuliTargets
    notebooks/beginner_change_properties

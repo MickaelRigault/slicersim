@@ -24,8 +24,9 @@ image slicer, but its core is generic and applies to any slicer or micro-lens ar
 📖 **Documentation: https://slicersim.readthedocs.io**
 
 - **Exposure time calculator**: exposure time and detector read-out mode to reach a requested signal-to-noise, in one call.
-- **Realistic spectra and cubes**: photon, read-out, dark, thermal and background noise all accounted for.
+- **Realistic spectra and cubes**: photon, read-out, dark, thermal, background and host noise all accounted for.
 - **Built-in sources**: Type Ia supernovae (SALT, Twins Embedding), kilonovae (POSSIS), CalSpec standards, black bodies, power laws, or your own spectrum.
+- **Host galaxies**: place any source in a host, either an analytic Sersic profile or the image and spectrum of a real NGC galaxy, consistently moved to the source redshift.
 - **Every knob is accessible**: detector, spectrograph sampling, throughput, scene… and see at once how each noise source contributes.
 
 ## Installation
@@ -104,6 +105,41 @@ ax.set(xlabel=r"wavelength [$\AA$]", ylabel="flux [ADU]")
 
 ![Two simulated SN Ia spectra](docs/gallery/spectra_examples.png)
 
+## A supernova in its host galaxy
+
+Any target accepts a `host`, named `"spatial:spectral"`: `"sersic:bb-5000"`
+(Sersic profile with a 5000 K blackbody spectrum), or a real galaxy such as
+`"ngc0628"` (image and spectrum of NGC 0628). The host follows the redshift of
+the supernova: its spectrum, brightness (rest-frame `magabs`, default -21) and
+angular size (fixed physical size) all change consistently.
+
+```python
+import slicersim
+
+sn = slicersim.LazuliSupernova(redshift=0.9, host="ngc0628")
+
+# positions in spaxels from the field center
+sn.change_properties(pointsource__position=[+10, +0], host__position=[+20, -10])
+
+# the narrow and wide field cubes, sky switched off, summed over 4000-7000 Å
+(cube_narrow, _), (cube_wide, _) = sn.get_cube(switch_off=["background", "thermal"],
+                                               psf_profile="airy")
+fig = sn.show_cube((cube_narrow, cube_wide), lbda_range=[4000, 7000])
+```
+
+![A SN Ia at z=0.9 in NGC 0628, in the narrow and wide fields of Lazuli](docs/gallery/host_cube.png)
+
+The host is a source of flux and noise in the supernova spectrum. Here, the
+supernova sits on a spiral arm, where the host contributes about 1% of the
+variance (less than the zodiacal background):
+
+```python
+_ = sn.setup_to_snr(20)
+fig = sn.simulation.show_variance_sources(flux_calibrated=False)
+```
+
+![Variance sources of the SN Ia in its host](docs/gallery/host_variance.png)
+
 ## Going deeper: the `Simulation`
 
 Every target is backed by a `Simulation`, which chains a scene (what is
@@ -137,6 +173,7 @@ fig = sim.show_variance_sources(flux_calibrated=False)
 All tutorials are rendered in the [documentation](https://slicersim.readthedocs.io/en/latest/tutorials.html).
 
 **Beginner**
+- [The README examples](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_readme_examples.html): every example and figure of this page.
 - [Exposure time calculator](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_ETC_lazulitarget.html): exposure time and spectrum in one call.
 - [Lazuli targets](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_LazuliTargets.html): supernovae, CalSpec stars or any spectrum; reach a SNR and get the read-out mode.
 - [Changing target properties](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_change_properties.html): redshift, phase, magnitude.
