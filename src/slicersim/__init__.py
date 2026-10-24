@@ -13,7 +13,7 @@ emission). The high-level entry points are the Lazuli targets of
 `~slicersim.lazuli.lazuli_sn_etc` and `~slicersim.lazuli.lazuli_etc`; the
 underlying engine is `~slicersim.simulation.Simulation`.
 """
-__version__ = '1.4.0'
+__version__ = '1.4.1'
 
 # Top level simulations
 # quick access useful for simulation
