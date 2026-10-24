@@ -2,7 +2,7 @@
 name = "StdStar"
 source = "GD71"				# Standard star name (CalSpec) *mandatory*
 bandpass = "BessellV"      		# Bandpass (sncosmo)
-ABmag = 17.0               		# AB magnitude in given bandpass *mandatory* (or nan)
+mag = 17.0                 		# observed AB magnitude in given bandpass *mandatory* (or nan)
 reference = "gd71_mod_011.fits" 	# CalSpec file name (in CalSpec repo)
 position = [1, 0.5]        		# Position at the IFS plane [spx] (to account for sub-px effect)
 

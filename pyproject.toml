@@ -30,6 +30,8 @@ dependencies = [
     "sep",
     "shapely",
     "sncosmo",
+    # lazuli specific
+    "lazuli_astrosim_data"
 ]
 
 [project.optional-dependencies]

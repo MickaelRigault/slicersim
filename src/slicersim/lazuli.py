@@ -486,24 +486,32 @@ class VirtualLazuliTarget:
         # check if  point source exists
         # Work will be needed here for the host.
         if self.simulation.scene.has_element("pointsource"):
-            original_position = self.simulation.get_parameter("position")
+            source_original_position = self.simulation.get_parameter("pointsource__position")
         else:
-            original_position = None
+            source_original_position = None
 
         if self.simulation.scene.has_element("host"):
-            raise NotImplementedError("simulation with 'host' component is not yet supported")
+            host_original_position = self.simulation.get_parameter("host__position")
+        else:
+            host_original_position = None
 
         # => you want the other one, or both.
         #    First, let's get the position in each field.
-        if original_position is not None:
-            pos_narrow, pos_wide = self._get_field_positions()
+        if source_original_position is not None:
+            source_pos_narrow, source_pos_wide = self._get_field_positions(position=source_original_position)
+
+        if host_original_position is not None:
+            host_pos_narrow, host_pos_wide = self._get_field_positions(position=host_original_position)
 
         # let's loop over fields, update the position
         # to that of interest
         if which in ["both", "narrow"]:
             self.change_spectrograph("narrow")
-            if original_position is not None:
-                self.simulation.update(position = pos_narrow)
+            if source_original_position is not None:
+                self.simulation.update(pointsource__position = source_pos_narrow)
+
+            if host_original_position is not None:
+                self.simulation.update(host__position = host_pos_narrow)
 
             cubes_narrow = self.simulation.get_cube(**kwargs)
         else:
@@ -511,16 +519,23 @@ class VirtualLazuliTarget:
 
         if which in ["both", "wide"]:
             self.change_spectrograph("wide")
-            if original_position is not None:
-                self.simulation.update(position = pos_wide)
+            if source_original_position is not None:
+                self.simulation.update(pointsource__position = source_pos_wide)
+
+            if host_original_position is not None:
+                self.simulation.update(host__position = host_pos_wide)
+
             cubes_wide = self.simulation.get_cube(**kwargs)
         else:
             cubes_wide = None
 
         # revert back to original config (could be )
         self.change_spectrograph(field=current_field, **current_config)
-        if original_position is not None:
-            self.simulation.update(position = original_position)
+        if source_original_position is not None:
+            self.simulation.update(pointsource__position = source_original_position)
+
+        if host_original_position is not None:
+            self.simulation.update(host__position = host_original_position)
 
         if which == "both":
             return cubes_narrow, cubes_wide
@@ -615,7 +630,10 @@ class VirtualLazuliTarget:
         using the position= arguments one the corresponding field has been set.
         """
         if position is None:
-            position = np.asarray(self.simulation.get_parameter("position"))
+            position = np.asarray(self.simulation.get_parameter("pointsource__position"))
+        else:
+            # make sure it is not a list of tuple and that it's indeed float-kind.
+            position = np.asarray( position ).astype("float32")
 
         if field is None:
             field, _ = self.get_spectrograph_field()
@@ -681,6 +699,119 @@ class VirtualLazuliTarget:
         axmed = fig.add_axes([left, bottom, width_med, height_med])
         return fig, (axfine, axmed)
 
+    def show_cube(self, cubes, lbda_range, axes=None,
+                ref_field="narrow",
+                **kwarg):
+        """Show the narrow and wide field cubes, collapsed over a wavelength range.
+
+        Each cube is summed over the wavelength bins within ``lbda_range``,
+        and the two resulting images are displayed following the Lazuli
+        layout: the narrow field on top of the wide field, separated by the
+        gap between the two fields (``SPECTROGRAPH_FIELD["hspace"]``).
+
+        Parameters
+        ----------
+        cubes : tuple of numpy.ndarray
+            ``(cube_narrow, cube_wide)``, the cubes of each field, with
+            wavelength as first axis (e.g. the cubes returned by
+            ``get_cube(which="both")``, without their variance).
+        lbda_range : list of float
+            Wavelength range ``[min, max]`` in Angstrom (observer-frame) over
+            which the cubes are summed. Bounds are excluded.
+        axes : tuple of matplotlib.axes.Axes, optional
+            ``(ax_narrow, ax_wide)``, the axes to draw the narrow and wide
+            fields into. If None, a new figure is created with the Lazuli
+            layout (see ``_get_fieldlayout_``). Default is None.
+        ref_field : str, optional
+            Field whose image sets the colour normalisation (99.8 percentile
+            interval with an asinh stretch) shared by both images:
+            ``"narrow"`` or ``"wide"``. Default is ``"narrow"``.
+        **kwarg
+            Goes to `matplotlib.axes.Axes.imshow`, overriding the default
+            display properties (``origin``, ``norm``, ``interpolation``,
+            ``aspect`` and ``cmap``).
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+            The figure containing the axes.
+
+        Notes
+        -----
+        The wide field axes is repositioned right below the narrow field
+        axes, so its original position is changed even when ``axes`` is
+        given.
+
+        Examples
+        --------
+        >>> (cube_n, _), (cube_w, _) = target.get_cube(which="both")  # doctest: +SKIP
+        >>> fig = target.show_cube((cube_n, cube_w), lbda_range=[5000, 6000])  # doctest: +SKIP
+        """
+
+        import matplotlib.pyplot as plt
+        from astropy.visualization import ImageNormalize, AsinhStretch, PercentileInterval
+
+        if axes is None:
+            fig = plt.figure(figsize=[8, 7])
+            fig, (axn, axw) = self._get_fieldlayout_(fig=fig)
+        else:
+            axn, axw = axes
+            fig = axn.figure
+
+
+        cube_narrow, cube_wide = cubes
+        lbda = self.simulation.spectrograph.lbda
+        flag_slice = (lbda>lbda_range[0]) & (lbda<lbda_range[1])
+
+        slice_narrow = cube_narrow[flag_slice].sum(axis=0)
+        slice_wide = cube_wide[flag_slice].sum(axis=0)
+
+        norm = ImageNormalize(slice_narrow if ref_field == "narrow" else slice_wide,
+                            interval=PercentileInterval(99.8), stretch=AsinhStretch(0.02))
+
+        prop = dict( origin="lower", norm=norm,
+                    interpolation="nearest", aspect="equal",
+                    cmap="cividis")
+
+
+        axn.imshow(slice_narrow, **(prop | kwarg))
+        axw.imshow(slice_wide, **(prop | kwarg))
+
+        axw.spines[["left", "right", "bottom", "top"]].set_visible(False)
+        axn.spines[["left", "right", "bottom", "top"]].set_visible(False)
+        #axn.set_zorder(9)
+
+        bbox_n = axn.get_position()
+        bbox_w = axw.get_position()
+        spacing = 0.06/0.04  *bbox_n.height/58
+
+        axw.set_position([bbox_w.x0, bbox_n.y0-bbox_w.height-spacing, bbox_w.width, bbox_w.height])
+
+
+        yticks_n = np.asarray([1] + list(np.arange(0, 59, 10)[1:]))
+        ytick_loc = cube_narrow.shape[1]-yticks_n
+        axn.set_yticks(ytick_loc, labels=yticks_n)
+
+        yticks_n = np.asarray([cube_narrow.shape[1]+1] + list(np.arange(70, 59+cube_narrow.shape[1], 10)))
+        axw.set_yticks(ytick_loc, labels=yticks_n)
+
+        [ax_.tick_params(labelsize="small",
+                        color="0.5",
+                        labelcolor="0.5") for ax_ in fig.axes]
+        [ax_.set_xticks([]) for ax_ in fig.axes]
+        axn.set_ylabel("slice index", color="0.5")
+        axn.text(1.05, 0.5, "narrow field", transform=axn.transAxes, rotation=-90,
+                va="center", ha="left")
+        axn.text(1.0, 0.5, r"$2.3^{\prime\prime} \times 4.6^{\prime\prime}$", transform=axn.transAxes, rotation=-90,
+                va="center", ha="left", fontsize="small")
+
+        axw.text(1.025, 0.5, "wide field", transform=axw.transAxes, rotation=-90,
+                va="center", ha="left")
+        axw.text(1.0, 0.5, r"$4.6^{\prime\prime} \times 9.2^{\prime\prime}$", transform=axw.transAxes, rotation=-90,
+                va="center", ha="left", fontsize="small")
+
+        return fig
+
 # ============ #
 #  Specifics   #
 # ============ #
@@ -733,8 +864,8 @@ class LazuliKilonova( VirtualLazuliTarget, Kilonova ):
         ``"bulla23"`` [default] or ``"bulla19"``.
     **kwargs
         Point source parameters, mainly ``redshift``, ``phase`` (days since
-        merger), ``theta`` (viewing angle in degrees), ``magabs`` or
-        ``magobs`` (peak magnitude in ``band``) and ``position`` (spaxels).
+        merger), ``theta`` (viewing angle in degrees), ``magabs`` (peak absolute
+        magnitude in ``band``) or ``mag`` (peak observed magnitude) and ``position`` (spaxels).
 
     Examples
     --------

@@ -49,15 +49,16 @@ class VirtualTarget:
 
 
     @classmethod
-    def _source_to_simulation_(cls, source, instrument=None, **kwargs):
+    def _source_to_simulation_(cls, source, host=None, instrument=None, **kwargs):
         """ Internal method to get the simulation associated to this Target (uses class attributes)"""
         if instrument is None and hasattr(cls,"_INSTRUMENT"):
             instrument = cls._INSTRUMENT
 
-        scene = get_scene(source=source, **kwargs)
+        scene = get_scene(source=source, host=host, **kwargs)
         config = get_config( **( cls._DEFAULT_CONFIG | {"scene": scene, "instrument": instrument}) )
 
         return Simulation.from_config(config)
+
 
     @classmethod
     def from_scene(cls, scene=None, instrument=None, **kwargs):
@@ -94,6 +95,7 @@ class VirtualTarget:
         simulation = Simulation.from_config( config )
         return cls(simulation=simulation)
 
+
     @classmethod
     def from_simulation(cls, simulation):
         """Load the instance from an already-built simulation.
@@ -113,6 +115,7 @@ class VirtualTarget:
         from_scene : Build the simulation from a scene configuration.
         """
         return cls(simulation=simulation)
+
 
     def to_image(self, mapper, sliceid, image=None, **kwargs):
         """Project the simulated cube onto a detector image.
@@ -147,6 +150,7 @@ class VirtualTarget:
 
         return this_image
 
+
     # =============== #
     #   Methods       #
     # =============== #
@@ -178,6 +182,7 @@ class VirtualTarget:
         if nramps is not None:
             self.simulation.update(nramps=nramps)
 
+
     def change_spectrograph(self, spatial_shape=None, spatial_scale=None):
         """Change the spectrograph configuration.
 
@@ -205,6 +210,7 @@ class VirtualTarget:
 
         return self.simulation.update(**new_config)
 
+
     # SETTER
     def change_properties(self, **kwargs):
         """Change any mutable parameter of the simulation.
@@ -222,6 +228,7 @@ class VirtualTarget:
         None
         """
         _ = self.simulation.update(**kwargs)
+
 
     def setup_to_snr(self, snr, per_resolution=True,
                      lbda_range=[4000, 6800], frame='rest',
@@ -287,6 +294,7 @@ class VirtualTarget:
 
         return config, reached_snr
 
+
     # GETTER
     def get_exposure_time(self, snr=None, full=False, **kwargs):
         """Get the exposure time of the current configuration.
@@ -320,6 +328,7 @@ class VirtualTarget:
 
         return times["total_exptime"]
 
+
     def get_readout_config(self):
         """Get the current MACC mode and number of ramps.
 
@@ -334,6 +343,7 @@ class VirtualTarget:
         """
         # This should be generalized once other detector than HxRG have been implemented.
         return self.get_properties(["nmd", "nramps"])
+
 
     def get_data_volume(self, units="GB", per_ramp=False):
         """Get the data volume of the observation.
@@ -357,6 +367,7 @@ class VirtualTarget:
         ~slicersim.simulation.Simulation.get_data_volume : The underlying method.
         """
         return self.simulation.get_data_volume(units=units, per_ramp=per_ramp)
+
 
     def get_spectrum(self, unit="adu", incl_error=True, **kwargs):
         """Get the simulated spectrum of the point source.
@@ -399,6 +410,7 @@ class VirtualTarget:
         # change the unit
         coefs = self.simulation.convert_units(units_in="adu", units_out=unit)
         return lbda, flux*coefs, variance*coefs**2
+
 
     def get_band_snr(self, lbda_range, frame="obs", per_resolution=True,
                     statistic=np.nanmean, **kwargs):
@@ -452,6 +464,7 @@ class VirtualTarget:
         """
         return self.simulation.get_cube()
 
+
     def get_detector_image(self, mapper, cubes=None, **kwargs):
         """Not implemented for the generic VirtualTarget class.
 
@@ -475,6 +488,7 @@ class VirtualTarget:
         """
         raise NotImplementedError("This functionality is not implemented for the generic Target class. See e.g., LazuliTarget")
 
+
     def get_variance_contribution(self):
         """Get the contribution of each noise source to the variance.
 
@@ -489,6 +503,7 @@ class VirtualTarget:
             ``"thermal"``) giving its contribution to the variance in ADU^2.
         """
         return self.simulation.get_variance_contribution()
+
 
     def get_properties(self, which, default=None, as_dict=True):
         """Get parameter values of the target's simulation.
@@ -515,6 +530,7 @@ class VirtualTarget:
         """
         return self.simulation.get_parameter(which=which, default=default, as_dict=as_dict)
 
+
     # ============== #
     #  Properties    #
     # ============== #
@@ -524,10 +540,12 @@ class VirtualTarget:
         return [param_ for param_ in self.simulation.scene.mutable_parameters
                     if param_.startswith("pointsource.")]
 
+
     @property
     def simulation(self):
         """The `~slicersim.simulation.Simulation` wrapped by the target."""
         return self._simulation
+
 
 # ============ #
 #  Specifics   #
@@ -557,9 +575,8 @@ class Target( VirtualTarget ):
     --------
     slicersim.lazuli.LazuliTarget : The Lazuli flavour of this target.
     """
-    def __init__(self, lbda, flux,
-                     mag=None, band="bessellb",
-                     **kwargs):
+    def __init__(self, lbda, flux, mag=None, band="bessellb",
+                    host=None, **kwargs):
         """Initialize the Target.
 
         Parameters
@@ -579,8 +596,10 @@ class Target( VirtualTarget ):
         """
         simulation = self._source_to_simulation_(source=[lbda, flux],
                                                  mag=mag, band=band,
+                                                 host=host,
                                                  **kwargs)
         super().__init__(simulation=simulation)
+
 
     @classmethod
     def from_simulation(cls, simulation):
@@ -610,6 +629,7 @@ class Target( VirtualTarget ):
         """
         return super().__init__(simulation=simulation)
 
+
 # Supernova
 class Supernova( VirtualTarget ):
     """Type Ia supernova point source target.
@@ -636,7 +656,7 @@ class Supernova( VirtualTarget ):
     --------
     slicersim.lazuli.LazuliSupernova : The Lazuli flavour of this target.
     """
-    def __init__(self, model="salt", **kwargs):
+    def __init__(self, redshift, host=None, model="salt", **kwargs):
         """Initialize the Supernova.
 
         Parameters
@@ -647,7 +667,27 @@ class Supernova( VirtualTarget ):
             Goes to `~slicersim.scene.get_scene`; ``instrument`` sets the
             instrument configuration.
         """
-        simulation = self._source_to_simulation_(source=f"snia-{model}", **kwargs)
+        simulation = self._source_to_simulation_(source=f"snia-{model}",
+                                                 redshift=redshift, host=host,
+                                                 **kwargs)
+        super().__init__(simulation=simulation)
+
+
+class Galaxy( VirtualTarget ):
+    def __init__(self, redshift, model="sersic:bb-5000", **kwargs):
+        """Initialize the Supernova.
+
+        Parameters
+        ----------
+        model : str, optional
+            The supernova model. Default is ``"salt"``.
+        **kwargs
+            Goes to `~slicersim.scene.get_scene`; ``instrument`` sets the
+            instrument configuration.
+        """
+        simulation = self._source_to_simulation_(source=f"galaxy-{model}",
+                                                 redshift=redshift,
+                                                 **kwargs)
         super().__init__(simulation=simulation)
 
 # Kilonova
@@ -672,7 +712,7 @@ class Kilonova( VirtualTarget ):
         - ``phase``: days since merger (default 1.4).
         - ``theta``: viewing angle in degrees (default 0, i.e. pole-on).
         - ``magabs``: peak absolute magnitude in ``band`` (default -15.8).
-        - ``magobs``: peak observed magnitude in ``band`` (overrides
+        - ``mag``: peak observed magnitude in ``band`` (overrides
           ``magabs``).
         - ``band``: bandpass of the normalisation (default ``"sdssr"``).
         - ``position``: position in the IFU in spaxels (default
@@ -684,7 +724,7 @@ class Kilonova( VirtualTarget ):
     --------
     slicersim.lazuli.LazuliKilonova : The Lazuli flavour of this target.
     """
-    def __init__(self, model="bulla23", **kwargs):
+    def __init__(self, model="bulla23", host=None, **kwargs):
         """Initialize the Kilonova.
 
         Parameters
@@ -695,7 +735,9 @@ class Kilonova( VirtualTarget ):
             Goes to `~slicersim.scene.get_scene`; ``instrument`` sets the
             instrument configuration.
         """
-        simulation = self._source_to_simulation_(source=f"kilonova-{model}", **kwargs)
+        simulation = self._source_to_simulation_(source=f"kilonova-{model}",
+                                                 host=host,
+                                                 **kwargs)
         super().__init__(simulation=simulation)
 
 # Kilonova
@@ -716,7 +758,7 @@ class BlackBody( VirtualTarget ):
     --------
     slicersim.lazuli.LazuliBlackBody : The Lazuli flavour of this target.
     """
-    def __init__(self, temperature, **kwargs):
+    def __init__(self, temperature, host=None, **kwargs):
         """Initialize the BlackBody.
 
         Parameters
@@ -727,7 +769,9 @@ class BlackBody( VirtualTarget ):
             Goes to `~slicersim.scene.get_scene`; ``instrument`` sets the
             instrument configuration.
         """
-        simulation = self._source_to_simulation_(source=f"blackbody-{temperature}", **kwargs)
+        simulation = self._source_to_simulation_(source=f"blackbody-{temperature}",
+                                                 host=host,
+                                                 **kwargs)
         super().__init__(simulation=simulation)
 
 # PowerLaw
@@ -752,7 +796,7 @@ class PowerLaw( VirtualTarget ):
     from .scene.sources.calspec import calspecsource
     _SOURCES = calspecsource
 
-    def __init__(self, alpha=None, **kwargs):
+    def __init__(self, alpha=None, host=None, **kwargs):
         """Initialize the PowerLaw.
 
         Parameters
@@ -763,7 +807,9 @@ class PowerLaw( VirtualTarget ):
             Goes to `~slicersim.scene.get_scene`; ``instrument`` sets the
             instrument configuration.
         """
-        simulation = self._source_to_simulation_(source=f"powerlaw-{alpha}", **kwargs)
+        simulation = self._source_to_simulation_(source=f"powerlaw-{alpha}",
+                                                 host=host,
+                                                 **kwargs)
         super().__init__(simulation=simulation)
 
 # CalSpec Stars

@@ -1,9 +1,9 @@
 """Scene: base module.
 
 `SceneElement` is the base class of every scene component (point source,
-background, host). It wraps a ``model_func(lbda, ...)`` returning a spectrum,
-and exposes the parameters of that function as mutable parameters, stored in
-the element ``meta``.
+background, host). It wraps a ``model_func(lbda, ...)`` returning a spectrum
+(a datacube for the host), and exposes the parameters of that function as
+mutable parameters, stored in the element ``meta``.
 """
 import warnings
 
@@ -18,11 +18,17 @@ class SceneElement:
     ``lbda``) are read from the element `meta` when the spectrum is computed,
     falling back to the function defaults, and can be changed with `update`.
 
+    Subclasses may override `mutable_parameters` and ``_model_func`` (e.g.
+    `~slicersim.scene.host.Host`, whose parameters are those of a spatial and
+    a spectral function).
+
     Parameters
     ----------
-    model_func : callable
+    model_func : callable or None
         Function that returns the spectrum of the element.
         It must take the wavelength (``lbda``) as first argument.
+        If None, ``_model_func`` is not set here: it must be set afterwards
+        or defined by the subclass.
     lbda : array_like, optional
         Default wavelength array in Angstrom. Default is None.
     meta : dict, optional
@@ -32,7 +38,9 @@ class SceneElement:
 
     def __init__(self, model_func, lbda=None, meta={}):
         """Initialize the SceneElement."""
-        self._model_func = model_func
+        if model_func is not None and not isinstance(model_func, str): # e.g. "None"
+            self._model_func = model_func
+
         self._meta = deepcopy(meta)
         self._meta_in = deepcopy(meta)
         self._lbda = lbda
@@ -75,6 +83,11 @@ class SceneElement:
             Parameters to update, see `mutable_parameters`. ``lbda`` updates
             the default wavelength array. None values are skipped.
 
+        Returns
+        -------
+        list of str
+            Names of the updated model parameters (``lbda`` excluded).
+
         Warns
         -----
         UserWarning
@@ -101,6 +114,8 @@ class SceneElement:
             self._meta = self._meta_in | model_update
         else:
             self._meta = self._meta | model_update
+
+        return list( model_update.keys() )
 
     def get_spectrum(self, lbda=None):
         """Get the spectrum of the scene element.

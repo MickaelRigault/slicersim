@@ -87,7 +87,7 @@ def mesh_kwargs(**kwargs):
 
     return df_params
 
-def inspect_func( func ):
+def inspect_func( func, ignore_self=True):
     """Inspect the parameters of a function.
 
     This function returns the names of all positional-or-keyword parameters
@@ -98,6 +98,9 @@ def inspect_func( func ):
     func : callable
         The function to inspect.
 
+    ignore_self : bool, optional
+        If True, ignore the first parameter if it is named ``"self"``.
+        Default is True.
     Returns
     -------
     all_params : list of str
@@ -108,6 +111,8 @@ def inspect_func( func ):
     import inspect
     inspect_full = inspect.getfullargspec( func )
     all_params = inspect_full.args
+    if ignore_self and "self" in all_params:
+        all_params.remove("self")  # remove the first parameter if it is "self"
     # kwargs_ are the default function values
     if inspect_full.defaults is not None:
         kwargs_ = dict(zip(all_params[::-1], inspect_full.defaults[::-1]))

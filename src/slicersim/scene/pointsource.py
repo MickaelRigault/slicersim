@@ -110,6 +110,7 @@ class PointSource(SceneElement):
         return cls(model_func=model_func, position=position,
                    meta=config)
 
+
     @classmethod
     def from_spectrum(cls, lbda_, flux_, mag=20, band="bessellb",
                       position=(0, 0), lbda=None, meta={}):

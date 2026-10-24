@@ -226,8 +226,8 @@ class Simulation:
         this = cls.from_config(config, slicer=slicer)
 
         # update to expecting target
-        if redshift is not None:
-            this.update(pointsource__redshift=redshift)
+        if redshift is not None: # pointsource and host (if any)
+            this.update(redshift=redshift)
 
         if kwargs:
             this.update(**kwargs)
@@ -517,6 +517,14 @@ class Simulation:
 
                 if len(k) == 1:
                     k = k[0]
+                # Special case for which you want to actually change them all.
+                # This is limited to the scene.
+                elif k_input in ["redshift"]:
+                    for subkey in k:
+                        updates_scene[subkey] = v
+
+                    continue
+
                 else:
                     warnings.warn(f"Parameter {k_input} is not well defined. several correspondance {k}.")
                     continue
@@ -857,16 +865,28 @@ class Simulation:
                     instance = getattr(instance, k1)
                     which = k2
 
-            if hasattr(instance, which):            # self.which
+            if hasattr(instance, which):            # 'self'.which
                 return getattr(instance, which)
 
             if which in instance.meta:  # self.meta['which']
                 return instance.meta[which]
 
             if element == "scene": # for scene: self.meta['pointsource']['which']
-                meta_pointsource = instance.meta["pointsource"]
-                if meta_pointsource is not None and which in meta_pointsource:
-                    return meta_pointsource[which]
+                meta_in_scene = {}
+                # try if in pointsource
+                for sceneelement in ["pointsource", "host", "background"]:
+                    meta_scenelement = instance.meta.get(sceneelement, None)
+                    if meta_scenelement is not None and which in meta_scenelement:
+                        meta_in_scene[sceneelement] = meta_scenelement[which]
+
+                values = list(meta_in_scene.values())
+                # unique, or shared by all elements (e.g. redshift of pointsource and host)
+                if len(values) == 1 or (len(values) > 1 and
+                                        all(np.array_equal(v, values[0]) for v in values[1:])):
+                    return values[0]
+
+                elif len(meta_in_scene) >1 :
+                    warnings.warn(f"several {which=} in scene ({meta_in_scene.keys()}). specify: scenelementname__which")
 
         return {which: default} if as_dict else default
 

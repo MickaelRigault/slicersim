@@ -53,8 +53,9 @@ class Scene:
 
         self._pointsource = pointsource
         self._background = background
-        self._host = host
         self._lbda = lbda
+
+        self.set_host(host) # special as it may adapt to the pointsource if any.
         self._scene_meta = meta.copy()
 
     @classmethod
@@ -72,7 +73,12 @@ class Scene:
             `~slicersim.scene.background.Background` and
             `~slicersim.scene.host.Host`). A missing or empty element has no
             contribution to the scene. Any other entry is stored in the scene
-            meta.
+            meta. The host can also be a model name (e.g. ``"ngc0628"`` or
+            ``"sersic:bb-5000"``); in both cases, the host is built with the
+            defaults of `~slicersim.scene.host.get_host_config`, overwritten
+            by the given entries (the model name is the ``"refmodel"`` entry).
+            If the scene has a point source with a redshift, the host takes
+            its redshift.
         lbda : array_like, optional
             Default wavelength array in Angstrom. Default is None.
 
@@ -104,7 +110,12 @@ class Scene:
             background = None
 
         if host_config:  # initialize host from config
-            host = Host.from_config(host_config)
+            if type(host_config) is str:
+                host_config = {"refmodel": host_config}
+            # host defaults (get_host_config) overwritten by the input entries.
+            host_config = dict(host_config)
+            host = Host.from_modelname(host_config.pop("refmodel", "sersic:bb-5000"),
+                                       **host_config)
         else:
             host = None
 
@@ -115,6 +126,18 @@ class Scene:
             lbda=lbda,
             meta=config,
         )  # config don't contains elements anymore.
+
+    # =========== #
+    #  Method     #
+    # =========== #
+    def set_host(self, host):
+        """ Set the host element of the scene. """
+        # no setting test as you are already pretty deep inside the code.
+        # It's likely you know what you are doing.
+        self._host = host
+        if host is not None and self.has_element("pointsource") and \
+            ((redshift := self.pointsource.redshift) is not None):
+            self.update(host__redshift = redshift)
 
     def has_element(self, element):
         """Check if an element is present in the scene.
@@ -131,6 +154,7 @@ class Scene:
         """
 
         return getattr(self, element, None) is not None
+
 
     def update(self, reset_others=False, **kwargs):
         """Update mutable parameters.
@@ -201,6 +225,7 @@ class Scene:
         if self.host is not None:
             self.host.update(reset_others=reset_others, **updates_host)
 
+
     def get_element_spectrum(self, which, lbda=None, fillna=0, **kwargs):
         """Get the spectrum of a given element.
 
@@ -244,6 +269,7 @@ class Scene:
 
         return lbda, spec
 
+
     def get_stacked_spectra(self, lbda=None, fillna=0):
         """Get the stack of all scene element spectra.
 
@@ -282,7 +308,11 @@ class Scene:
 
         return lbda, np.stack(spectra)
 
-    def plot_background(self, ax=None, in_log=True, **kwargs):
+
+    # -------- #
+    #  PLOTTER #
+    # -------- #
+    def show_background(self, ax=None, in_log=True, **kwargs):
         """Plot the background spectrum.
 
         The flux (erg/s/cm^2/A/arcsec^2) is plotted as a function of wavelength in micron.
@@ -302,7 +332,6 @@ class Scene:
         matplotlib.figure.Figure
             The figure containing the plot.
         """
-
         if ax is None:
             import matplotlib.pyplot as plt
             fig, ax = plt.subplots()
@@ -317,17 +346,35 @@ class Scene:
             ylabel = "Flux [fλ/arcsec²]"
 
         default = dict()  # ds='steps-mid')
-        model_name = self.meta.get("background").get("model")
-        ax.plot(self.lbda / 1e4, flux, **{**default, **kwargs})
-        ax.set(
-            xlabel="Wavelength [µm]",
-            ylabel=ylabel,
-            title=f"Background spectrum ({model_name})",
-        )
+        model_name = self.meta.get("background", {}).get("model", "unknown")
+        ax.plot(self.lbda / 1e4, flux, **(default | kwargs) )
+        ax.set( xlabel="Wavelength [µm]",
+                ylabel=ylabel,
+                title=f"Background spectrum ({model_name})",
+                )
 
         return fig
 
-    def plot_pointsource(self, ax=None, in_log=True, **kwargs):
+    def show_host(self, ax=None, **kwargs):
+        """Plot the total host spectrum (see `~slicersim.scene.host.Host.show_spectrum`).
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes, optional
+            Axes to draw into. If None, a new figure is created.
+        **kwargs
+            Goes to `matplotlib.axes.Axes.plot`.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        if not self.has_element("host"):
+            raise ValueError("No host element in the scene.")
+
+        return self.host.show_spectrum(lbda=self.lbda, ax=ax, **kwargs)
+
+    def show_pointsource(self, ax=None, in_log=True, **kwargs):
         """Plot the point source spectrum.
 
         The flux (erg/s/cm^2/A) is plotted as a function of wavelength in micron.
