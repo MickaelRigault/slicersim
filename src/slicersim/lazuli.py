@@ -4,7 +4,8 @@ Lazuli is a two-field integral field spectrograph: a narrow field (40 mas
 spaxels) and a wide field (80 mas spaxels) observe adjacent sky regions at two
 samplings and are imaged side by side on a single detector. The classes here
 specialise the generic targets of `~slicersim.target` (e.g.
-`LazuliSupernova`, `LazuliKilonova`, `LazuliCalSpec`, `LazuliTarget`) with
+`LazuliSupernova`, `LazuliKilonova`, `LazuliCalSpec`, `LazuliTarget`, or
+`LazuliGalaxy` for a galaxy alone) with
 the Lazuli instrument configuration and add the handling of the two fields, from
 switching between them (`VirtualLazuliTarget.change_spectrograph`) to
 projecting both onto one detector image (`VirtualLazuliTarget.to_image`).
@@ -20,11 +21,12 @@ import numpy as np
 
 from .iotools import get_config
 from .simulation import Simulation
-from .target import BlackBody, CalSpec, Kilonova, PowerLaw, Supernova, Target
+from .target import BlackBody, CalSpec, Kilonova, PowerLaw, Supernova, Target, Galaxy
 
 __all__ = [
     "LazuliBlackBody",
     "LazuliCalSpec",
+    "LazuliGalaxy",
     "LazuliKilonova",
     "LazuliPowerLaw",
     "LazuliSupernova",
@@ -832,6 +834,12 @@ class LazuliSupernova( VirtualLazuliTarget, Supernova ):
           works.
         - ``"twin"``: Twins-Embedding, parameters ``xi1``, ``xi2``, ``xi3``
           and ``color``.
+    host : str, dict or None, optional
+        Host galaxy, as a model name (e.g. ``"ngc0628"`` or
+        ``"sersic:bb-5000"``) or a configuration dict (see
+        `~slicersim.scene.host.get_host_config`). It takes the redshift of
+        the supernova; its parameters are changed with the ``host__``
+        prefix (e.g. ``host__position``). Default is None, i.e. no host.
     **kwargs
         Point source parameters, e.g. ``redshift``, ``phase`` (rest-frame
         days from maximum light), ``position`` (spaxels) and the model
@@ -841,10 +849,12 @@ class LazuliSupernova( VirtualLazuliTarget, Supernova ):
     See Also
     --------
     lazuli_sn_etc : Exposure time to reach a given SNR, in one call.
+    LazuliGalaxy : A galaxy alone, without a supernova.
 
     Examples
     --------
     >>> sn = LazuliSupernova(redshift=1.0, x1=0, c=0.2, phase=1.5)  # doctest: +SKIP
+    >>> sn_in_host = LazuliSupernova(redshift=0.9, host="ngc0628")  # doctest: +SKIP
     >>> config, snr = sn.setup_to_snr(20)  # doctest: +SKIP
     >>> exptime = sn.get_exposure_time()  # in seconds  # doctest: +SKIP
     >>> lbda, flux, variance = sn.get_spectrum(unit="flambda")  # doctest: +SKIP
@@ -952,6 +962,73 @@ class LazuliTarget( VirtualLazuliTarget, Target  ):
     --------
     >>> lbda = np.arange(3_000, 20_000, 0.5)  # doctest: +SKIP
     >>> target = LazuliTarget(lbda, np.ones_like(lbda), mag=20, band="lsstg")  # doctest: +SKIP
+    """
+
+# Galaxy
+class LazuliGalaxy( VirtualLazuliTarget, Galaxy  ):
+    """A galaxy alone (no point source) observed with Lazuli.
+
+    The galaxy is a `~slicersim.scene.host.Host` (a spectrum times an image)
+    on top of the zodiacal background, rendered on the spaxels of each field
+    and convolved by the PSF. It is the same model as the ``host`` of
+    `LazuliSupernova`, without the supernova.
+
+    Parameters
+    ----------
+    redshift : float
+        Redshift of the galaxy. It sets its spectrum, its brightness (for
+        ``magabs``) and its angular size (fixed physical size).
+    model : str or dict, optional
+        Galaxy model, ``"spatial:spectral"``: ``"sersic:bb-5000"``
+        [default] (Sersic profile, 5000 K blackbody), ``"ngc0628"`` (image
+        and spectrum of NGC 0628), or mixed, e.g. ``"sersic:ngc0628"`` (see
+        `~slicersim.scene.host.parse_modelname`). It can also be a
+        configuration dict, with the model name as ``"refmodel"``.
+    **kwargs
+        Galaxy parameters, overwriting the defaults of
+        `~slicersim.scene.host.get_host_config`: ``magabs`` (rest-frame
+        absolute magnitude in ``band``, default -21) or ``mag`` (observed),
+        ``position`` (spaxels from the field center), and ``r_kpc``, ``n``,
+        ``ellip``, ``theta`` for ``"sersic"`` or ``rotation`` for an NGC
+        image. ``instrument`` and ``background`` can also be given (see
+        `~slicersim.scene.get_scene`).
+    aperture : str, optional
+        Aperture within which the galaxy spectrum is extracted (see
+        `~slicersim.simulation.Simulation.get_aperture`):
+
+        - ``"core"``: the galaxy core, extracted as a point source would be
+          (PSF-weighted);
+        - ``"<n>-arcsec"``: aperture photometry within a radius of n arcsec,
+          e.g. ``"1-arcsec"`` [default];
+        - ``"<n>-kpc"``: aperture photometry within a radius of n kpc at the
+          galaxy redshift, e.g. ``"2-kpc"``.
+    aperture__position : tuple of float or str, optional
+        ``(x, y)`` aperture center, in spaxels of the current field, or
+        ``"host"`` [default] to follow the galaxy position.
+
+    Notes
+    -----
+    The extracted spectrum (``get_spectrum``, and so ``get_band_snr``,
+    ``setup_to_snr`` or ``get_variance_contribution``) is that of the galaxy
+    within the aperture, in the current field.
+
+    See Also
+    --------
+    LazuliSupernova : A supernova, which accepts a ``host`` galaxy.
+
+    Examples
+    --------
+    >>> galaxy = LazuliGalaxy(redshift=0.5, model="ngc0628")  # doctest: +SKIP
+    >>> galaxy.change_properties(redshift=1.0, position=(5, 0))  # doctest: +SKIP
+    >>> (cube_narrow, _), (cube_wide, _) = galaxy.get_cube(which="both")  # doctest: +SKIP
+    >>> fig = galaxy.show_cube((cube_narrow, cube_wide), lbda_range=[6000, 9000])  # doctest: +SKIP
+
+    The spectrum within 2 kpc of the core, and the exposure to reach a
+    signal-to-noise of 10:
+
+    >>> galaxy.change_properties(aperture="2-kpc")  # doctest: +SKIP
+    >>> config, snr = galaxy.setup_to_snr(10)  # doctest: +SKIP
+    >>> lbda, flux, variance = galaxy.get_spectrum()  # doctest: +SKIP
     """
 
 # Generic object

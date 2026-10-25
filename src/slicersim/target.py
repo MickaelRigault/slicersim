@@ -9,7 +9,9 @@ access to the simulated spectra and cubes.
 directly. The concrete targets differ only by the scene they build:
 `Supernova` for SN Ia models, `Kilonova` for kilonova models, `CalSpec` for
 HST CalSpec standard stars, `BlackBody` and `PowerLaw` for analytic spectra,
-and `Target` for an arbitrary input spectrum. Instrument-specific flavours are
+`Target` for an arbitrary input spectrum, and `Galaxy` for a galaxy alone
+(no point source). All point-source targets accept a ``host`` galaxy (see
+`~slicersim.scene.host`). Instrument-specific flavours are
 defined in `~slicersim.lazuli`, and calibration exposures in
 `~slicersim.calibration`.
 """
@@ -645,12 +647,18 @@ class Supernova( VirtualTarget ):
           works.
         - ``"twin"``: Twins-Embedding, parameters ``xi1``, ``xi2``, ``xi3``
           and ``color``.
+    redshift : float
+        Redshift of the supernova (and of its host, if any).
+    host : str, dict or None, optional
+        Host galaxy, as a model name (e.g. ``"ngc0628"`` or
+        ``"sersic:bb-5000"``) or a configuration dict (see
+        `~slicersim.scene.host.get_host_config`). It takes the redshift of
+        the supernova. Default is None, i.e. no host.
     **kwargs
         Goes to `~slicersim.scene.get_scene`, i.e. point source parameters
-        (e.g. ``redshift``, ``phase``, ``position`` and the model
-        parameters), ``background`` or ``host``. ``instrument`` sets the
-        instrument configuration (default: the class ``_INSTRUMENT``, if
-        any).
+        (e.g. ``phase``, ``position`` and the model parameters) or
+        ``background``. ``instrument`` sets the instrument configuration
+        (default: the class ``_INSTRUMENT``, if any).
 
     See Also
     --------
@@ -661,6 +669,10 @@ class Supernova( VirtualTarget ):
 
         Parameters
         ----------
+        redshift : float
+            Redshift of the supernova (and of its host, if any).
+        host : str, dict or None, optional
+            Host galaxy model name or configuration. Default is None.
         model : str, optional
             The supernova model. Default is ``"salt"``.
         **kwargs
@@ -674,21 +686,84 @@ class Supernova( VirtualTarget ):
 
 
 class Galaxy( VirtualTarget ):
-    def __init__(self, redshift, model="sersic:bb-5000", **kwargs):
-        """Initialize the Supernova.
+    """Galaxy target, alone (no point source).
+
+    The galaxy is a `~slicersim.scene.host.Host`: a spectrum times an image,
+    rendered on the spaxel grid and convolved by the PSF. It is the same
+    model as the ``host`` of the point-source targets, but without a point
+    source on top of it.
+
+    Parameters
+    ----------
+    redshift : float
+        Redshift of the galaxy. It sets its spectrum, its brightness (for
+        ``magabs``) and its angular size.
+    model : str or dict, optional
+        Galaxy model, ``"spatial:spectral"`` (see
+        `~slicersim.scene.host.parse_modelname`):
+
+        - spatial: ``"sersic"`` or an NGC galaxy image, e.g. ``"ngc0628"``;
+        - spectral: ``"bb"`` / ``"blackbody"``, optionally with a
+          temperature in K (``"bb-5000"``), or an NGC galaxy spectrum.
+
+        A bare NGC name, e.g. ``"ngc0628"``, means ``"ngc0628:ngc0628"``.
+        It can also be a configuration dict, with the model name as
+        ``"refmodel"``. Default is ``"sersic:bb-5000"``.
+    **kwargs
+        Galaxy parameters, overwriting the defaults of
+        `~slicersim.scene.host.get_host_config`, e.g. ``magabs`` (rest-frame
+        absolute magnitude in ``band``, default -21), ``mag`` (observed
+        magnitude), ``position`` (spaxels), and for ``"sersic"``: ``r_kpc``,
+        ``n``, ``ellip``, ``theta``; for an NGC image: ``rotation``.
+        ``background`` sets the background (see `~slicersim.scene.get_scene`)
+        and ``instrument`` the instrument configuration.
+    aperture : str, optional
+        Aperture within which the galaxy spectrum is extracted (see
+        `~slicersim.simulation.Simulation.get_aperture`): ``"core"`` (the
+        core, extracted as a point source would be), ``"<n>-arcsec"`` or
+        ``"<n>-kpc"`` (aperture photometry within a radius of n arcsec or
+        n kpc). Default is ``"1-arcsec"``.
+    aperture__position : tuple of float or str, optional
+        ``(x, y)`` aperture center, in spaxels, or ``"host"`` for the
+        galaxy position. Default is ``"host"``.
+
+    Notes
+    -----
+    The extracted spectrum (`get_spectrum`, and so `get_band_snr`,
+    `setup_to_snr` or `get_variance_contribution`) is that of the galaxy
+    within the aperture. Both can be changed later, e.g.
+    ``change_properties(aperture="2-kpc", aperture__position=(3, 0))``.
+
+    See Also
+    --------
+    slicersim.lazuli.LazuliGalaxy : The Lazuli flavour of this target.
+    Supernova : A supernova, which accepts a ``host`` galaxy.
+    """
+    def __init__(self, redshift, model="sersic:bb-5000",
+                     aperture="1-arcsec", aperture__position="host", **kwargs):
+        """Initialize the Galaxy.
 
         Parameters
         ----------
-        model : str, optional
-            The supernova model. Default is ``"salt"``.
+        redshift : float
+            Redshift of the galaxy.
+        model : str or dict, optional
+            Galaxy model name or configuration. Default is
+            ``"sersic:bb-5000"``.
+        aperture : str, optional
+            Spectrum extraction aperture. Default is ``"1-arcsec"``.
+        aperture__position : tuple of float or str, optional
+            Aperture center, in spaxels, or ``"host"``. Default is ``"host"``.
         **kwargs
-            Goes to `~slicersim.scene.get_scene`; ``instrument`` sets the
-            instrument configuration.
+            Galaxy parameters (see `~slicersim.scene.host.get_host_config`),
+            ``background`` or ``instrument``.
         """
-        simulation = self._source_to_simulation_(source=f"galaxy-{model}",
+        simulation = self._source_to_simulation_(source=None,
+                                                 host=model,
                                                  redshift=redshift,
                                                  **kwargs)
         super().__init__(simulation=simulation)
+        self.simulation.update(aperture=aperture, aperture__position=aperture__position)
 
 # Kilonova
 class Kilonova( VirtualTarget ):

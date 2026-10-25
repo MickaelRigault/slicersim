@@ -17,7 +17,8 @@ you need more control.
      - get an exposure time in one line.
    * - **Targets**
      - `~slicersim.lazuli.LazuliSupernova`, `~slicersim.lazuli.LazuliKilonova`,
-       `~slicersim.lazuli.LazuliTarget`, ... and `~slicersim.sample.Sample`
+       `~slicersim.lazuli.LazuliTarget`, `~slicersim.lazuli.LazuliGalaxy`, ...
+       and `~slicersim.sample.Sample`
      - simulate a given astrophysical source with Lazuli: reach a SNR,
        get spectra, compare read-out modes or populations.
    * - **Simulation**
@@ -133,7 +134,32 @@ The host shares the redshift of the point source. Its brightness
 (K-corrected, as for the supernova), and its physical size is kept fixed, so
 changing the redshift moves the whole system consistently. See
 `~slicersim.scene.host.get_host_config` for the default parameters and the
-:doc:`notebooks/advanced_host_galaxy` tutorial.
+:doc:`notebooks/beginner_host_galaxy` tutorial.
+
+A galaxy can also be observed alone, without point source, with
+`~slicersim.lazuli.LazuliGalaxy` and the same model names:
+
+.. code-block:: python
+
+   galaxy = slicersim.LazuliGalaxy(redshift=0.5, model="ngc0628")
+   galaxy.change_properties(redshift=1.0, position=(5, 0))
+   (cube_narrow, _), (cube_wide, _) = galaxy.get_cube(which="both")
+
+Its spectrum (``get_spectrum``, and so ``setup_to_snr``...) is extracted
+within an ``aperture``: ``"core"`` (the core, extracted as a point source
+would be), ``"<n>-arcsec"`` or ``"<n>-kpc"`` (aperture photometry within n
+arcsec or n kpc), centered on the galaxy or on ``aperture__position``:
+
+.. code-block:: python
+
+   galaxy = slicersim.LazuliGalaxy(redshift=0.5, model="ngc0628", aperture="2-kpc")
+   config, snr = galaxy.setup_to_snr(10)
+   galaxy.change_properties(aperture="1-arcsec", aperture__position=(-20, 12))
+   lbda, flux, variance = galaxy.get_spectrum()
+
+The default aperture is ``"1-arcsec"``, centered on the galaxy. See
+`~slicersim.simulation.Simulation.get_aperture` and the
+:doc:`notebooks/beginner_galaxy` tutorial.
 
 Noise sources
 -------------
