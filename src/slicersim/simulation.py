@@ -54,7 +54,9 @@ class Simulation:
         ``aperture`` (default ``"1-arcsec"``) and ``aperture.position``
         (default ``"host"``, i.e. the host position) define the spectrum
         extraction of a scene without point source, see
-        `Simulation.get_aperture`. Default is ``{}``.
+        `Simulation.get_aperture`, and ``method`` (default ``"default"``)
+        the extraction method, see `Simulation.get_spectrum`.
+        Default is ``{}``.
     meta : dict, optional
         Input configuration, used by `Simulation.reset` to restore the
         initial state of each element. Default is ``{}``.
@@ -92,6 +94,7 @@ class Simulation:
         # host spectrum extraction, used if no pointsource (see get_aperture)
         self.extraction.setdefault("aperture", "1-arcsec")
         self.extraction.setdefault("aperture.position", "host") # follows the host position
+        self.extraction.setdefault("method", "default") # see get_spectrum
         self.telescope = telescope        #: telescope
         self._in_meta = meta              #: Meta-parameters
 
@@ -1530,22 +1533,37 @@ class Simulation:
         return band_sigs, band_vars
 
     def get_spectrum(self, switch_off=[], incl_error=False,
-                         of_host=False,
+                         of_host=False, method=None,
                          psf_profile="default",
                          apply_lsf=True, cached=False):
         """Get the extracted spectrum and its variance.
 
-        If the scene has a point source, its signal is assumed to be
-        perfectly extracted, while its variance is computed from the variance
-        cube within the extraction aperture.
-
-        Otherwise (e.g. a galaxy alone), the host spectrum is extracted
-        within the aperture defined by the ``aperture`` and
+        If the scene has a point source, its spectrum is extracted (unless
+        ``of_host``). Otherwise (e.g. a galaxy alone), the host spectrum is
+        extracted within the aperture defined by the ``aperture`` and
         ``aperture.position`` extraction parameters (see
-        `Simulation.get_aperture`): the signal is measured from the
-        noise-free host cube and the variance from the variance cube, with
-        the same weights.
+        `Simulation.get_aperture`).
 
+        The extraction ``method`` is either:
+
+        - ``"optimal"``: inverse-variance weighted least-square fit of the
+          PSF profile. For a point source, its signal is assumed to be
+          perfectly extracted, while its variance is computed from the
+          variance cube within the point-source extraction aperture
+          (``aperture_radius`` or ``aperture_radius_insigma``). For the
+          host, both the signal and the variance are measured from the
+          cubes, within the aperture.
+        - ``"aperture"``: aperture photometry, i.e. plain summation of the
+          signal and the variance within the aperture. For a point source,
+          the aperture is centered on it and the signal is the point-source
+          flux within the aperture (no aperture correction, which would not
+          change the signal-to-noise).
+        - ``"default"``: ``"optimal"`` for a point source, and for the host,
+          ``"optimal"`` if ``aperture="core"`` and ``"aperture"`` otherwise.
+
+        The signal is measured from the noise-free cube of the extracted
+        element and the variance from the variance cube, with the same
+        weights (but for the optimal point-source signal, see above).
         Both include all ``nramps`` ramps.
 
         Parameters
@@ -1559,6 +1577,10 @@ class Simulation:
         of_host: bool, optional
             If True, extract the host spectrum (even if a point source is
             present). Default is False.
+        method : str or None, optional
+            Extraction method: ``"default"``, ``"optimal"`` or ``"aperture"``
+            (see above). If None, the ``method`` extraction parameter is
+            used (default ``"default"``). Default is None.
         psf_profile : str, optional
             PSF profile to use. Default is ``"default"``.
         apply_lsf : bool, optional
@@ -1576,7 +1598,18 @@ class Simulation:
         variance : numpy.ndarray
             (nlbda,) variance [ADU^2].
 
+        Raises
+        ------
+        ValueError
+            If ``method`` is not known.
+
         """
+        if method is None:
+            method = self.extraction.get("method", "default")
+
+        if method not in ["default", "optimal", "aperture"]:
+            raise ValueError(f"unknown extraction {method=}. Must be 'default', 'optimal' or 'aperture'.")
+
         # (lbda, nx, ny) [ADU]
         _, var_cube = self.get_cube(switch_off=switch_off,
                                                per_ramp=True, # see later.
@@ -1585,9 +1618,26 @@ class Simulation:
 
         # no pointsource, e.g. a galaxy alone: extract the host from the cubes
         if not self.scene.has_element("pointsource") or of_host:
-            spec_signal, spec_variance = self._get_host_spectrum_(var_cube, switch_off=switch_off,
-                                                                  psf_profile=psf_profile,
-                                                                  apply_lsf=apply_lsf)
+            position, radius, optimal = self.get_aperture()
+            if method != "default":
+                optimal = method == "optimal"
+
+            spec_signal, spec_variance = self._get_aperture_spectrum_("host", var_cube,
+                                                                      position=position, radius=radius,
+                                                                      optimal=optimal,
+                                                                      switch_off=switch_off,
+                                                                      psf_profile=psf_profile,
+                                                                      apply_lsf=apply_lsf)
+
+        # pointsource aperture photometry: measured from the cubes
+        elif method == "aperture":
+            position, radius, _ = self.get_aperture(position=self.scene.pointsource_position)
+            spec_signal, spec_variance = self._get_aperture_spectrum_("pointsource", var_cube,
+                                                                      position=position, radius=radius,
+                                                                      optimal=False,
+                                                                      switch_off=switch_off,
+                                                                      psf_profile=psf_profile,
+                                                                      apply_lsf=apply_lsf)
 
         else:
             # radius is used to limit where PSF and variance are considered, see pointsource_variance()
@@ -1623,7 +1673,9 @@ class Simulation:
         """Get the aperture used to extract the host spectrum.
 
         It is used by `Simulation.get_spectrum` when the scene has no point
-        source (e.g. a galaxy alone).
+        source (e.g. a galaxy alone) or with ``of_host=True``, and for the
+        aperture photometry of a point source (``method="aperture"``), then
+        centered on the point source.
 
         Parameters
         ----------
@@ -1703,15 +1755,26 @@ class Simulation:
 
         return tuple(position), size / self.spectrograph.spx_spatial_scale, False
 
-    def _get_host_spectrum_(self, var_cube, switch_off=[], psf_profile="default", apply_lsf=True):
-        """Host spectrum extracted within the aperture (see `Simulation.get_aperture`).
+    def _get_aperture_spectrum_(self, which, var_cube, position=(0, 0), radius=5, optimal=False,
+                                switch_off=[], psf_profile="default", apply_lsf=True):
+        """Spectrum of a scene element measured from the cubes within an aperture.
 
         Parameters
         ----------
+        which : str
+            Scene element to extract: ``"pointsource"`` or ``"host"``.
         var_cube : numpy.ndarray
             (nlbda, ny, nx) variance cube [ADU^2], per ramp.
+        position : tuple of float, optional
+            ``(x, y)`` aperture center, in spaxels. Default is ``(0, 0)``.
+        radius : float, optional
+            Aperture radius, in spaxels. Default is 5.
+        optimal : bool, optional
+            If True, use optimal (PSF-weighted) extraction, otherwise plain
+            summation (see `~slicersim.spectrograph.Spectrograph.aperture_extraction`).
+            Default is False.
         switch_off : list of str, optional
-            If ``"host"`` is in it, the signal is zero. Default is ``[]``.
+            If ``which`` is in it, the signal is zero. Default is ``[]``.
         psf_profile : str, optional
             PSF profile to use. Default is ``"default"``.
         apply_lsf : bool, optional
@@ -1722,19 +1785,18 @@ class Simulation:
         signal, variance : numpy.ndarray
             (nlbda,) signal [ADU] and variance [ADU^2], per ramp.
         """
-        position, radius, optimal = self.get_aperture()
-
-        if "host" not in switch_off and self.scene.has_element("host"):
-            # noise-free host cube | [ph/s] -> [ADU]
-            host_cube = self.get_projected_scene(in_photons=True,
-                                                 switch_off=["pointsource", "background", "thermal"],
-                                                 psf_profile=psf_profile,
-                                                 apply_lsf=apply_lsf)
-            host_cube *= np.reshape(self.detector.photonflux_to_adu(self.spectrograph.lbda), (-1, 1, 1))
+        if which not in switch_off and self.scene.has_element(which):
+            # noise-free cube of this element only | [ph/s] -> [ADU]
+            others = [k for k in ["pointsource", "host", "background", "thermal"] if k != which]
+            cube = self.get_projected_scene(in_photons=True,
+                                            switch_off=others,
+                                            psf_profile=psf_profile,
+                                            apply_lsf=apply_lsf)
+            cube *= np.reshape(self.detector.photonflux_to_adu(self.spectrograph.lbda), (-1, 1, 1))
         else:
-            host_cube = np.zeros_like(var_cube)
+            cube = np.zeros_like(var_cube)
 
-        return self.spectrograph.aperture_extraction(host_cube, var_cube,
+        return self.spectrograph.aperture_extraction(cube, var_cube,
                                                      position=position, radius=radius,
                                                      psf_profile=psf_profile,
                                                      optimal=optimal)

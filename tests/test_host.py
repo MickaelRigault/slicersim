@@ -429,3 +429,24 @@ def test_galaxy_snr(lazuligalaxy):
     assert np.isclose(lazuligalaxy.get_band_snr([4000, 6800], frame="rest"), snr)
     contrib = lazuligalaxy.get_variance_contribution()
     assert "host" in contrib.columns
+
+
+def test_of_host_method():
+    """ host of a point source: extraction method within the aperture """
+    import slicersim
+    target = slicersim.LazuliSupernova(redshift=0.5, host="sersic:bb-5000")
+    sim = target.simulation
+    position, radius, _ = sim.get_aperture()  # default: 1 arcsec on the host
+    aper = sim.spectrograph.get_aperture(position=position, radius=radius)
+    _, var_cube = sim.get_cube(per_ramp=True)
+    nramps = sim.get_parameter("nramps")
+
+    _, sig_default, var_default = sim.get_spectrum(of_host=True)
+    _, sig_ap, var_ap = sim.get_spectrum(of_host=True, method="aperture")
+    assert np.allclose(sig_default, sig_ap) and np.allclose(var_default, var_ap)
+    assert np.allclose(var_ap, var_cube[:, aper].sum(axis=-1) * nramps)
+
+    # optimal: PSF-weighted within the same aperture
+    _, _, var_opt = sim.get_spectrum(of_host=True, method="optimal")
+    expected = sim.spectrograph.pointsource_variance(var_cube, position=position, radius=radius)
+    assert np.allclose(var_opt, expected * nramps)

@@ -191,6 +191,7 @@ All tutorials are rendered in the [documentation](https://slicersim.readthedocs.
 - [Kilonovae](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_kilonova.html): POSSIS models, viewing angle and phase.
 - [Host galaxy](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_host_galaxy.html): a supernova in its host, `"ngc0628"` or `"sersic:bb-5000"`, and redshift consistency.
 - [A galaxy alone](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_galaxy.html): `LazuliGalaxy`, its cubes, and its spectrum within an aperture.
+- [Spectrum extraction](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_spectrum_extraction.html): optimal or aperture photometry, of a point source or of its host.
 - [Populations with `Sample`](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_sample_multiple_targets.html): exposure time and data volume across many targets.
 
 **Advanced**

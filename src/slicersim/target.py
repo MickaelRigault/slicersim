@@ -372,10 +372,12 @@ class VirtualTarget:
 
 
     def get_spectrum(self, unit="adu", incl_error=True, **kwargs):
-        """Get the simulated spectrum of the point source.
+        """Get the simulated spectrum of the point source (or of the galaxy).
 
         The spectrum is extracted from the simulation in ADU and converted to
-        ``unit``.
+        ``unit``. Without point source (or with ``of_host=True``), it is the
+        host spectrum within the ``aperture`` (see
+        `~slicersim.simulation.Simulation.get_aperture`).
 
         Parameters
         ----------
@@ -395,7 +397,8 @@ class VirtualTarget:
             returned. Default is True.
         **kwargs
             Goes to `~slicersim.simulation.Simulation.get_spectrum` (e.g.
-            ``switch_off``).
+            ``switch_off``, ``of_host`` or ``method``: ``"optimal"`` or
+            ``"aperture"`` photometry).
 
         Returns
         -------

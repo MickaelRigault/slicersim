@@ -161,6 +161,28 @@ The default aperture is ``"1-arcsec"``, centered on the galaxy. See
 `~slicersim.simulation.Simulation.get_aperture` and the
 :doc:`notebooks/beginner_galaxy` tutorial.
 
+Extraction method
+-----------------
+
+The extraction ``method`` of `~slicersim.simulation.Simulation.get_spectrum`
+is either ``"optimal"`` (PSF-weighted, the default for a point source) or
+``"aperture"`` (aperture photometry: plain summation within the
+``aperture``, the default for a galaxy but ``aperture="core"``). It applies to
+point sources too, the aperture being then centered on them, and to the host
+of a point source, with ``of_host=True``:
+
+.. code-block:: python
+
+   sn = slicersim.LazuliSupernova(redshift=0.9, host="ngc0628")
+   lbda, flux, variance = sn.get_spectrum(method="aperture")            # the SN, within 1 arcsec
+   lbda, flux, variance = sn.get_spectrum(of_host=True)                 # its host, within 1 arcsec
+
+   # stored, hence used by setup_to_snr, get_variance_contribution...
+   sn.change_properties(method="aperture", aperture="0.2-arcsec")
+   config, snr = sn.setup_to_snr(10)
+
+See the :doc:`notebooks/beginner_spectrum_extraction` tutorial.
+
 Noise sources
 -------------
 

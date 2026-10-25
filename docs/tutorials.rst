@@ -66,6 +66,13 @@ instrument model needed.
       ``LazuliGalaxy``: a galaxy without point source, its cubes, and its
       spectrum within an aperture.
 
+   .. grid-item-card:: Spectrum extraction
+      :link: notebooks/beginner_spectrum_extraction
+      :link-type: doc
+
+      Optimal or aperture photometry, of a point source or of its host
+      (``method``, ``aperture``, ``of_host``).
+
    .. grid-item-card:: Populations with ``Sample``
       :link: notebooks/beginner_sample_multiple_targets
       :link-type: doc
@@ -134,6 +141,7 @@ Control the instrument and the scene.
    notebooks/beginner_kilonova
    notebooks/beginner_host_galaxy
    notebooks/beginner_galaxy
+   notebooks/beginner_spectrum_extraction
    notebooks/beginner_sample_multiple_targets
 
 .. toctree::
