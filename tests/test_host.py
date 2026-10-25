@@ -87,7 +87,7 @@ def test_get_host_config():
 #  Host           #
 # =============== #
 def test_instanciation(default_host):
-    """ """
+    """ the temperature is read from the model name """
     assert isinstance(default_host, host.Host), "failed to instanciate the Host"
     assert default_host.meta["temperature"] == 5000
 
@@ -96,7 +96,7 @@ def test_instanciation(default_host):
 
 
 def test_get_cube(default_host):
-    """ """
+    """ cube shape is (nlbda, ny, nx), with shape given as (nx, ny) """
     lbda = np.linspace(1_000, 30_000, 1_000)
     _, cube = default_host.get_cube(lbda)
     assert cube.ndim == 3, "cube is not 3D"
@@ -318,3 +318,135 @@ def test_scene_host_dict_defaults():
     scene = Scene.from_config({"host": {"refmodel": "sersic:bb-5000", "n": 4}})
     assert scene.host.meta["n"] == 4
     assert scene.host.meta["magabs"] == -21
+
+
+# =============== #
+#  Galaxy alone   #
+# =============== #
+@pytest.fixture
+def lazuligalaxy():
+    import slicersim
+    return slicersim.LazuliGalaxy(redshift=0.5, model="sersic:bb-5000", position=(4, 2))
+
+
+def test_galaxy_defaults(lazuligalaxy):
+    sim = lazuligalaxy.simulation
+    assert not sim.scene.has_element("pointsource")
+    assert lazuligalaxy.get_properties(["aperture", "aperture__position"]) == {"aperture": "1-arcsec",
+                                                                             "aperture__position": "host"}
+    position, radius, optimal = sim.get_aperture()
+    assert position == (4, 2) # host position
+    assert np.isclose(radius, 1 / sim.spectrograph.spx_spatial_scale)
+    assert not optimal
+
+
+def test_aperture_parsing(lazuligalaxy):
+    sim = lazuligalaxy.simulation
+    scale = sim.spectrograph.spx_spatial_scale
+
+    _, radius, optimal = sim.get_aperture("core")
+    assert optimal and np.isclose(radius, sim._get_pointsource_radius_())
+
+    _, radius, optimal = sim.get_aperture("0.5-arcsec")
+    assert not optimal and np.isclose(radius, 0.5 / scale)
+
+    for z in [0.5, 1]:
+        lazuligalaxy.change_properties(redshift=z)
+        _, radius, _ = sim.get_aperture("2-kpc")
+        assert np.isclose(radius, 2 * Planck18.arcsec_per_kpc_proper(z).value / scale)
+
+    for aperture in ["2-parsec", "big", "arcsec", 1]:
+        with pytest.raises(ValueError):
+            sim.get_aperture(aperture)
+
+
+def test_aperture_position(lazuligalaxy):
+    sim = lazuligalaxy.simulation
+    # follows the host
+    lazuligalaxy.change_properties(host__position=(-6, 1))
+    assert sim.get_aperture()[0] == (-6, 1)
+
+    # explicit
+    lazuligalaxy.change_properties(aperture__position=(3, 3))
+    assert sim.get_aperture()[0] == (3, 3)
+    assert lazuligalaxy.get_properties("aperture__position", as_dict=False) == (3, 3)
+
+    # back to the host
+    lazuligalaxy.change_properties(aperture__position="host")
+    assert sim.get_aperture()[0] == (-6, 1)
+
+
+def test_short_name_position(lazuligalaxy):
+    """ position is the host (or pointsource) position, not the aperture one. """
+    import slicersim
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        lazuligalaxy.change_properties(position=(1, 1))
+
+        sn = slicersim.LazuliSupernova(redshift=0.5)
+        sn.change_properties(position=(2, 2))
+
+    assert tuple(lazuligalaxy.get_properties("host__position", as_dict=False)) == (1, 1)
+    assert lazuligalaxy.get_properties("aperture__position", as_dict=False) == "host"
+    assert tuple(sn.get_properties("pointsource__position", as_dict=False)) == (2, 2)
+
+
+@pytest.mark.parametrize("aperture", ["1-arcsec", "2-kpc"])
+def test_galaxy_spectrum_signal(lazuligalaxy, aperture):
+    """ the aperture signal is the noise-free host cube summed within the aperture """
+    sim = lazuligalaxy.simulation
+    lazuligalaxy.change_properties(aperture=aperture, aperture__position=(2, -1))
+    sig_cube, _ = sim.get_cube(switch_off=["background", "thermal", "dark", "thermal_dark", "roic_glow", "ron"],
+                               per_ramp=True)
+    position, radius, _ = sim.get_aperture()
+    aper = sim.spectrograph.get_aperture(position=position, radius=radius)
+
+    _, signal, variance = sim.get_spectrum()
+    assert np.allclose(signal, sig_cube[:, aper].sum(axis=-1) * sim.get_parameter("nramps"))
+    assert np.all(variance > 0)
+
+    _, signal, _ = sim.get_spectrum(switch_off=["host"])
+    assert np.all(signal == 0)
+
+
+def test_galaxy_core(lazuligalaxy):
+    """ the core is extracted as a point source """
+    sim = lazuligalaxy.simulation
+    lazuligalaxy.change_properties(aperture="core")
+    position, radius, _ = sim.get_aperture()
+    _, var_cube = sim.get_cube(per_ramp=True)
+
+    _, _, variance = sim.get_spectrum()
+    expected = sim.spectrograph.pointsource_variance(var_cube, position=position, radius=radius)
+    assert np.allclose(variance, expected * sim.get_parameter("nramps"))
+
+
+def test_galaxy_snr(lazuligalaxy):
+    lazuligalaxy.change_properties(aperture="2-kpc")
+    # discrete read-out modes: the target snr is only approached.
+    _, snr = lazuligalaxy.setup_to_snr(5)
+    assert np.isclose(snr, 5, rtol=0.3)
+    assert np.isclose(lazuligalaxy.get_band_snr([4000, 6800], frame="rest"), snr)
+    contrib = lazuligalaxy.get_variance_contribution()
+    assert "host" in contrib.columns
+
+
+def test_of_host_method():
+    """ host of a point source: extraction method within the aperture """
+    import slicersim
+    target = slicersim.LazuliSupernova(redshift=0.5, host="sersic:bb-5000")
+    sim = target.simulation
+    position, radius, _ = sim.get_aperture()  # default: 1 arcsec on the host
+    aper = sim.spectrograph.get_aperture(position=position, radius=radius)
+    _, var_cube = sim.get_cube(per_ramp=True)
+    nramps = sim.get_parameter("nramps")
+
+    _, sig_default, var_default = sim.get_spectrum(of_host=True)
+    _, sig_ap, var_ap = sim.get_spectrum(of_host=True, method="aperture")
+    assert np.allclose(sig_default, sig_ap) and np.allclose(var_default, var_ap)
+    assert np.allclose(var_ap, var_cube[:, aper].sum(axis=-1) * nramps)
+
+    # optimal: PSF-weighted within the same aperture
+    _, _, var_opt = sim.get_spectrum(of_host=True, method="optimal")
+    expected = sim.spectrograph.pointsource_variance(var_cube, position=position, radius=radius)
+    assert np.allclose(var_opt, expected * nramps)

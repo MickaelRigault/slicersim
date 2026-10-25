@@ -1455,25 +1455,13 @@ class Spectrograph:
         ValueError
             If ``radius`` cannot be parsed.
         """
-        if np.ndim(radius) == 0:
-            radius_y = radius_x = radius
-        elif np.ndim(radius) == 1 and len(radius) == 2:
-            radius_y, radius_x = radius
-        else:
-            raise ValueError(f"cannot parse input {radius=}")
-
         # Spatial PSF
         psf = self.get_spatial_psf(position=position, profile=psf_profile)  # (nlbda, ny, nx)
 
         # Aperture
-        x0, y0 = position
-        (x, y), oversampling = self.get_spaxel_centroids()
-        # y /= 2
-        r_radius = np.hypot((x - x0) / radius_x, (y - y0) / radius_y)  # (ny, nx) [spx]
-        aper = (r_radius <= 1)
-        nspx = np.count_nonzero(aper)  # Selected spx
+        aper = self.get_aperture(position=position, radius=radius)
         if verbose:
-            print(f"Aperture of {radius=} spx: {nspx} spx selected")
+            print(f"Aperture of {radius=} spx: {np.count_nonzero(aper)} spx selected")
 
         # If cube is (nlbda, ny, nx), cube[:, aper] is (nlbda, nspx)
         if optimal:  # Optimal extraction variance = 1/sum(psf**2/var)
@@ -1482,6 +1470,97 @@ class Spectrograph:
             variance = varcube[:, aper].sum(axis=-1)
 
         return variance  # (nlbda,) [ADU²]
+
+    def aperture_extraction(self, cube, varcube, position=(0, 0), radius=5,
+                            psf_profile="default", optimal=False):
+        """Extracted signal and variance of an extended source within an aperture.
+
+        Contrary to `pointsource_variance`, the signal is measured from the
+        (noise-free) signal cube, using the same weights as the variance:
+
+        - plain summation (``optimal=False``): ``signal = sum(cube)`` and
+          ``variance = sum(varcube)`` over the aperture;
+        - optimal extraction (``optimal=True``): inverse-variance weighted
+          least-square fit of the PSF profile, i.e. the flux of the point
+          source that best matches the cube at ``position``:
+          ``signal = sum(psf*cube/var) / sum(psf**2/var)`` and
+          ``variance = 1 / sum(psf**2/var)``.
+
+        Parameters
+        ----------
+        cube : array_like
+            Signal cube, of shape ``(nlbda, ny, nx)``.
+        varcube : array_like
+            Variance cube, of shape ``(nlbda, ny, nx)``, in the square of the
+            ``cube`` unit.
+        position : tuple of float, optional
+            ``(x, y)`` aperture center, in spaxels. Default is ``(0, 0)``.
+        radius : float or tuple of float, optional
+            Aperture radius in spaxels, see `get_aperture`. Default is 5.
+        psf_profile : str, optional
+            PSF profile used for the optimal extraction (see
+            `get_spatial_psf`). Default is ``"default"``.
+        optimal : bool, optional
+            If True, use optimal extraction, otherwise plain summation.
+            Default is False.
+
+        Returns
+        -------
+        signal, variance : numpy.ndarray
+            Extracted signal and variance, of shape ``(nlbda,)``.
+
+        See Also
+        --------
+        pointsource_variance : Variance of a point source.
+        """
+        aper = self.get_aperture(position=position, radius=radius)
+
+        # If cube is (nlbda, ny, nx), cube[:, aper] is (nlbda, nspx)
+        if optimal: # PSF-weighted, as a point source.
+            psf = self.get_spatial_psf(position=position, profile=psf_profile)[:, aper]  # (nlbda, nspx)
+            inv_variance = (psf ** 2 / varcube[:, aper]).sum(axis=-1)
+            signal = (psf * cube[:, aper] / varcube[:, aper]).sum(axis=-1) / inv_variance
+            variance = 1 / inv_variance
+        else:
+            signal = cube[:, aper].sum(axis=-1)
+            variance = varcube[:, aper].sum(axis=-1)
+
+        return signal, variance
+
+    def get_aperture(self, position=(0, 0), radius=5):
+        """Spaxels within a circular (or elliptical) aperture.
+
+        Parameters
+        ----------
+        position : tuple of float, optional
+            ``(x, y)`` aperture center, in spaxels. Default is ``(0, 0)``.
+        radius : float or tuple of float, optional
+            Aperture radius in spaxels, either a float (circular aperture) or
+            ``(radius_y, radius_x)`` (elliptical aperture). Default is 5.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(ny, nx)`` boolean mask, True for the spaxels whose centroid is
+            within the aperture.
+
+        Raises
+        ------
+        ValueError
+            If ``radius`` cannot be parsed.
+        """
+        if np.ndim(radius) == 0:
+            radius_y = radius_x = radius
+        elif np.ndim(radius) == 1 and len(radius) == 2:
+            radius_y, radius_x = radius
+        else:
+            raise ValueError(f"cannot parse input {radius=}")
+
+        x0, y0 = position
+        (x, y), oversampling = self.get_spaxel_centroids()
+        # y /= 2
+        r_radius = np.hypot((x - x0) / radius_x, (y - y0) / radius_y)  # (ny, nx) [spx]
+        return r_radius <= 1
 
     def get_lsf_dispersion(self, as_="scale"):
         """Get the Gaussian LSF dispersion, in wavelength bins (pixels).

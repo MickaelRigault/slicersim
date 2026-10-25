@@ -26,7 +26,7 @@ image slicer, but its core is generic and applies to any slicer or micro-lens ar
 - **Exposure time calculator**: exposure time and detector read-out mode to reach a requested signal-to-noise, in one call.
 - **Realistic spectra and cubes**: photon, read-out, dark, thermal, background and host noise all accounted for.
 - **Built-in sources**: Type Ia supernovae (SALT, Twins Embedding), kilonovae (POSSIS), CalSpec standards, black bodies, power laws, or your own spectrum.
-- **Host galaxies**: place any source in a host, either an analytic Sersic profile or the image and spectrum of a real NGC galaxy, consistently moved to the source redshift.
+- **Galaxies**: place any source in a host galaxy, or observe a galaxy alone: an analytic Sersic profile or the image and spectrum of a real NGC galaxy, consistently moved to the source redshift.
 - **Every knob is accessible**: detector, spectrograph sampling, throughput, scene… and see at once how each noise source contributes.
 
 ## Installation
@@ -140,6 +140,16 @@ fig = sn.simulation.show_variance_sources(flux_calibrated=False)
 
 ![Variance sources of the SN Ia in its host](docs/gallery/host_variance.png)
 
+The same galaxy can be observed alone, without a supernova:
+
+```python
+galaxy = slicersim.LazuliGalaxy(redshift=0.9, model="ngc0628", aperture="2-kpc")
+(cube_narrow, _), (cube_wide, _) = galaxy.get_cube(which="both")
+
+# spectrum within 2 kpc of the galaxy center ("core", "<n>-arcsec" or "<n>-kpc")
+lbda, flux, variance = galaxy.get_spectrum()
+```
+
 ## Going deeper: the `Simulation`
 
 Every target is backed by a `Simulation`, which chains a scene (what is
@@ -179,6 +189,9 @@ All tutorials are rendered in the [documentation](https://slicersim.readthedocs.
 - [Changing target properties](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_change_properties.html): redshift, phase, magnitude.
 - [Origin of the variance](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_variancesource.html): which noise source dominates.
 - [Kilonovae](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_kilonova.html): POSSIS models, viewing angle and phase.
+- [Host galaxy](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_host_galaxy.html): a supernova in its host, `"ngc0628"` or `"sersic:bb-5000"`, and redshift consistency.
+- [A galaxy alone](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_galaxy.html): `LazuliGalaxy`, its cubes, and its spectrum within an aperture.
+- [Spectrum extraction](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_spectrum_extraction.html): optimal or aperture photometry, of a point source or of its host.
 - [Populations with `Sample`](https://slicersim.readthedocs.io/en/latest/notebooks/beginner_sample_multiple_targets.html): exposure time and data volume across many targets.
 
 **Advanced**
@@ -186,7 +199,7 @@ All tutorials are rendered in the [documentation](https://slicersim.readthedocs.
 - [Instrument properties: QE, throughput, spectral resolution](https://slicersim.readthedocs.io/en/latest/notebooks/advanced_access_qe_spectral_resolution_etc.html)
 - [Dispersion resolution](https://slicersim.readthedocs.io/en/latest/notebooks/advanced_change_resolution_dispersion.html) and [resolution vs. spot size](https://slicersim.readthedocs.io/en/latest/notebooks/advanced_dispersion_resolution_and_spotsize.html)
 - [CalSpec standard stars](https://slicersim.readthedocs.io/en/latest/notebooks/advanced_calspec_and_stdstars.html)
-- [Building a scene](https://slicersim.readthedocs.io/en/latest/notebooks/advanced_scene_tutorial.html) and [adding a host galaxy](https://slicersim.readthedocs.io/en/latest/notebooks/advanced_host_galaxy.html)
+- [Building a scene](https://slicersim.readthedocs.io/en/latest/notebooks/advanced_scene_tutorial.html)
 
 ## Citing
 

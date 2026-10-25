@@ -52,6 +52,27 @@ instrument model needed.
 
       POSSIS models: viewing angle, phase and exposure time.
 
+   .. grid-item-card:: Host galaxy
+      :link: notebooks/beginner_host_galaxy
+      :link-type: doc
+
+      A supernova in its host: ``"ngc0628"`` or ``"sersic:bb-5000"``
+      models, and redshift consistency.
+
+   .. grid-item-card:: A galaxy alone
+      :link: notebooks/beginner_galaxy
+      :link-type: doc
+
+      ``LazuliGalaxy``: a galaxy without point source, its cubes, and its
+      spectrum within an aperture.
+
+   .. grid-item-card:: Spectrum extraction
+      :link: notebooks/beginner_spectrum_extraction
+      :link-type: doc
+
+      Optimal or aperture photometry, of a point source or of its host
+      (``method``, ``aperture``, ``of_host``).
+
    .. grid-item-card:: Populations with ``Sample``
       :link: notebooks/beginner_sample_multiple_targets
       :link-type: doc
@@ -108,13 +129,6 @@ Control the instrument and the scene.
 
       What a ``Scene`` is and how to build your own.
 
-   .. grid-item-card:: Host galaxy
-      :link: notebooks/advanced_host_galaxy
-      :link-type: doc
-
-      Supernova in its host: ``"ngc0628"`` or ``"sersic:bb-5000"``
-      models, and redshift consistency.
-
 .. toctree::
    :hidden:
    :caption: Beginner
@@ -125,6 +139,9 @@ Control the instrument and the scene.
    notebooks/beginner_change_properties
    notebooks/beginner_variancesource
    notebooks/beginner_kilonova
+   notebooks/beginner_host_galaxy
+   notebooks/beginner_galaxy
+   notebooks/beginner_spectrum_extraction
    notebooks/beginner_sample_multiple_targets
 
 .. toctree::
@@ -138,4 +155,3 @@ Control the instrument and the scene.
    notebooks/advanced_dispersion_resolution_and_spotsize
    notebooks/advanced_calspec_and_stdstars
    notebooks/advanced_scene_tutorial
-   notebooks/advanced_host_galaxy

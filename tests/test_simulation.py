@@ -50,6 +50,43 @@ def test_get_spectrum(simu):
     assert np.all(lbda == simu.spectrograph.lbda), "mismatch of lbda"
     assert np.all(variance>=0), "there are negative variances"
 
+def test_get_spectrum_method(simu):
+    """ optimal (default) and aperture photometry of the point source """
+    _, sig_default, var_default = simu.get_spectrum()
+    _, sig_opt, var_opt = simu.get_spectrum(method="optimal")
+    assert np.allclose(sig_default, sig_opt) and np.allclose(var_default, var_opt)
+
+    # aperture: the point source cube and the variance cube summed within the aperture
+    simu.update(aperture="0.2-arcsec")
+    position, radius, _ = simu.get_aperture(position=simu.scene.pointsource_position)
+    aper = simu.spectrograph.get_aperture(position=position, radius=radius)
+    nramps = simu.get_parameter("nramps")
+
+    sig_cube, _ = simu.get_cube(switch_off=["background", "host", "thermal",
+                                            "dark", "thermal_dark", "roic_glow", "ron"],
+                                per_ramp=True)
+    _, var_cube = simu.get_cube(per_ramp=True)
+    _, sig_ap, var_ap = simu.get_spectrum(method="aperture")
+    assert np.allclose(sig_ap, sig_cube[:, aper].sum(axis=-1) * nramps)
+    assert np.allclose(var_ap, var_cube[:, aper].sum(axis=-1) * nramps)
+
+    # large aperture: all the point source flux
+    # (without lsf: the lsf is applied before (optimal) or after (cube) the photon conversion)
+    simu.update(aperture="1-arcsec")
+    _, sig_opt, _ = simu.get_spectrum(method="optimal", apply_lsf=False)
+    _, sig_ap, _ = simu.get_spectrum(method="aperture", apply_lsf=False)
+    flagok = sig_opt > 0.01 * np.nanmax(sig_opt)
+    assert np.allclose(sig_ap[flagok], sig_opt[flagok], rtol=1e-3)
+
+    # stored method
+    simu.update(method="aperture")
+    assert np.allclose(simu.get_spectrum()[1], simu.get_spectrum(method="aperture")[1])
+    simu.update(method="default")
+    assert np.allclose(simu.get_spectrum()[1], sig_default)
+
+    with pytest.raises(ValueError):
+        simu.get_spectrum(method="psf")
+
 def test_variance_sources(simu):
     """ """
     # default variance

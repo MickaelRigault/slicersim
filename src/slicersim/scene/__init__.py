@@ -1,9 +1,10 @@
 """Scene elements: point source, backgrounds and host.
 
-The scene is made of a point source (e.g. a supernova or a kilonova, see
-`slicersim.scene.sources`), a spatially flat background, and an optional
-structured background (host). Use `get_scene` to build a scene configuration
-and `~slicersim.scene.scene.Scene` to load it.
+The scene is made of an optional point source (e.g. a supernova or a
+kilonova, see `slicersim.scene.sources`), a spatially flat background, and an
+optional structured background, the host galaxy (see `slicersim.scene.host`).
+A scene can also be a galaxy alone (no point source). Use `get_scene` to
+build a scene configuration and `~slicersim.scene.scene.Scene` to load it.
 """
 import warnings
 from .pointsource import PointSource  # noqa: F401
@@ -18,7 +19,7 @@ def get_scene(source, background="zodi", host={}, **kwargs):
 
     Parameters
     ----------
-    source : str or tuple
+    source : str, tuple or None
         The kind of point source, optionally followed by the model to use,
         separated by "-" (``"{kind}-{model}"``). For instance, ``"snia-salt"``
         means a SN Ia modeled with SALT, ``"kilonova-bulla19"`` a kilonova
@@ -45,21 +46,30 @@ def get_scene(source, background="zodi", host={}, **kwargs):
         Alternatively, ``source`` can be a ``(lbda, flux)`` tuple (or list)
         defining a tabulated spectrum, with ``lbda`` in Angstrom (see
         `~slicersim.scene.pointsource.PointSource.from_spectrum`).
+        If None, the scene has no point source: it is a galaxy alone, given
+        by ``host`` (e.g. `~slicersim.target.Galaxy`).
     background : str or dict, optional
         The background configuration (see
         `~slicersim.scene.background.Background.from_config`). ``"zodi"`` is
         a shortcut for the Aldering (2001) zodiacal light model
         (``"Aldering01.BB5800"``, scaled by 2). Default is ``"zodi"``.
-    host : dict, optional
-        A dictionary defining the host galaxy (see
-        `~slicersim.scene.host.Host.from_config`). Default is an empty dict,
-        i.e. no host.
+    host : str, dict or None, optional
+        The host galaxy, as a model name ``"spatial:spectral"`` (e.g.
+        ``"ngc0628"`` or ``"sersic:bb-5000"``, see
+        `~slicersim.scene.host.parse_modelname`) or a configuration dict
+        (model name as ``"refmodel"``). Missing entries take the defaults of
+        `~slicersim.scene.host.get_host_config`, and the host takes the
+        redshift of the point source. An empty dict or None means no host.
+        If ``source`` is None, the host entries are completed by
+        ``kwargs``, and a host without model name is the default
+        ``"sersic:bb-5000"`` galaxy. Default is an empty dict.
     **kwargs
         Additional parameters of the point source configuration (e.g.
         ``redshift``, ``phase``, ``position``, or model specific parameters
         such as ``x1`` and ``c`` for SALT, ``theta`` and ``magabs`` for
         kilonovae, ``mag`` and ``band`` for blackbody, power-law or CalSpec
-        sources).
+        sources). If ``source`` is None, they are galaxy (host) parameters
+        instead (e.g. ``redshift``, ``magabs``, ``position``, ``r_kpc``).
 
     Returns
     -------
@@ -78,6 +88,15 @@ def get_scene(source, background="zodi", host={}, **kwargs):
     >>> scene = get_scene("kilonova-bulla23", redshift=0.05, theta=30)
     >>> scene["scene"]["pointsource"]["source"]
     'bulla23'
+
+    A supernova in NGC 0628, and a galaxy alone:
+
+    >>> scene = get_scene("snia", redshift=0.9, host="ngc0628")
+    >>> scene["scene"]["host"]
+    'ngc0628'
+    >>> scene = get_scene(None, host="sersic:bb-6000", redshift=0.5, r_kpc=3)
+    >>> scene["scene"]["pointsource"] is None, scene["scene"]["host"]["refmodel"]
+    (True, 'sersic:bb-6000')
     """
     def _parse_source_(source):
         """Get the model part of "{kind}-{model}", None if not given."""
@@ -89,14 +108,19 @@ def get_scene(source, background="zodi", host={}, **kwargs):
         return source[0]
 
     # Name short cuts
-    if type(source) == str:
-        # galaxy
-        if "galaxy" in source:
-            raise NotImplementedError(f"Unknown source name: {source!r}. 'galaxy' not implemented yet.")
+    if source is None:
+        pointsource = None
+        if host is not None:
+            if type(host) == str:
+                host = {"refmodel": host} | kwargs
+            elif type(host) == dict:
+                host = host  | kwargs
+            else:
+                raise NotImplementedError(f"Cannot parse host {host!r} for none pointsource scene. Must be a str or a dict.")
 
-
+    elif type(source) == str:
         # transient
-        elif "snia" in source:
+        if "snia" in source:
             from .sources.supernovae import get_snia_pointsource
             # default is SALT.
             pointsource = get_snia_pointsource(source=_parse_source_(source), **kwargs)
@@ -135,8 +159,9 @@ def get_scene(source, background="zodi", host={}, **kwargs):
     elif type(source) in (tuple, list):
         lbda, flux = source
         pointsource = {"source": [lbda, flux]} | kwargs
+
     else:
-        raise NotImplementedError(f"Unknown source {source!r}. Only 'snia' and 'kilonova' implemented.")
+        raise NotImplementedError(f"Unknown source {source!r}. Must be a str or a (lbda, flux) tuple or list.")
 
     # background
     if background == "zodi":
