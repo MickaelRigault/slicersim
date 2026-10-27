@@ -119,6 +119,7 @@ bug reports and contributions are welcome.
    installation
    quickstart
    concepts
+   galaxy_models
    instrument
    tutorials
 

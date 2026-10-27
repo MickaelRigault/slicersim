@@ -1000,7 +1000,7 @@ class Spectrograph:
             if inst_psf is not None: # if None, nothing to do.
                 # make sure the inst_psf is 2d (x and y)
                 inst_psf = np.full((2,), inst_psf)
-                # and remove the "x" contribution (see LSF)
+                # and remove the "axis=0" contribution (see LSF)
                 inst_psf[0] = 0
 
             if guiding_sigma is None and inst_psf is None:

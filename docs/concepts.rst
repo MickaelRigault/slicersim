@@ -118,6 +118,7 @@ given by a model name ``"spatial:spectral"``:
 
 A bare NGC name, ``"ngc0628"``, means ``"ngc0628:ngc0628"``. NGC data come
 from the ``lazuli_astrosim_data`` package.
+See :doc:`galaxy_models` for the gallery of available galaxies.
 
 .. code-block:: python
 
