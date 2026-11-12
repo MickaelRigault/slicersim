@@ -122,7 +122,6 @@ bug reports and contributions are welcome.
    galaxy_models
    instrument
    anamorphosis
-   ground
    tutorials
 
 .. toctree::

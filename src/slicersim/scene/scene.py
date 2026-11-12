@@ -435,6 +435,11 @@ class Scene:
         """The scene's spatially flat background (None if not set)."""
         return self._background
 
+    @background.setter
+    def background(self, background):
+        """Replace the scene's background (a `~slicersim.scene.background.Background` or None)."""
+        self._background = background
+
     @property
     def host(self):
         """The scene's structured background, i.e. the host (None if not set)."""

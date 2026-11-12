@@ -8,16 +8,13 @@ Every module of ``slicersim``, with all its content.
    :recursive:
 
    slicersim.lazuli
-   slicersim.ground
    slicersim.target
    slicersim.sample
    slicersim.calibration
    slicersim.simulation
    slicersim.scene
-   slicersim.atmosphere
    slicersim.telescope
    slicersim.spectrograph
-   slicersim.ground_spectrograph
    slicersim.detector
    slicersim.thermal
    slicersim.mapper

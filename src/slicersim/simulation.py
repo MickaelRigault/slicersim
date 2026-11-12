@@ -2364,10 +2364,18 @@ class Simulation:
         # return what you where looking for.
         return read_config, snr, integration_time
 
-    def _reset_cached(self):
-        """ force reset any existing cached parameter. """
+    def reset_cache(self):
+        """Discard any cached result (projected scene, thermal signal).
+
+        Subclasses keeping their own cached results should extend this method
+        (it is also called internally, e.g. at the end of `fetch_snr`).
+        """
         self._cube_cached = None
         self.detector._cached_thermal = None
+
+    def _reset_cached(self):
+        """Alias of `reset_cache` (backward compatibility)."""
+        self.reset_cache()
 
 
     def _fetch_snr(self, target_snr, free_parameter,
@@ -2987,6 +2995,22 @@ class Simulation:
     def _elements(self): # test structure
         """Internal list of elements."""
         return ["scene", "telescope", "spectrograph", "detector", "extraction"]
+
+    @property
+    def elements(self):
+        """Names of the simulation elements (as accepted by `reset`)."""
+        return list(self._elements)
+
+    @property
+    def input_config(self):
+        """Initial configuration of the simulation (a copy), as given to `from_config`.
+
+        Unlike `meta`, it does not follow the updates of the elements:
+        ``self.__class__.from_config(self.input_config)`` builds a fresh copy
+        of the initial simulation.
+        """
+        from copy import deepcopy
+        return deepcopy(self._in_meta)
 
     @property
     def variance_sources(self):

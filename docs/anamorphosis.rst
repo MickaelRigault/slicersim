@@ -25,9 +25,9 @@ Summary
    already counted in the width of the spectral resolution element. Counting
    it again as extra pixels per voxel counts it twice.
 
-   The ground-based slicer of ``slicersim``
-   (:class:`~slicersim.ground_spectrograph.GroundSlicerSpectrograph`, used for
-   WST) therefore uses ``_ANAMORPHOSE = 1``, as pyetc does. Lazuli keeps the
+   The ground-based slicer of the `slicersim-ground`_ add-on
+   (``GroundSlicerSpectrograph``, used for WST) therefore uses
+   ``_ANAMORPHOSE = 1``, as pyetc does. Lazuli keeps the
    current, conservative behaviour, which the code itself already marks as
    unconfirmed (see below). Changing it is a decision about the Lazuli design,
    not about WST.
@@ -211,14 +211,17 @@ it would shift the Lazuli reference numbers, so it is not done here.
 Ground-based slicers and WST
 ----------------------------
 
-:class:`~slicersim.ground_spectrograph.GroundSlicerSpectrograph` (see
-:doc:`ground`) sets ``_ANAMORPHOSE = 1``: the spaxel grid is the configured
-one and ``npix_per_spaxel`` is 1, with the anamorphosis in the LSF
+Ground-based slicer IFSs are simulated by the `slicersim-ground`_ add-on.
+Its ``GroundSlicerSpectrograph`` subclasses
+:class:`~slicersim.spectrograph.SlicerSpectrograph` with
+``_ANAMORPHOSE = 1``: the spaxel grid is the configured one and
+``npix_per_spaxel`` is 1, with the anamorphosis in the LSF
 (``dispersion_resolution``, a FWHM in pixels).
 
-This is the pyetc convention. With the WST IFS configurations of the
-`slicersim-wst <https://gitlab.in2p3.fr/ycopin/slicersim-wst>`_ add-on (25 × 25
-spaxels of 0.25″, LSF of 2.5 pixels FWHM), it reproduces pyetc's
+This is the pyetc convention. With the WST IFS configurations of the add-on
+(25 × 25 spaxels of 0.25″, LSF of 2.5 pixels FWHM), it reproduces pyetc's
 resolved-source SNR to 1e-4.
 :class:`~slicersim.spectrograph.SlicerSpectrograph` itself, and so Lazuli, is
 unchanged.
+
+.. _slicersim-ground: https://gitlab.in2p3.fr/ycopin/slicersim-ground

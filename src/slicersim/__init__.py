@@ -21,5 +21,4 @@ from .iotools import get_config  # noqa: F401
 
 # Top level target (uses simulation)
 from .lazuli import *
-from .ground import *  # ground-based slicer IFS: GroundTarget, ground_etc
 from .simulation import *
