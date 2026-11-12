@@ -1391,11 +1391,10 @@ class Simulation:
         # slicers projected onto the detector: 1 lbda for 1 slice corresponds to 1 pixel
         lbda = self.spectrograph.lbda # make sure it is up to date
         sig_cube, var_cube = self.detector.estimate_pixel_signal(cube, lbda=lbda,
-                                                                # It is possible this should be 1 and not 2 (anamorphose)
-                                                                # as this effectively is the number of pixels per voxel (wavelength bin x spaxel)
-                                                                # which is 1 for a slicer. This is to be confirmed.
-                                                                # Using the anamorphose factor here is conservative as I am still unsure.
-                                                                 npix_per_spaxel=self.spectrograph._ANAMORPHOSE, # =1
+                                                                # 1 detector pixel per voxel (wavelength bin x spaxel) for a slicer:
+                                                                # the 2 pixels of the slice width (anamorphosis) are along the dispersion,
+                                                                # i.e. already in the wavelength sampling and the LSF. See docs/anamorphosis.rst.
+                                                                 npix_per_voxel=1,
                                                                  cached_thermal=cached) # expects input in [ph/...]
 
         return sig_cube, var_cube

@@ -566,10 +566,10 @@ class Detector:
                                   variance_model="default",
                                   saturation="default",
                                   cached_thermal=False,
-                                  npix_per_spaxel=1):
+                                  npix_per_voxel=1):
         """Estimate the measured signal and variance from an incident flux.
 
-        The flux of each voxel is spread over ``npix_per_spaxel`` detector
+        The flux of each voxel is spread over ``npix_per_voxel`` detector
         pixels; the signal, effective dark (see `get_effective_dark`, thermal
         dark included), variance and saturation are computed per pixel, then
         summed back per voxel. Signals are integrated over `integration_time`.
@@ -597,9 +597,12 @@ class Detector:
             used. If None, saturation is not tested. Default is ``"default"``.
         cached_thermal : bool, optional
             Passed as ``cached`` to `get_thermal_dark`. Default is False.
-        npix_per_spaxel : float, optional
-            Number of detector pixels over which the flux of one voxel is
-            spread. Default is 1.
+        npix_per_voxel : float, optional
+            Number of detector pixels over which the flux of one voxel
+            (one spaxel × one wavelength bin) is spread. Each of these pixels
+            adds its own read noise and dark current. This is 1 for an image
+            slicer: the anamorphosis is already in the line spread function
+            (see :doc:`/anamorphosis`). Default is 1.
 
         Returns
         -------
@@ -619,7 +622,7 @@ class Detector:
         if saturation == "default":
             saturation = self.saturation
 
-        flux_pixel = flux/npix_per_spaxel  # ph/s/pixel
+        flux_pixel = flux/npix_per_voxel  # ph/s/pixel
 
         # Variance estimators works with input flux in e-/s (not ph/s)
         qe = complete_dims(self.get_qe(lbda=lbda), -np.ndim(flux_pixel))
@@ -654,9 +657,9 @@ class Detector:
         if not withdark:  # Remove dark contribution
             signal -= effective_dark * self.electronpers_to_adu()  # [ADU]
 
-        # now recompute in ADU/spaxel
-        signal *= npix_per_spaxel
-        variance *= npix_per_spaxel
+        # now recompute in ADU/voxel
+        signal *= npix_per_voxel
+        variance *= npix_per_voxel
 
         return signal, variance  # [ADU/voxel], [ADU²/voxel]
 

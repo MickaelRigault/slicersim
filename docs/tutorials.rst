@@ -129,6 +129,13 @@ Control the instrument and the scene.
 
       What a ``Scene`` is and how to build your own.
 
+   .. grid-item-card:: Anamorphosis: pixels per voxel
+      :link: notebooks/advanced_anamorphosis_pixels_per_voxel
+      :link-type: doc
+
+      Why one voxel of a slicer is one detector pixel, and what it does to
+      signal-to-noise and exposure times.
+
 .. toctree::
    :hidden:
    :caption: Beginner
@@ -155,3 +162,4 @@ Control the instrument and the scene.
    notebooks/advanced_dispersion_resolution_and_spotsize
    notebooks/advanced_calspec_and_stdstars
    notebooks/advanced_scene_tutorial
+   notebooks/advanced_anamorphosis_pixels_per_voxel

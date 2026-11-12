@@ -121,6 +121,7 @@ bug reports and contributions are welcome.
    concepts
    galaxy_models
    instrument
+   anamorphosis
    tutorials
 
 .. toctree::
