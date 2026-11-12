@@ -152,13 +152,13 @@ These use slicersim's defaults: exact Moffat PSF and optimal extraction.
 
 ## Running the notebook
 
-The notebook {doc}`notebooks/wst_ifs_modes` (`docs/notebooks/wst_ifs_modes.ipynb`) needs slicersim (branch `wst`). The pyetc
-repository is only needed for two sections, which are skipped otherwise:
+The notebook {doc}`notebooks/wst_ifs_modes` (`docs/notebooks/wst_ifs_modes.ipynb`) needs
+slicersim (branch `wst`). pyetc, installed with its dependencies (`mpdaf`, `skycalc_cli`,
+`spextra`), is only needed for two sections, which are skipped otherwise:
 
 - §1.3 checks that the packaged configuration files can be reproduced from pyetc data. They
   currently are identical.
-- §3 compares slicersim with pyetc. This also needs pyetc to be importable, with `mpdaf`,
-  `skycalc_cli` and `spextra`.
+- §3 compares slicersim with pyetc.
 
-The pyetc location is `PYETC_DIR`; the default is `../../../../WST/pyetc`, relative to
-`docs/notebooks/`.
+The pyetc data tables are read from the installed package, in
+`Path(pyetc.__file__).parent / "data" / "WST"`.
