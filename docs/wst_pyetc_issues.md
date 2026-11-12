@@ -3,19 +3,21 @@
 Issues found in [RolandBacon/pyetc](https://github.com/RolandBacon/pyetc) at commit
 [`e6e351e`](https://github.com/RolandBacon/pyetc/tree/e6e351ebf928d98adad34e8d17e5825b15595bc9)
 while cross-checking slicersim's WST IFS model (see `wst_integration.md`). Each section is
-a standalone, GitHub-ready issue. All repros were run with Python 3.14, mpdaf 3.7,
+a standalone issue, reported on GitHub as listed below. All repros were run with Python 3.14, mpdaf 3.7,
 numpy 2.5.4, astropy 8.0.2.
 
-| # | Title | Severity |
-|---|---|---|
-| 1 | Point source + continuum: sky noise counted for a single spaxel | high: SNR overestimated (×1.3 to ×7) |
-| 2 | Moffat PSF truncated at ~2 FWHM and renormalised | medium: aperture flux overestimated by 15–25 % |
-| 3 | `square_aperture` crashes when the PSF FWHM is below ~2.5 spaxels | medium: crash (red IFS, seeing ≲ 0.8″) |
-| 4 | MOS surface brightness: number of spaxels in the fibre doubled | medium: SNR overestimated by ~√2 |
+| # | GitHub | Title | Severity |
+|---|---|---|---|
+| 1 | [#3](https://github.com/RolandBacon/pyetc/issues/3) | Point source + continuum: sky noise counted for a single spaxel | high: SNR overestimated (×1.3 to ×7) |
+| 2 | [#4](https://github.com/RolandBacon/pyetc/issues/4) | Moffat PSF truncated at ~2 FWHM and renormalised | medium: aperture flux overestimated by 15–25 % |
+| 3 | [#5](https://github.com/RolandBacon/pyetc/issues/5) | `square_aperture` crashes when the PSF FWHM is below ~2.5 spaxels | medium: crash (red IFS, seeing ≲ 0.8″) |
+| 4 | [#6](https://github.com/RolandBacon/pyetc/issues/6) | MOS surface brightness: number of spaxels in the fibre doubled | medium: SNR overestimated by ~√2 |
 
 ---
 
 ## Issue 1 — Point source + continuum: sky noise counted for a single spaxel instead of the aperture
+
+Reported as [RolandBacon/pyetc#3](https://github.com/RolandBacon/pyetc/issues/3).
 
 (issue from comparison against [slicersim](https://github.com/MickaelRigault/slicersim) using Claude Opus 5.5)
 
@@ -89,6 +91,8 @@ per spaxel, or documenting that it becomes per aperture).
 
 ## Issue 2 — Moffat PSF truncated at ~2 FWHM and renormalised: aperture flux overestimated
 
+Reported as [RolandBacon/pyetc#4](https://github.com/RolandBacon/pyetc/issues/4).
+
 (issue from comparison against [slicersim](https://github.com/MickaelRigault/slicersim) using Claude Opus 5.5)
 
 **Summary**
@@ -129,7 +133,7 @@ print(1 - (1 + (0.875/alpha)**2)**(1 - beta))      # ~0.82: ~18 % of the flux is
 **Expected**: the flux fraction inside an aperture is that of the full Moffat.
 **Actual**: in a 5×5-spaxel box (blue, 0.8″ seeing) pyetc finds 0.85 instead of 0.72, and 1.00
 for any box ≥ 7×7 (exact: 0.86 for 7×7, 0.98 for 15×15). The SNR is overestimated by 10–20 %
-on top of issue 1.
+on top of issue 1 (#3).
 
 **Suggested fix**: normalise the Moffat analytically (amplitude = (β−1)/(π α²)) instead of
 dividing by the sum, and/or use a larger default `kfwhm` (≥ 10 for β = 2.5), keeping the
@@ -138,6 +142,8 @@ image normalised to the true total flux so that `frac_ima` < 1.
 ---
 
 ## Issue 3 — `square_aperture` crashes when the PSF FWHM is below ~2.5 spaxels
+
+Reported as [RolandBacon/pyetc#5](https://github.com/RolandBacon/pyetc/issues/5).
 
 (issue from comparison against [slicersim](https://github.com/MickaelRigault/slicersim) using Claude Opus 5.5)
 
@@ -173,12 +179,14 @@ Calling `square_aperture` directly on `moffat(0.25, 0.62, 2.5, oversamp=10)` rai
 **Actual**: crash for small PSFs.
 
 **Suggested fix**: build the PSF image large enough for the aperture (at least
-`2*nsp+1` spaxels plus a margin, which also helps issue 2), and avoid `Image.peak()` for an
+`2*nsp+1` spaxels plus a margin, which also helps issue 2, #4), and avoid `Image.peak()` for an
 analytic PSF whose centre is known (the central spaxel).
 
 ---
 
 ## Issue 4 — MOS surface brightness: number of spaxels in the fibre doubled
+
+Reported as [RolandBacon/pyetc#6](https://github.com/RolandBacon/pyetc/issues/6).
 
 (issue from comparison against [slicersim](https://github.com/MickaelRigault/slicersim) using Claude Opus 5.5)
 

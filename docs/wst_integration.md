@@ -87,27 +87,28 @@ pixel.
 
 ## Issues found in pyetc
 
-Issues 1, 2 and 4 make pyetc's SNR too optimistic.
+They are reported as pyetc issues [#3](https://github.com/RolandBacon/pyetc/issues/3) to [#6](https://github.com/RolandBacon/pyetc/issues/6). Issues 1, 2 and 4 make
+pyetc's SNR too optimistic.
 
-1. **Sky noise counted for one spaxel only.** In `ETC.snr_from_ps_spec`, `nph_sky` is
+1. **Sky noise counted for one spaxel only** ([pyetc#3](https://github.com/RolandBacon/pyetc/issues/3)). In `ETC.snr_from_ps_spec`, `nph_sky` is
    computed for `area = spaxel_area`, while RON and dark are multiplied by
    `nb_voxels = nspaxels`.
    - pyetc's output is reproduced exactly by `S / √(S + sky₁ + n_spx·(RON²·NDIT + dark))`.
    - Summing the sky over the aperture lowers the SNR by ~25 % in dark time.
    - When the sky dominates, the error grows to ~√n_spx: the SNR is ×7 too high for a 9 × 9
      box in bright time.
-2. **Truncated PSF.** `etc.moffat(kfwhm=2)` cuts the Moffat at ~2 FWHM and renormalizes it.
+2. **Truncated PSF** ([pyetc#4](https://github.com/RolandBacon/pyetc/issues/4)). `etc.moffat(kfwhm=2)` cuts the Moffat at ~2 FWHM and renormalizes it.
    At 0.8″ seeing, ~85 % of the flux falls in a 5 × 5 box instead of ~72 %, and 100 % for
    boxes of 7 × 7 or more. This overestimates the SNR by another 10–20 %.
-3. **Crash for small PSFs.** In the red channel at 0.8″ seeing, pyetc crashes in
+3. **Crash for small PSFs** ([pyetc#5](https://github.com/RolandBacon/pyetc/issues/5)). In the red channel at 0.8″ seeing, pyetc crashes in
    `square_aperture` when the PSF FWHM is below 0.625″. Its truncated PSF image is then only
    5 × 5 spaxels, and mpdaf's `Image.peak` returns NaN.
-4. **MOS surface brightness.** The fibre holds 25 spaxels instead of 13 (`2*np.pi*d**2/4`),
+4. **MOS surface brightness** ([pyetc#6](https://github.com/RolandBacon/pyetc/issues/6)). The fibre holds 25 spaxels instead of 13 (`2*np.pi*d**2/4`),
    so the SNR is overestimated by ~√2. This is unrelated to the IFS; it turned up while
    reading the code.
 
-GitHub-ready reports, with code links and reproduction scripts, are in `wst_pyetc_issues.md`
-at the root of the repository.
+The full reports, with code links and reproduction scripts, are in the GitHub issues above
+(source: `docs/wst_pyetc_issues.md`, not part of this documentation).
 
 ## Example results
 

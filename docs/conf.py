@@ -39,6 +39,7 @@ exclude_patterns = [
     "**.ipynb_checkpoints",
     "notebooks/extra",
     "notebooks/gemini",
+    "wst_pyetc_issues.md",  # source of the pyetc GitHub issues, not a doc page
 ]
 
 # `foo` in docstrings is a cross-reference to the Python object foo.
