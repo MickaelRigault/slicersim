@@ -21,5 +21,5 @@ from .iotools import get_config  # noqa: F401
 
 # Top level target (uses simulation)
 from .lazuli import *
-from .wst import *  # WST IFS (ground-based): WSTTarget, wst_etc
+from .ground import *  # ground-based slicer IFS: GroundTarget, ground_etc
 from .simulation import *

@@ -8,7 +8,7 @@ Every module of ``slicersim``, with all its content.
    :recursive:
 
    slicersim.lazuli
-   slicersim.wst
+   slicersim.ground
    slicersim.target
    slicersim.sample
    slicersim.calibration

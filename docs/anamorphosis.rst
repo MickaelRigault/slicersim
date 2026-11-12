@@ -25,12 +25,12 @@ Summary
    already counted in the width of the spectral resolution element. Counting
    it again as extra pixels per voxel counts it twice.
 
-   The WST implementation in ``slicersim``
-   (:class:`~slicersim.ground_spectrograph.GroundSlicerSpectrograph`) therefore
-   uses ``_ANAMORPHOSE = 1``, as pyetc does. Lazuli keeps the current,
-   conservative behaviour, which the code itself already marks as unconfirmed
-   (see below). Changing it is a decision about the Lazuli design, not about
-   WST.
+   The ground-based slicer of ``slicersim``
+   (:class:`~slicersim.ground_spectrograph.GroundSlicerSpectrograph`, used for
+   WST) therefore uses ``_ANAMORPHOSE = 1``, as pyetc does. Lazuli keeps the
+   current, conservative behaviour, which the code itself already marks as
+   unconfirmed (see below). Changing it is a decision about the Lazuli design,
+   not about WST.
 
 What an image slicer's anamorphosis does
 ----------------------------------------
@@ -208,18 +208,17 @@ element.
 Which design Lazuli has is for the Lazuli optical design to confirm. Changing
 it would shift the Lazuli reference numbers, so it is not done here.
 
-WST in slicersim
-----------------
+Ground-based slicers and WST
+----------------------------
 
-:class:`~slicersim.ground_spectrograph.GroundSlicerSpectrograph` sets
-``_ANAMORPHOSE = 1``. With that setting:
+:class:`~slicersim.ground_spectrograph.GroundSlicerSpectrograph` (see
+:doc:`ground`) sets ``_ANAMORPHOSE = 1``: the spaxel grid is the configured
+one and ``npix_per_spaxel`` is 1, with the anamorphosis in the LSF
+(``dispersion_resolution``, a FWHM in pixels).
 
-- the grid is ``spatial_shape = [25, 25]`` of 0.25″, i.e. a 6.25″ × 6.25″
-  field;
-- ``npix_per_spaxel`` is 1;
-- the LSF is 2.5 pixels FWHM.
-
-This is the pyetc convention, and it reproduces pyetc's resolved-source SNR
-to 1e-4 (``tests/test_wst.py::test_pyetc_regression``).
+This is the pyetc convention. With the WST IFS configurations of the
+`slicersim-wst <https://gitlab.in2p3.fr/ycopin/slicersim-wst>`_ add-on (25 × 25
+spaxels of 0.25″, LSF of 2.5 pixels FWHM), it reproduces pyetc's
+resolved-source SNR to 1e-4.
 :class:`~slicersim.spectrograph.SlicerSpectrograph` itself, and so Lazuli, is
 unchanged.

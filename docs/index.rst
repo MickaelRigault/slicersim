@@ -122,7 +122,7 @@ bug reports and contributions are welcome.
    galaxy_models
    instrument
    anamorphosis
-   wst_integration
+   ground
    tutorials
 
 .. toctree::

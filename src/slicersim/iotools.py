@@ -1,7 +1,10 @@
 """Read configuration and data files.
 
 Files given without a directory are looked for in the package configuration
-directory ``PACKAGE_PATH.joinpath("config")`` (``slicersim/config``).
+directory ``PACKAGE_PATH.joinpath("config")`` (``slicersim/config``). Data
+files named in a configuration file are first looked for next to it (see
+`resolve_config_paths`), so that instrument configurations can live outside
+the package (e.g. in an add-on package).
 """
 
 import os
@@ -121,6 +124,10 @@ def read_config(filename, verbose=False):
 
     - If the input filename does not specifically include a directory, it is
       looked for in the default ``PACKAGE_PATH.joinpath("config")`` directory.
+    - Data files named without a directory in the configuration (throughput,
+      dispersion law...) are first looked for next to the configuration file
+      (see `resolve_config_paths`), then in the package configuration
+      directory.
     - Currently, only ``.toml`` configuration files are supported.
 
     Parameters
@@ -186,6 +193,50 @@ def read_config(filename, verbose=False):
         raise NotImplementedError(
             f"Unknown configuration extension {extension!r}.")
 
+    return resolve_config_paths(config, os.path.dirname(os.fspath(fname)))
+
+
+def resolve_config_paths(config, directory):
+    """Make the data files of a configuration relative to its own directory.
+
+    Every string value of ``config`` (at any depth, including in lists) that
+    has no directory component and names an existing file of ``directory`` is
+    replaced by the full path of that file. This lets a configuration file
+    stored outside the package (e.g. in an add-on package or in a user
+    directory) refer to its data files (throughput, dispersion law, sky
+    table...) by their bare name, the remaining bare names being looked for in
+    the package configuration directory (see `expand_path`).
+
+    Nothing is changed for the package configuration directory itself.
+
+    Parameters
+    ----------
+    config : dict
+        Configuration (nested dictionary). Modified in place.
+    directory : str or pathlib.Path
+        Directory of the configuration file.
+
+    Returns
+    -------
+    dict
+        The configuration, with the local data files as full paths.
+    """
+    directory = os.path.abspath(os.fspath(directory))
+    if directory == os.path.abspath(os.fspath(PACKAGE_PATH.joinpath("config"))):
+        return config
+
+    def resolve(value):
+        if isinstance(value, dict):
+            return {k: resolve(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [resolve(v) for v in value]
+        if isinstance(value, str) and value and not os.path.dirname(value):
+            path = os.path.join(directory, value)
+            if os.path.isfile(path):
+                return path
+        return value
+
+    config.update(resolve(config))
     return config
 
 
