@@ -63,13 +63,17 @@ def blackbody_photonflux(lbda, temperature):
     float or numpy.ndarray
         Black body photon flux in ph/s/sr/m^2/A.
     """
-    c = constants.c.value     # [m/s]
+    c = constants.c.value                                               # [m/s]
     hc_over_kB = ( (constants.h*constants.c) / (constants.k_B) ).value  # [K.m]
-    
-    bbflux_per_m = 2 * c / ((lbda * 1e-10)**4 *
-                     (np.exp(hc_over_kB / (lbda*1e-10 * temperature)) - 1))  # [ph/s/sr/m²/m]
-                     
-    return bbflux_per_m * 1e-10  # [photon/s/sr/m²/A] | 1e-10 for A
+    lbdasi = lbda * 1e-10
+    with np.errstate(divide="ignore", over="ignore"):  # temperature=0: no emission (exp -> inf)
+        bbflux_per_m = (
+            2 * c /
+            (lbdasi**4 *
+             (np.exp(hc_over_kB / (lbdasi * temperature)) - 1))  # [ph/s/sr/m²/m]
+            )
+
+    return bbflux_per_m * 1e-10  # [photon/s/sr/m²/Å] | 1e-10 for Å
 
 def fratio_to_solidangle(fratio, geometry="circular"):
     """Convert f-ratios into solid angles.
@@ -100,7 +104,7 @@ def fratio_to_solidangle(fratio, geometry="circular"):
         If ``geometry`` contains values other than ``"circular"`` or
         ``"square"``.
     """
-    
+
     if np.ndim(fratio) == 0:
         fratio_y = fratio_x = fratio
     else:
@@ -114,7 +118,7 @@ def fratio_to_solidangle(fratio, geometry="circular"):
     # square by default
     coefs = np.ones(fratio_y.shape) # square
     coefs[geometry=="circular"] = np.pi / 4
-    
+
     return coefs / (fratio_y*fratio_x)
 
 
@@ -162,7 +166,7 @@ class ThermalOptics:
         self._temperature = np.atleast_1d(temperature)[:, None].astype(float)
         self._emissivity = np.atleast_1d(emissivity)[:, None].astype(float)
         self._nelements = np.atleast_1d(nelements)[:, None].astype(int)
-        
+
         if fratio is not None:
             self._fratio = np.atleast_2d(fratio).astype(float)
         else:
@@ -172,11 +176,11 @@ class ThermalOptics:
             self._solid_angle = np.atleast_1d(solid_angle).astype(float)
         else:
             self._solid_angle = None
-        
+
         self._geometry = np.atleast_1d(geometry).astype(str)
         self._meta = deepcopy(meta)
         self._meta_in = deepcopy(self._meta)
-    
+
     @classmethod
     def from_config(cls, config, no_solidangle_ok=True):
         """Create a `ThermalOptics` from a configuration dictionary.
@@ -209,24 +213,24 @@ class ThermalOptics:
             angle is then not derived from the f-ratio), or if both are missing
             and ``no_solidangle_ok`` is False.
         """
-        
-        temperature = config.get("temperature", None)        
+
+        temperature = config.get("temperature", None)
         emissivity = config.get("emissivity", None)
         if temperature is None or emissivity is None:
             raise ValueError(f" one of {temperature=} and/or {emissivity=} is None. They are mandatory.")
 
         fratio = config.get("fratio", None)
         solid_angle = config.get("solid_angle", None)
-        
+
         if not no_solidangle_ok and (fratio is None and solid_angle is None):
             warnings.warn("Either fratio or solid_angle must be given. Both are None, some computations will not work.")
 
         if fratio is not None and solid_angle is not None:
             warnings.warn("both fratio and solid_angle are given, solid_angle will then *not* be derived from input fratio")
-        
+
         nelements = config.get("nelements", 1)
         geometry = config.get("geometry", "circular")
-        return cls(temperature=temperature, emissivity=emissivity, 
+        return cls(temperature=temperature, emissivity=emissivity,
                    fratio=fratio, solid_angle=solid_angle,
                    nelements=nelements, geometry=geometry,
                   meta=config)
@@ -253,7 +257,7 @@ class ThermalOptics:
             if k not in self.mutable_parameters:
                 warnings.warn(f"Parameter {k!r} is not mutable.")
                 continue
-            
+
             if k in ["temperature", "emissivity", "nelements"]:
                 setattr(self, f"_{k}", np.atleast_2d(v).astype(float) )
             else:
@@ -261,7 +265,7 @@ class ThermalOptics:
 
         if reset_thermal:
             self._thermal = None
-            
+
     # ============= #
     #   Methods     #
     # ============= #
@@ -299,7 +303,7 @@ class ThermalOptics:
 
         solid_angle = np.atleast_1d(solid_angle)[:,None].astype(float)
         return self.thermal.get_signal(lbda_bin, area, solid_angle=solid_angle, qe=qe)
-    
+
     # ============= #
     #  Properties   #
     # ============= #
@@ -307,7 +311,7 @@ class ThermalOptics:
     def meta(self):
         """Metadata dictionary of the instance."""
         return self._meta
-    
+
     @property
     def temperature(self):
         """Temperature of the optical elements in K, shape ``(n, 1)``."""
@@ -332,7 +336,7 @@ class ThermalOptics:
     def geometry(self):
         """Pupil shape(s) of the optical elements (``"circular"`` or ``"square"``)."""
         return self._geometry
-        
+
     @property
     def solid_angle(self):
         """Solid angle(s) of the optical elements in steradian.
@@ -342,11 +346,11 @@ class ThermalOptics:
         neither is available.
         """
         if self._solid_angle is None:
-            if self.fratio is None: 
+            if self.fratio is None:
                 raise ValueError("both fratio and solid_angle are None. Cannot derive or get solid_angle")
             self._solid_angle = fratio_to_solidangle( fratio = self.fratio.T,
                                                 geometry = self._geometry)
-            
+
         return self._solid_angle
 
     @property
@@ -354,7 +358,7 @@ class ThermalOptics:
         """`ThermalRadiation` object built from the current parameters."""
         if not hasattr(self, "_thermal") or self._thermal is None:
             self._thermal = ThermalRadiation(self.temperature, self.emissivity, self.nelements)
-            
+
         return self._thermal
 
 class ThermalRadiation:
@@ -379,7 +383,7 @@ class ThermalRadiation:
         self._temperature = np.atleast_2d(temperature)
         self._emissivity = np.atleast_2d(emissivity)
         self._nelements = np.atleast_2d(nelements)
-        
+
     def get_signal(self, lbda_bin, area, solid_angle, qe=None):
         """Calculate the thermal signal received, integrated over wavelength bins.
 
@@ -433,7 +437,7 @@ class ThermalRadiation:
             (or e-/s/sr/m^2/A).
         """
         return self._blackbody_flux(lbda, self.temperature, qe=qe)
-        
+
     def get_integrated_blackbody_flux(self, lbda_bin, allow_trapez=True, qe=None):
         """Calculate the black body flux integrated over wavelength bins.
 
@@ -467,7 +471,7 @@ class ThermalRadiation:
         # 1d-boundaries: let's use exact method.
         if np.ndim(lbda_bin) == 1:
             int_flux = self._get_flux1d(self.temperature, *lbda_bin, qe=qe)
-            
+
         elif np.ndim(lbda_bin) == 2:
             # trapeze method: muuuuch faster. Correct at the per-mil level.
             if allow_trapez:
@@ -475,7 +479,7 @@ class ThermalRadiation:
                 delta_bin = np.diff(lbda_bin).squeeze()
                 lbda_mid = np.mean(lbda_bin, axis=-1)
                 int_flux = self.get_blackbody_flux(lbda_mid, qe=qe) * delta_bin
-                
+
             else:
                 # exact method, but require for loop
                 int_flux = np.hstack( [self._get_flux1d(self.temperature, lbda_min, lbda_max, qe=qe)
@@ -483,12 +487,12 @@ class ThermalRadiation:
 
         else:
             raise ValueError(f"ndim of input lbda_bin must be 1 or 2 {np.ndim(lbda_bin)=} ")
-        
+
         return int_flux
 
     # ------------ #
     #  Internal    #
-    # ------------ #    
+    # ------------ #
     @classmethod
     def _get_flux1d(cls, temperature, lbda_min, lbda_max, qe=None):
         """ Calculate the flux within a specified wavelength range.
@@ -497,10 +501,10 @@ class ThermalRadiation:
         ----------
         temperature : float
             The temperature in Kelvin.
-            
+
         lbda_min : float
             The minimum wavelength in Angstrom.
-            
+
         lbda_max : float
             The maximum wavelength in Angstrom.
 
@@ -519,11 +523,11 @@ class ThermalRadiation:
         flux, _ = quad_vec(cls._blackbody_flux, lbda_min, lbda_max, args=(temperature, qe))
         return flux
 
-    
+
     @classmethod
     def _blackbody_flux(cls, lbda, temperature, qe=None):
         """ Calculate the blackbody photon flux for a given wavelength and temperature.
-         
+
         Parameters
         ----------
         lbda : float
@@ -544,18 +548,18 @@ class ThermalRadiation:
             The blackbody flux in photons (or e-) per second per steradian per square meter per Angstrom.
         """
         flux_ph = blackbody_photonflux(lbda, temperature)
-        
+
         if qe is None:
             flux = flux_ph
-            
+
         elif callable(qe):
             flux = flux_ph * qe(lbda)
-            
+
         else: # must broadcast
             flux = flux_ph * qe
-            
+
         return flux
-    
+
     # ============ #
     #  Properties  #
     # ============ #
@@ -573,4 +577,3 @@ class ThermalRadiation:
     def nelements(self):
         """Number of components sharing each temperature and emissivity."""
         return self._nelements
-    

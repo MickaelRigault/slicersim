@@ -130,6 +130,14 @@ class Scene:
     # =========== #
     #  Method     #
     # =========== #
+    def set_pointsource(self, pointsource):
+        """Replace the scene's pointsource """
+        self._pointsource = pointsource
+
+    def set_background(self, background):
+        """Replace the scene's background (a `~slicersim.scene.background.Background` or None)."""
+        self._background = background
+
     def set_host(self, host):
         """ Set the host element of the scene. """
         # no setting test as you are already pretty deep inside the code.
@@ -138,6 +146,10 @@ class Scene:
         if host is not None and self.has_element("pointsource") and \
             ((redshift := self.pointsource.redshift) is not None):
             self.update(host__redshift = redshift)
+
+
+
+
 
     def has_element(self, element):
         """Check if an element is present in the scene.

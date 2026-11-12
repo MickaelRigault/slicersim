@@ -283,6 +283,28 @@ def test_fetch_snr_caching(simu):
     assert _cached == _not_cached
 
 
+def test_public_accessors(simu):
+    """Public accessors for subclasses and add-ons."""
+    assert simu.elements == ["scene", "telescope", "spectrograph", "detector", "extraction"]
+
+    config = simu.input_config
+    config["extraction"]["nramps"] = -1                 # a copy
+    assert simu.input_config["extraction"]["nramps"] != -1
+    fresh = simu.__class__.from_config(simu.input_config)
+    assert fresh.cube_shape == simu.cube_shape
+
+    cube = simu.get_projected_scene(cached=True)
+    assert simu.get_projected_scene(cached=True) is cube
+    simu.reset_cache()
+    assert simu.get_projected_scene(cached=True) is not cube
+
+    background = simu.scene.background
+    simu.scene.set_background(None)
+    assert simu.scene.background is None
+    simu.scene.set_background(background)
+    assert simu.scene.background is background
+
+
 def test_slicer_one_pixel_per_voxel(simu):
     """ slicer: one voxel (spaxel x wavelength bin) is one detector pixel (see docs/anamorphosis.rst) """
     assert simu.spectrograph.type == "slicer"
