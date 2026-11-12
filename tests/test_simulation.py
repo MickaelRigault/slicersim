@@ -303,3 +303,15 @@ def test_public_accessors(simu):
     assert simu.scene.background is None
     simu.scene.background = background
     assert simu.scene.background is background
+
+
+def test_slicer_one_pixel_per_voxel(simu):
+    """ slicer: one voxel (spaxel x wavelength bin) is one detector pixel (see docs/anamorphosis.rst) """
+    assert simu.spectrograph.type == "slicer"
+
+    # empty cube with read-out noise only: each voxel has the read noise of one pixel.
+    switch_off = [k for k in simu.variance_sources if k != "ron"]
+    signal, variance = simu.get_cube(switch_off=switch_off, per_ramp=True)
+    ron_variance = simu.detector.get_effective_ron(as_variance=True) * simu.detector.gain**2 # [ADU²]
+    assert np.allclose(signal, 0)
+    assert np.allclose(variance, ron_variance), "an empty voxel should have the read noise of 1 detector pixel, not 2"

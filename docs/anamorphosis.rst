@@ -1,36 +1,44 @@
 Slicer anamorphosis
 ===================
 
-This page compares how `pyetc <https://github.com/RolandBacon/pyetc>`_ (the WST
-exposure time calculator) and ``slicersim`` count detector pixels for an image
-slicer, explains the difference, and says which one is right.
+This page explains how ``slicersim`` counts detector pixels for an image
+slicer, why one voxel is one detector pixel, and how this compares with
+`pyetc <https://github.com/RolandBacon/pyetc>`_ (the WST exposure time
+calculator). The :doc:`notebooks/advanced_anamorphosis_pixels_per_voxel`
+tutorial demonstrates it numerically.
 
 Summary
 -------
 
-- **pyetc** charges **1 detector pixel per voxel**, where a voxel is one
-  spaxel × one spectel. This is the right count for a slicer whose
-  anamorphosis acts across the slices.
-- **slicersim** (:class:`~slicersim.spectrograph.SlicerSpectrograph`, used for
-  Lazuli) uses ``_ANAMORPHOSE = 2`` in two places at once:
-
-  #. it doubles the spaxel grid along x but keeps the spaxel scale, which
-     doubles the field of view;
-  #. it charges 2 detector pixels per grid element, which doubles the
-     detector variance (RON, dark, glow) of every voxel.
+- A **voxel** is one spaxel × one wavelength bin. For an image slicer, it
+  maps to **1 detector pixel**.
+- Since version 1.5, ``slicersim`` uses ``npix_per_voxel = 1`` in the
+  detector step of slicer spectrographs
+  (:meth:`~slicersim.detector.Detector.estimate_pixel_signal`, called by
+  ``Simulation._get_slicer_cube_``). This is also what pyetc does.
+- Up to version 1.4, the parameter was called ``npix_per_spaxel`` and was
+  set to the anamorphosis factor, ``_ANAMORPHOSE = 2``. This doubled the
+  detector variance (read noise, dark current, ROIC glow, thermal dark) of
+  every voxel, and so underestimated the signal-to-noise ratio of
+  detector-limited observations (see `Impact`_).
 
 .. important::
 
-   **Who's right:** pyetc. For the usual slicer design, the anamorphosis is
-   already counted in the width of the spectral resolution element. Counting
-   it again as extra pixels per voxel counts it twice.
+   The anamorphosis is already counted in the width of the spectral
+   resolution element (the line spread function, ``dispersion_resolution``
+   ≈ 2.3 pixels). Counting it again as extra pixels per voxel counts it
+   twice.
 
-   The ground-based slicer of the `slicersim-ground`_ add-on
-   (``GroundSlicerSpectrograph``, used for WST) therefore uses
-   ``_ANAMORPHOSE = 1``, as pyetc does. Lazuli keeps the
-   current, conservative behaviour, which the code itself already marks as
-   unconfirmed (see below). Changing it is a decision about the Lazuli design,
-   not about WST.
+.. figure:: gallery/anamorphosis_schematic.png
+   :alt: Schematic of an image slicer with anamorphosis: a 40 mas spaxel is
+         imaged onto 1 × 2 detector pixels, 1 along the slice and 2 along the
+         dispersion; consecutive wavelength bins are shifted by one pixel and
+         share pixels.
+   :align: center
+
+   From the sky to the detector pixels. Over *K* wavelength bins, a spaxel
+   trace covers *K* + 1 pixels, not 2\ *K*. (Script:
+   ``docs/gallery/make_anamorphosis_schematic.py``.)
 
 What an image slicer's anamorphosis does
 ----------------------------------------
@@ -51,8 +59,8 @@ A monochromatic voxel image therefore covers **1 pixel along the slice ×**
 ***A* pixels along the dispersion**. Those *A* pixels are the spectral
 resolution element (the LSF), and neighbouring wavelengths share them.
 
-- With a spectral sampling of 1 spectel = 1 pixel, each voxel
-  ``(spaxel, spectel)`` maps to **exactly 1 detector pixel**.
+- With a spectral sampling of 1 wavelength bin = 1 pixel, each voxel
+  ``(spaxel, wavelength bin)`` maps to **exactly 1 detector pixel**.
 - A full resolution element of one spaxel covers *A* pixels.
 - The source and sky photons are conserved either way.
 
@@ -63,13 +71,90 @@ So the anamorphosis shows up in three places only:
 - the detector footprint;
 - the noise per resolution element (*A* pixels, through the LSF).
 
-It does **not** show up as extra pixels per spectel.
+It does **not** show up as extra pixels per wavelength bin.
 
-``slicersim``'s own PSF model makes the same assumption.
+``slicersim``'s PSF model makes the same assumption.
 :meth:`~slicersim.spectrograph.Spectrograph.get_instrumental_psf` takes the
 "expected geometric footprint" of the slit to be ``expected_size = 2``
 pixels, and divides the extra blur by ``_ANAMORPHOSE`` to turn detector
 pixels into slice widths.
+
+How ``slicersim`` does it
+-------------------------
+
+The wavelength grid is built from the dispersion law, **one bin per detector
+pixel** (``build_lbda``): for Lazuli, 4 000–17 000 Å spans 524 pixels and
+gives 525 wavelength bins. The 2 pixels of the slit image are the line spread
+function, applied to the cube with ``dispersion_resolution = 2.3`` pixels per
+resolution element.
+
+The detector step then spreads the flux of each voxel over
+``npix_per_voxel`` pixels, computes the signal and the variance per pixel,
+and sums them back per voxel:
+
+.. code-block:: python
+
+   # Simulation._get_slicer_cube_
+   sig_cube, var_cube = self.detector.estimate_pixel_signal(cube, lbda=lbda,
+                                                            npix_per_voxel=1,
+                                                            cached_thermal=cached)
+
+For a voxel receiving *f* e⁻/s, an up-the-ramp read-out gives the variance
+:math:`\mathrm{Var} = n_\mathrm{pix}\,\sigma^2_\mathrm{RON,eff} + \alpha f`
+(Rauscher et al. 2007). The photon noise :math:`\alpha f` does not depend on
+:math:`n_\mathrm{pix}`, but the read noise is paid once per pixel. With
+``npix_per_voxel = 1``, an empty voxel has the read noise of exactly one
+pixel; this is tested in ``tests/test_simulation.py``
+(``test_slicer_one_pixel_per_voxel``).
+
+Independent check with the optical design
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The spot data of the Lazuli optical design
+(:class:`~slicersim.mapper.SlicerMapper`) gives:
+
+- **along a slice**, 105–108 detector pixels for the 116 spaxels of a slice;
+- for an emission line at 1.2 µm, a footprint of 320 voxels falls on 383
+  detector pixels, i.e. **1.2 pixels per voxel**, not 2. The extra 0.2 comes
+  from the dispersion: at 1.2 µm, one ``slicersim`` wavelength bin is about
+  1.2 pixels of the spot-data dispersion.
+
+A Monte Carlo that draws the noise of each of these detector pixels gives an
+SNR of 7.8 for that line. With 1 pixel per voxel, ``slicersim`` gives 8.4;
+with 2 pixels per voxel, it gave 6.0.
+
+The spaxel grid
+^^^^^^^^^^^^^^^
+
+:meth:`SlicerSpectrograph.set_spaxels
+<slicersim.spectrograph.SlicerSpectrograph.set_spaxels>` multiplies the
+number of spaxels along the slices by ``_ANAMORPHOSE`` and keeps the spaxel
+scale:
+
+.. code-block:: python
+
+   shape = np.asarray(shape) * (1, self._ANAMORPHOSE)
+   spx_scale = np.asarray(spx_scale)
+
+For Lazuli, ``spatial_shape = [58, 58]`` and ``spatial_scale = 0.040″`` give
+58 slices × 116 spaxels of 0.040″ × 0.040″, a field of 2.32″ × 4.64″. Each
+grid element is a full square spaxel, imaged onto one pixel along the slice,
+so this grid is consistent with ``npix_per_voxel = 1``. Whether it matches
+the actual Lazuli field of view is a question for the optical design, and is
+left unchanged in version 1.5.
+
+Before commit ``07ff099`` ("major refactoring of the way anamorphose is taking
+into account"), the code was ``shape * (2, 1)`` together with
+``spx_scale / (2, 1)``, which kept a 2.32″ × 2.32″ field.
+
+.. warning::
+
+   If the grid is ever changed to split spaxels (scale divided by
+   ``_ANAMORPHOSE`` along one axis), each grid element becomes half a
+   spaxel. The number of pixels per *grid element* must then stay 1 (so 2
+   pixels per spaxel along the slice, if the design really is so); it must
+   never be combined with ``npix_per_voxel = 2``, which would charge **4**
+   pixels per spaxel.
 
 pyetc
 -----
@@ -86,127 +171,72 @@ which is repeated at L973, L1028 and L1085:
 
 The anamorphosis enters only through ``lsfpix = 2.5`` (`wst.py#L48
 <https://github.com/RolandBacon/pyetc/blob/e6e351ebf928d98adad34e8d17e5825b15595bc9/pyetc/wst.py#L48>`_).
-This matches the analysis above.
+This is the convention ``slicersim`` follows since version 1.5.
 
-slicersim
----------
-
-1. Doubled grid, same scale
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-:meth:`SlicerSpectrograph.set_spaxels
-<slicersim.spectrograph.SlicerSpectrograph.set_spaxels>` does:
-
-.. code-block:: python
-
-   shape = np.asarray(shape) * (1, self._ANAMORPHOSE)
-   spx_scale = np.asarray(spx_scale)
-
-For Lazuli, ``spatial_shape = [58, 58]`` and ``spatial_scale = 0.040″`` give
-a grid of 58 × 116 elements of 0.040″ × 0.040″. That is a field of
-**2.32″ × 4.64″** instead of 2.32″ × 2.32″. Each grid element is still a full
-square spaxel: it collects the full-spaxel sky, and the PSF covers as many
-grid elements as without anamorphosis. The extra columns are simply more sky.
-
-Before commit ``07ff099`` ("major refactoring of the way anamorphose is taking
-into account"), the code was ``shape * (2, 1)`` together with
-``spx_scale / (2, 1)``, which kept the field of view. The refactoring dropped
-the scale change.
-
-2. Two pixels per grid element
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``Simulation._get_slicer_cube_`` passes
-``npix_per_spaxel=self.spectrograph._ANAMORPHOSE`` to
-:meth:`~slicersim.detector.Detector.estimate_pixel_signal`. That method
-spreads the voxel flux over that many pixels and multiplies the variance
-back. The result: the detector variance per voxel is ×2, while the photon
-noise is unchanged. The code comment there already says so:
-
-    It is possible this should be 1 and not 2 (anamorphose) as this
-    effectively is the number of pixels per voxel (wavelength bin x spaxel)
-    which is 1 for a slicer. This is to be confirmed. Using the anamorphose
-    factor here is conservative as I am still unsure.
-
-The analysis above confirms the comment's doubt: the right value is 1.
-
-Impact on Lazuli
-^^^^^^^^^^^^^^^^
+Impact
+------
 
 Setup: the default ``LazuliTarget``, a flat :math:`F_\lambda`, optimal
-extraction, and the current ``npix_per_spaxel = 2`` compared with
-``npix_per_spaxel = 1``. Everything else is unchanged.
+extraction, noise-free spectrum, with 2 pixels per voxel (``slicersim`` ≤ 1.4)
+or 1 pixel per voxel (``slicersim`` ≥ 1.5). Everything else is unchanged.
 
 .. list-table::
    :header-rows: 1
 
    * - :math:`F_\lambda` [erg/s/cm²/Å]
-     - npix/voxel
+     - pixels per voxel
      - SNR 5000 Å
      - SNR 10000 Å
      - SNR 15000 Å
    * - 3e-18
-     - 2 (current)
+     - 2 (≤ 1.4)
      - 2.72
      - 19.91
      - 24.69
    * - 3e-18
-     - 1
+     - 1 (≥ 1.5)
      - 3.43 (+26 %)
      - 21.42 (+8 %)
      - 26.77 (+8 %)
    * - 3e-17
-     - 2 (current)
+     - 2 (≤ 1.4)
      - 15.06
      - 73.78
      - 93.07
    * - 3e-17
-     - 1
+     - 1 (≥ 1.5)
      - 16.05 (+7 %)
      - 74.83 (+1 %)
      - 94.61 (+2 %)
 
-- **Detector-limited cases** (faint sources, the blue end where RON
-  dominates) are the most affected: the SNR is underestimated by up to about
-  25 %, and exposure times are overestimated by up to about 1.6×.
+Exposure time for a Type Ia supernova at peak to reach SNR = 20
+(``LazuliSupernova(redshift=z).setup_to_snr(20)``):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Redshift
+     - 2 pixels per voxel (≤ 1.4)
+     - 1 pixel per voxel (≥ 1.5)
+     - Ratio
+   * - 0.5
+     - 883 s
+     - 792 s
+     - 1.11
+   * - 1.0
+     - 3 668 s
+     - 2 898 s
+     - 1.27
+   * - 1.5
+     - 17 388 s
+     - 11 592 s
+     - 1.50
+
+- **Detector-limited cases** (faint, distant sources, the blue end where
+  the read noise dominates) are the most affected: the former behaviour
+  underestimated the SNR by up to about 25 %, and overestimated exposure
+  times by up to about 1.5×.
 - **Photon-limited cases** change by only a few percent.
-- **The doubled field** does not matter for a centred point source with
-  optimal extraction. It does matter for:
-
-  - large apertures: with ``aperture_radius = 25`` spaxels, the circle no
-    longer gets cut by the 2.32″ field edge, so it holds more pixels;
-  - field-integrated quantities, such as the total sky or thermal background;
-  - extended hosts.
-
-.. warning::
-
-   Restoring the old field-conserving grid (scale/2 along x) while keeping
-   ``npix_per_spaxel = 2`` would charge **4** pixels per spaxel. The two
-   corrections must not be combined.
-
-Recommendation
---------------
-
-For a slicer whose anamorphosis acts across the slices (the usual design, and
-what ``slicersim``'s ``expected_size = 2`` PSF model and
-``dispersion_resolution`` ≈ 2.3 already assume):
-
-#. Use **npix_per_spaxel = 1** for slicers (1 pixel per voxel), as pyetc
-   does.
-#. **Do not enlarge the spaxel grid.** The anamorphosis is already in the LSF
-   (``dispersion_resolution``, in pixels) and in the across-slice blur
-   conversion of
-   :meth:`~slicersim.spectrograph.Spectrograph.get_instrumental_psf`.
-
-If an instrument really did stretch the image *along* the slices (2 pixels per
-spaxel on the spatial axis), the consistent model would be the grid
-``shape × (1, A)`` with ``scale / (1, A)`` and 1 pixel per grid element. That
-gives *A* pixels per spaxel and the right field of view. It would never mean
-doubling the grid at constant scale *and* charging *A* pixels per grid
-element.
-
-Which design Lazuli has is for the Lazuli optical design to confirm. Changing
-it would shift the Lazuli reference numbers, so it is not done here.
 
 Ground-based slicers and WST
 ----------------------------
@@ -214,14 +244,14 @@ Ground-based slicers and WST
 Ground-based slicer IFSs are simulated by the `slicersim-ground`_ add-on.
 Its ``GroundSlicerSpectrograph`` subclasses
 :class:`~slicersim.spectrograph.SlicerSpectrograph` with
-``_ANAMORPHOSE = 1``: the spaxel grid is the configured one and
-``npix_per_spaxel`` is 1, with the anamorphosis in the LSF
-(``dispersion_resolution``, a FWHM in pixels).
+``_ANAMORPHOSE = 1``: the spaxel grid is the configured one, with the
+anamorphosis in the LSF (``dispersion_resolution``, a FWHM in pixels).
+It already used 1 pixel per voxel before version 1.5, since the number of
+pixels per voxel was then taken from ``_ANAMORPHOSE``; it is now 1 for every
+slicer.
 
 This is the pyetc convention. With the WST IFS configurations of the add-on
 (25 × 25 spaxels of 0.25″, LSF of 2.5 pixels FWHM), it reproduces pyetc's
 resolved-source SNR to 1e-4.
-:class:`~slicersim.spectrograph.SlicerSpectrograph` itself, and so Lazuli, is
-unchanged.
 
 .. _slicersim-ground: https://gitlab.in2p3.fr/ycopin/slicersim-ground
