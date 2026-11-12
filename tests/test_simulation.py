@@ -299,9 +299,9 @@ def test_public_accessors(simu):
     assert simu.get_projected_scene(cached=True) is not cube
 
     background = simu.scene.background
-    simu.scene.background = None
+    simu.scene.set_background(None)
     assert simu.scene.background is None
-    simu.scene.background = background
+    simu.scene.set_background(background)
     assert simu.scene.background is background
 
 
