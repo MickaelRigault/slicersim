@@ -611,7 +611,7 @@ def make_wst_config_files(pyetc_data, outdir=None, channels=("blue", "red")):
     tomls = []
     for channel in channels:
         ins = _PYETC_WST[channel]
-        npx = int(round((ins["lbda2"] - ins["lbda1"]) / ins["dlbda"])) + 1
+        npx = round((ins["lbda2"] - ins["lbda1"]) / ins["dlbda"]) + 1
         lbda = ins["lbda1"] + ins["dlbda"] * np.arange(npx)
 
         # throughput
