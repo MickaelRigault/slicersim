@@ -129,6 +129,21 @@ Control the instrument and the scene.
 
       What a ``Scene`` is and how to build your own.
 
+Other instruments
+-----------------
+
+The generic core of ``slicersim`` also models other slicer IFSs.
+
+.. grid:: 1 2 2 3
+   :gutter: 3
+
+   .. grid-item-card:: WST IFS modes
+      :link: notebooks/wst_ifs_modes
+      :link-type: doc
+
+      The ground-based WST integral-field spectrograph: atmosphere, seeing
+      PSF, CCD and exposure times, validated against pyetc.
+
 .. toctree::
    :hidden:
    :caption: Beginner
@@ -155,3 +170,9 @@ Control the instrument and the scene.
    notebooks/advanced_dispersion_resolution_and_spotsize
    notebooks/advanced_calspec_and_stdstars
    notebooks/advanced_scene_tutorial
+
+.. toctree::
+   :hidden:
+   :caption: Other instruments
+
+   notebooks/wst_ifs_modes
