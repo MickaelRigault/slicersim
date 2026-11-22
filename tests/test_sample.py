@@ -71,3 +71,44 @@ def test_dask_or_not_in_setup(sample):
     assert np.isclose(snrs_dask, snrs).all()
     assert (configs_dask == configs).all().all()
     
+
+
+# tests for the func set_thermal_dark
+def test_set_thermal_dark(sample):
+    """ the shared thermal dark is exactly each target's own, and kept by reset_cache """
+    import warnings
+    own = Sample.from_sneia([0.2, 1.5], cache_thermal=False) # narrow and wide fields
+    reference = own.targets[0].simulation.detector.get_thermal_dark(units="e-/s")
+
+    # shared at init (cache_thermal=True by default): used by cached calls, bitwise equal.
+    for target in [sample.targets[0], sample.targets[-1]]: # narrow and wide fields
+        detector = target.simulation.detector
+        assert np.array_equal(detector.get_thermal_dark(units="e-/s", cached=True), reference)
+        assert np.array_equal(detector.get_thermal_dark(units="e-/s"), reference), "not the target's own value"
+
+    # same setup_to_snr results with and without shared thermal dark
+    config, snr = sample.targets[-1].setup_to_snr(20, inplace=False)
+    config_own, snr_own = own.targets[-1].setup_to_snr(20, inplace=False)
+    assert config == config_own and snr == snr_own
+
+    # kept by reset_cache (fetch_snr), unless requested
+    simulation = sample.targets[0].simulation
+    simulation.reset_cache()
+    assert simulation.detector._cached_thermal is not None
+    simulation.reset_cache(keep_thermal=False)
+    assert simulation.detector._cached_thermal is None
+
+    # a value computed for different inputs is ignored, with a warning
+    detector = sample.targets[0].simulation.detector
+    inputs = detector.get_thermal_inputs(units="e-/s")
+    with pytest.warns(UserWarning):
+        assert not detector.set_thermal_dark(reference * 2, units="e-/s", inputs=inputs[:-1] + (None,))
+
+    # changing the optics temperature => recomputed, not reused.
+    _ = detector.set_thermal_dark(reference, units="e-/s")
+    simulation.update(optics__temperature=np.array(detector.thermaloptics.temperature) + 20) # (n, 1) as stored
+    with warnings.catch_warnings():
+        warnings.simplefilter("error") # no warning expected here
+        hotter = detector.get_thermal_dark(units="e-/s", cached=True)
+    assert not np.array_equal(hotter, reference)
+    assert np.array_equal(hotter, detector.get_thermal_dark(units="e-/s"))

@@ -109,6 +109,10 @@ class Sample:
         If True, set the Lazuli field of each target according to its
         redshift (see `setup_spectrograph`). This requires Lazuli targets
         with a ``redshift``. Default is True.
+    cache_thermal : bool, optional
+        If True (and ``setup_spectrograph``), compute the thermal dark once
+        and share it with all targets (see `set_thermal_dark`).
+        Default is True.
 
     Examples
     --------
@@ -117,7 +121,7 @@ class Sample:
     >>> stats = sample.get_summary_stats()  # doctest: +SKIP
     """
 
-    def __init__(self, targets, setup_spectrograph=True):
+    def __init__(self, targets, setup_spectrograph=True, cache_thermal=True):
         """Initialize a Sample with a list of targets.
 
         Parameters
@@ -127,13 +131,15 @@ class Sample:
         setup_spectrograph : bool, optional
             If True, set the Lazuli field of each target according to its
             redshift (see `setup_spectrograph`). Default is True.
+        cache_thermal : bool, optional
+            Goes to `setup_spectrograph`. Default is True.
         """
         self._targets = targets
         if setup_spectrograph:
-            self.setup_spectrograph()
+            self.setup_spectrograph(cache_thermal=cache_thermal)
 
     @classmethod
-    def from_sneia(cls, redshifts, colors=0, stretchs=0, **kwargs):
+    def from_sneia(cls, redshifts, colors=0, stretchs=0, cache_thermal=True, **kwargs):
         """Create a Sample of SALT Type Ia supernovae.
 
         Parameters
@@ -144,6 +150,9 @@ class Sample:
             SALT color ``c`` of the supernovae. Default is 0.
         stretchs : float or array_like, optional
             SALT stretch ``x1`` of the supernovae. Default is 0.
+        cache_thermal : bool, optional
+            If True, the thermal dark is computed once and shared with all
+            targets (see `set_thermal_dark`). Default is True.
         **kwargs
             Goes to `~slicersim.lazuli.LazuliSupernova`, for all targets
             (e.g. ``phase``).
@@ -160,7 +169,7 @@ class Sample:
                                  "x1": stretchs,
                                  "c": colors})
         targets = [LazuliSupernova(**(this.to_dict() | kwargs)) for _, this in data.iterrows()]
-        return cls(targets)
+        return cls(targets, cache_thermal=cache_thermal)
 
     # ========== #
     #  methods   #
@@ -303,7 +312,7 @@ class Sample:
     # -------- #
     #  SETUP   #
     # -------- #
-    def setup_spectrograph(self, redshift_cut=0.8):
+    def setup_spectrograph(self, redshift_cut=0.8, cache_thermal=True):
         """Set the Lazuli field of each target according to its redshift.
 
         Targets with ``redshift <= redshift_cut`` are observed in the
@@ -315,6 +324,10 @@ class Sample:
         redshift_cut : float, optional
             Redshift threshold between the narrow and wide fields.
             Default is 0.8.
+        cache_thermal : bool, optional
+            If True, once the fields are set, compute the thermal dark once
+            and share it with all targets (see `set_thermal_dark`), to speed
+            up e.g. `setup_to_snr`. Default is True.
 
         Returns
         -------
@@ -326,6 +339,51 @@ class Sample:
                 target.change_spectrograph("narrow")
             else:
                 target.change_spectrograph("wide")
+
+        # after the fields are set, in case they change the optics.
+        if cache_thermal:
+            _ = self.set_thermal_dark()
+
+    def set_thermal_dark(self, units="e-/s"):
+        """Compute the thermal dark once and share it with all targets.
+
+        The thermal dark (an integral over the thermal emission of the optics,
+        see `~slicersim.detector.Detector.get_thermal_dark`) only depends on
+        the instrument, yet each target would compute it. It is computed for
+        the first target and set to all of them (see
+        `~slicersim.detector.Detector.set_thermal_dark`); it is then used
+        during `setup_to_snr` as long as the thermal inputs of each target are
+        unchanged. Targets whose instrument differs from that of the first
+        target ignore it (with a warning) and keep computing their own.
+
+        Parameters
+        ----------
+        units : str, optional
+            Units of the thermal dark, ``"ph/s"`` or ``"e/s"`` (alias
+            ``"e-/s"``). Default is ``"e-/s"`` (used by the read-out noise
+            model, see `~slicersim.detector.Detector.get_effective_dark`).
+
+        Returns
+        -------
+        float or numpy.ndarray or None
+            The shared thermal dark current per pixel in ``units``, None if
+            the sample is empty.
+
+        Warns
+        -----
+        UserWarning
+            For targets whose thermal inputs differ from that of the first one.
+        """
+        if self.ntargets == 0:
+            return None
+
+        reference = self.targets[0].simulation.detector
+        thermal_dark = reference.get_thermal_dark(units=units)
+        inputs = reference.get_thermal_inputs(units=units)
+        for target in self.targets:
+            _ = target.simulation.detector.set_thermal_dark(thermal_dark, units=units, inputs=inputs)
+
+        return thermal_dark
 
     def setup_to_snr(self, snr, per_resolution=True,
                      lbda_range=[4000, 6800], frame='rest',

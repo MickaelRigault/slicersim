@@ -1204,6 +1204,7 @@ class Simulation:
     def get_cube(self, switch_off=[], psf_profile="default",
                      as_oversampled=False, oversampling=None,
                      per_ramp=False, apply_lsf=True, cached=False,
+                     incl_signal=True,
                      **kwargs):
         """Get the signal and variance cubes as extracted from the exposure.
 
@@ -1229,15 +1230,22 @@ class Simulation:
         apply_lsf : bool, optional
             If True, apply the line spread function. Default is True.
         cached : bool, optional
-            If True, use (or store) the cached projected scene and thermal
-            signal (see `Simulation.get_projected_scene`). Default is False.
+            If True, use (or store) the cached projected scene, thermal
+            signal and electron rate (see `Simulation.get_projected_scene` and
+            `~slicersim.detector.Detector.estimate_pixel_signal`).
+            Default is False.
+        incl_signal : bool, optional
+            If False, the signal cube is not computed (slicer) and None is
+            returned in its place. Use it to speed things up when only the
+            variance cube is needed (as `Simulation.get_spectrum` does); the
+            variance cube is unchanged. Default is True.
         **kwargs
             Goes to `Simulation.get_projected_scene`.
 
         Returns
         -------
-        cube_signal : numpy.ndarray
-            (nlbda, ny, nx) signal cube [ADU].
+        cube_signal : numpy.ndarray or None
+            (nlbda, ny, nx) signal cube [ADU], or None (see ``incl_signal``).
         cube_variance : numpy.ndarray
             (nlbda, ny, nx) variance cube [ADU^2].
 
@@ -1308,6 +1316,7 @@ class Simulation:
                           as_oversampled=as_oversampled, oversampling=oversampling,
                           apply_lsf=apply_lsf,
                           cached=cached,
+                          incl_signal=incl_signal,
                         ) | kwargs
 
         # mla
@@ -1342,14 +1351,15 @@ class Simulation:
         #
         if not per_ramp:
             nramps = self.get_parameter("nramps")
-            sig_cube *= nramps
+            if sig_cube is not None:
+                sig_cube *= nramps
             var_cube *= nramps
 
         return sig_cube, var_cube
 
     def _get_slicer_cube_(self, psf_profile="default", switch_off=[],
                            oversampling=None, as_oversampled=False,
-                           apply_lsf=True, cached=False,
+                           apply_lsf=True, cached=False, incl_signal=True,
                            **kwargs):
         """Get slicer cube.
 
@@ -1367,15 +1377,19 @@ class Simulation:
         apply_lsf : bool, optional
             If True, apply the line spread function. Default is True.
         cached : bool, optional
-            If True, use cached projected scene and thermal signal.
-            Default is False.
+            If True, use cached projected scene, thermal signal and electron
+            rate. Default is False.
+        incl_signal : bool, optional
+            If False, the signal cube is not computed and None is returned in
+            its place, to speed things up when only the variance cube is
+            needed. Default is True.
         **kwargs
             Goes to `Simulation.get_projected_scene`.
 
         Returns
         -------
         sig_cube, var_cube : numpy.ndarray
-            (nlbda, ny, nx) signal [ADU] and variance [ADU^2], per ramp.
+            (nlbda, ny, nx) signal [ADU] (or None) and variance [ADU^2], per ramp.
 
         """
         # scene split per slices
@@ -1395,13 +1409,14 @@ class Simulation:
                                                                 # the 2 pixels of the slice width (anamorphosis) are along the dispersion,
                                                                 # i.e. already in the wavelength sampling and the LSF. See docs/anamorphosis.rst.
                                                                  npix_per_voxel=1,
+                                                                 incl_signal=incl_signal,
                                                                  cached_thermal=cached) # expects input in [ph/...]
 
         return sig_cube, var_cube
 
     def _get_mla_cube_(self, psf_profile="default", switch_off=[],
                            as_oversampled=False, oversampling=None,
-                           apply_lsf=True, cached=False,
+                           apply_lsf=True, cached=False, incl_signal=True,
                            **kwargs): # pragma: no cover
         """Get MLA cube.
 
@@ -1420,6 +1435,9 @@ class Simulation:
             If True, apply the line spread function. Default is True.
         cached : bool, optional
             If True, use the cached projected scene. Default is False.
+        incl_signal : bool, optional
+            Not used: the MLA extraction always computes the signal.
+            Default is True.
         **kwargs
             Goes to `Simulation.get_projected_scene`.
 
@@ -1590,7 +1608,9 @@ class Simulation:
             If True, apply the line spread function. Default is True.
         cached : bool, optional
             If True, use cached intermediate products (see
-            `Simulation.get_cube`). Default is False.
+            `Simulation.get_cube`) and the cached spatial PSF of the point
+            source (see `~slicersim.spectrograph.Spectrograph.get_spatial_psf`).
+            Default is False.
 
         Returns
         -------
@@ -1617,7 +1637,8 @@ class Simulation:
         _, var_cube = self.get_cube(switch_off=switch_off,
                                                per_ramp=True, # see later.
                                                psf_profile=psf_profile,
-                                               apply_lsf=apply_lsf, cached=cached)
+                                               apply_lsf=apply_lsf, cached=cached,
+                                               incl_signal=False) # signal cube not used here.
 
         # no pointsource, e.g. a galaxy alone: extract the host from the cubes
         if not self.scene.has_element("pointsource") or of_host:
@@ -1647,7 +1668,8 @@ class Simulation:
             spec_variance = self.spectrograph.pointsource_variance(var_cube,
                                                     position=self.scene.pointsource_position,
                                                     radius=self._get_pointsource_radius_(),
-                                                    psf_profile=psf_profile)
+                                                    psf_profile=psf_profile,
+                                                    cached=cached)
 
             # Assume the spectrum is perfectly extracted
             if "pointsource" not in switch_off:
@@ -2218,7 +2240,8 @@ class Simulation:
         use_cache : bool, optional
             If True, cache the projected scene while iterating (only the
             read-out configuration changes). The cache is cleared at the
-            end. Default is True.
+            end, except for the thermal dark (see `Simulation.reset_cache`).
+            Default is True.
         lbda_range : list of float, optional
             (wmin, wmax) test wavelength range [Angstrom].
             Default is ``[4000, 6800]``.
@@ -2317,20 +2340,30 @@ class Simulation:
 
         # is one ramp not enought:
         else:
-             # no ? fix nmd at fullramp and  loop over ngroup
+            # Under that situation, SNR ∝ sqrt(nramps) exactly
+            # (signal and variance both scale with nramps)
+            # so the number of full ramps is known directly as:
+            nramps = int(max(2, np.ceil((target_snr / single_fullramp_snr)**2)))
+            # Assuming the max config for a single ramp already cumputed.
+
+            # Then uptade the simulation with this to see if we are happy with this.
+            self.update( nramps=nramps, nmd=(max_group, nframe_per_group, ndrop) )
+            read_config = {"nmd": self.get_parameter("nmd"), "nramps": nramps}
+
+            # And this is the acquired SNR.
+            snr = single_fullramp_snr * np.sqrt(nramps)
+            integration_time = self.observing_time # includes nramps
             free_parameter = "nramps"
-            if guess is None:
-                guess = 4 # we expect less than, say, 20 ramps and at least 2.
 
-            self.update( nramps=guess, nmd=(max_group, nframe_per_group, ndrop) )
-            prop_fetch |= {"min_value": 2}
-
-        read_config, snr, integration_time = self._fetch_snr(target_snr,
-                                                             free_parameter=free_parameter,
-                                                             iterstep=iterstep, maxiter=maxiter,
-                                                             use_cache=use_cache,
-                                                             **prop_fetch)
-        # fine tune ramps
+        # single ramp: loop over ngroup
+        if free_parameter == "ngroup":
+            read_config, snr, integration_time = self._fetch_snr(target_snr,
+                                                                 free_parameter=free_parameter,
+                                                                 iterstep=iterstep, maxiter=maxiter,
+                                                                 use_cache=use_cache,
+                                                                 **prop_fetch)
+        # multiple ramps |
+        # case with multiple ramp and max group config already computed as analytic
         if free_parameter == "nramps" and allow_smaller_ramps and \
             ((snr - too_large > target_snr) or (snr + too_large < target_snr)):
             # number of ramp that leads to too high snr. nramps-1 is too low by design here.
@@ -2352,6 +2385,7 @@ class Simulation:
                                                              iterstep=iterstep, maxiter=maxiter,
                                                              use_cache=use_cache,
                                                              **prop_fetch)
+
         if reset_param:
             self.update(nmd = input_nmd, nramps=input_nramps)
 
@@ -2363,14 +2397,26 @@ class Simulation:
         # return what you where looking for.
         return read_config, snr, integration_time
 
-    def reset_cache(self):
-        """Discard any cached result (projected scene, thermal signal).
+    def reset_cache(self, keep_thermal=True):
+        """Discard cached results (projected scene, electron rate, spatial PSF, thermal dark).
 
         Subclasses keeping their own cached results should extend this method
         (it is also called internally, e.g. at the end of `fetch_snr`).
+
+        Parameters
+        ----------
+        keep_thermal : bool, optional
+            If True, keep the thermal dark (computed or set with
+            `~slicersim.detector.Detector.set_thermal_dark`): it is only
+            reused while its inputs are unchanged (see
+            `~slicersim.detector.Detector.get_thermal_inputs`), so keeping it
+            is safe. Default is True.
         """
         self._cube_cached = None
-        self.detector._cached_thermal = None
+        self.detector._cached_flux_e = None
+        self.spectrograph._cached_psf = None
+        if not keep_thermal:
+            self.detector._cached_thermal = None
 
     def _reset_cached(self):
         """Alias of `reset_cache` (backward compatibility)."""

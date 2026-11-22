@@ -407,9 +407,11 @@ class Detector:
             Wavelength range ``[lmin, lmax]`` in Angstrom. If None,
             `lbda_range` is used. Default is None.
         cached : bool, optional
-            If True, store the result (per unit) and reuse it in later calls
-            made with ``cached=True`` and ``as_sum=True``; the cache is not
-            invalidated when parameters change. Default is False.
+            If True (and ``as_sum``), store the result (per unit, see
+            `set_thermal_dark`) and reuse it in later calls made with
+            ``cached=True`` as long as its inputs (see `get_thermal_inputs`)
+            are unchanged. Only results for the detector's own `thermaloptics`
+            and `lbda_range` (i.e. both None) are stored. Default is False.
 
         Returns
         -------
@@ -421,11 +423,13 @@ class Detector:
         ------
         ValueError
             If ``units`` is not one of the accepted values.
+
+        See Also
+        --------
+        set_thermal_dark : Set a thermal dark computed elsewhere (e.g. shared by a `~slicersim.sample.Sample`).
         """
-        if as_sum and cached and hasattr(self, "_cached_thermal") and self._cached_thermal is not None:
-            # cached by unit
-            if (cached := self._cached_thermal.get(units, None)) is not None:
-                return cached
+        # only the detector's own thermal dark can be stored (see set_thermal_dark)
+        is_own = thermaloptics is None and lbda_range is None
 
         # which thermaloptics to consider.
         if thermaloptics is None:
@@ -434,6 +438,13 @@ class Detector:
         # nothing given ? returns 0, i.e. no thermal dark.
         if thermaloptics is None:
             return 0
+
+        # cached by unit, only valid for the inputs it was computed from.
+        if as_sum and cached:
+            inputs = self.get_thermal_inputs(thermaloptics=thermaloptics, units=units, lbda_range=lbda_range)
+            stored = (getattr(self, "_cached_thermal", None) or {}).get(units, None)
+            if stored is not None and stored[0] == inputs:
+                return stored[1]
 
         # select the coefficient to match the request output units.
         if units == "ph/s":
@@ -462,13 +473,132 @@ class Detector:
         if as_sum:
             signals = np.sum(signals, axis=0)
 
-        if cached:
-            if not hasattr(self, "_cached_thermal") or self._cached_thermal is None:
-                self._cached_thermal = {}
-
-            self._cached_thermal[units] = signals
+        if as_sum and cached and is_own:
+            _ = self.set_thermal_dark(signals, units=units, inputs=inputs)
 
         return signals
+
+    def get_thermal_inputs(self, thermaloptics=None, units="ph/s", lbda_range=None):
+        """Get the inputs the thermal dark current depends on.
+
+        These are the temperatures of all optical elements (integrated
+        together), the emissivity, number of elements and solid angle of the
+        non-dispersed ones (the only ones contributing), the dispersed flags,
+        the wavelength range, the pixel size and (for electron units) the QE.
+        Two detectors with equal inputs have exactly the same thermal dark
+        (see `get_thermal_dark`).
+
+        Parameters
+        ----------
+        thermaloptics : `~slicersim.thermal.ThermalOptics` or None, optional
+            Optics emitting the thermal signal. If None, `thermaloptics` is
+            used. Default is None.
+        units : str, optional
+            Units of the thermal dark, ``"ph/s"`` or ``"e/s"`` (alias
+            ``"e-/s"``); the QE only matters for the latter.
+            Default is ``"ph/s"``.
+        lbda_range : array_like or None, optional
+            Wavelength range ``[lmin, lmax]`` in Angstrom. If None,
+            `lbda_range` is used. Default is None.
+
+        Returns
+        -------
+        tuple or None
+            Comparable (``==``) description of the inputs, or None if there
+            are no thermal optics.
+        """
+        if thermaloptics is None:
+            thermaloptics = self.thermaloptics
+
+        if thermaloptics is None:
+            return None
+
+        if lbda_range is None:
+            lbda_range = self.lbda_range
+
+        # arrays as (shape, bytes) to be exactly comparable with ==
+        as_key = lambda x: (np.shape(x), np.asarray(x, dtype=float).tobytes())
+
+        # qe only matters for electron units.
+        if units in ["e/s", "e-/s"]:
+            qe = self.qe
+            if hasattr(qe, "_eval_args"): # scipy spline: fully defined by knots, coefficients and degree
+                knots, coefs, degree = qe._eval_args
+                qe = (as_key(knots), as_key(coefs), degree, getattr(qe, "ext", None))
+            elif not callable(qe): # float or array
+                qe = as_key(qe)
+            # other functions are compared by identity.
+        else:
+            qe = None
+
+        # The black body integral (quad_vec) is computed for all temperatures at once,
+        # hence all temperatures matter. It is then multiplied row by row by
+        # solid_angle * emissivity * nelements and only non-dispersed rows are kept:
+        # for these, only the non-dispersed rows matter (e.g. not the IFU nelements of a field).
+        dispersed = np.asarray(thermaloptics.meta["dispersed"]).astype(bool)
+        undispersed_rows = lambda x: np.asarray(x)[~dispersed] if np.shape(x)[:1] == dispersed.shape else x
+
+        return (units, tuple(dispersed.tolist()),
+                as_key(thermaloptics.temperature),
+                as_key(undispersed_rows(thermaloptics.emissivity)),
+                as_key(undispersed_rows(thermaloptics.nelements)),
+                as_key(undispersed_rows(thermaloptics.solid_angle)),
+                as_key(lbda_range), float(self.get_pixel_size("m")), qe)
+
+    def set_thermal_dark(self, thermal_dark, units="e-/s", inputs=None):
+        """Set the thermal dark current, as computed elsewhere.
+
+        This avoids recomputing the thermal dark (an integral over the
+        thermal emission) for identical detectors, e.g. for all the targets
+        of a `~slicersim.sample.Sample` (see
+        `~slicersim.sample.Sample.set_thermal_dark`). The value is stored as
+        the cached result of `get_thermal_dark`: it is used by calls made with
+        ``cached=True`` (e.g. during
+        `~slicersim.simulation.Simulation.fetch_snr`) as long as the thermal
+        inputs (see `get_thermal_inputs`) are unchanged.
+
+        Parameters
+        ----------
+        thermal_dark : float or numpy.ndarray
+            Thermal dark current per pixel, in ``units``, as returned by
+            `get_thermal_dark` (with ``as_sum=True``).
+        units : str, optional
+            Units of ``thermal_dark``, ``"ph/s"`` or ``"e/s"`` (alias
+            ``"e-/s"``). Default is ``"e-/s"`` (used by `get_effective_dark`).
+        inputs : tuple or None, optional
+            Thermal inputs ``thermal_dark`` was computed for (see
+            `get_thermal_inputs`). If given and different from that of this
+            detector, ``thermal_dark`` is ignored. If None, it is assumed to
+            match this detector. Default is None.
+
+
+        Returns
+        -------
+        bool
+            True if the value has been set, False if ignored.
+
+        Warns
+        -----
+        UserWarning
+            If ``inputs`` differ from that of this detector (value ignored).
+
+        Notes
+        -----
+        This is the only place where the thermal dark cache is set; it is
+        also used by `get_thermal_dark` with ``cached=True``.
+        """
+        current_inputs = self.get_thermal_inputs(units=units)
+        if inputs is not None and inputs != current_inputs:
+            warnings.warn("thermal_dark ignored: it was computed for different thermal inputs "
+                          "(optics, lbda_range, pixel size or qe) ; see get_thermal_inputs().")
+            return False
+
+        if getattr(self, "_cached_thermal", None) is None:
+            self._cached_thermal = {}
+
+        # stored with its inputs: get_thermal_dark only reuses it if they are unchanged.
+        self._cached_thermal[units] = (current_inputs, thermal_dark)
+        return True
 
     def get_effective_ron(self, nmd=None, variance_model="default", ron=None, as_variance=False):
         """Compute the effective read-out noise of a ramp.
@@ -566,7 +696,8 @@ class Detector:
                                   variance_model="default",
                                   saturation="default",
                                   cached_thermal=False,
-                                  npix_per_voxel=1):
+                                  npix_per_voxel=1,
+                                  incl_signal=True):
         """Estimate the measured signal and variance from an incident flux.
 
         The flux of each voxel is spread over ``npix_per_voxel`` detector
@@ -596,18 +727,29 @@ class Detector:
             signal and an infinite variance. If ``"default"``, `saturation` is
             used. If None, saturation is not tested. Default is ``"default"``.
         cached_thermal : bool, optional
-            Passed as ``cached`` to `get_thermal_dark`. Default is False.
+            Passed as ``cached`` to `get_thermal_dark`. If True, the electron
+            rate ``flux * qe`` (read-out independent) and its maximum are also
+            stored and reused in later calls made with ``cached_thermal=True``
+            and the very same ``flux`` array (e.g. the cached projected scene,
+            see `~slicersim.simulation.Simulation.get_cube`). Default is False.
         npix_per_voxel : float, optional
             Number of detector pixels over which the flux of one voxel
             (one spaxel × one wavelength bin) is spread. Each of these pixels
             adds its own read noise and dark current. This is 1 for an image
             slicer: the anamorphosis is already in the line spread function
             (see :doc:`/anamorphosis`). Default is 1.
+        incl_signal : bool, optional
+            If False, the signal is not computed and None is returned instead.
+            Use it to speed things up when only the variance is needed (e.g.
+            point-source extraction): building the signal array is skipped
+            unless some pixels saturate. Saturation is still tested (from the
+            brightest pixel) and masked in the variance, so the variance is
+            unchanged. Default is True.
 
         Returns
         -------
-        signal : numpy.ndarray or float
-            Integrated signal in ADU/voxel.
+        signal : numpy.ndarray or float or None
+            Integrated signal in ADU/voxel (None if ``incl_signal`` is False).
         variance : numpy.ndarray or float
             Signal variance in ADU^2/voxel.
 
@@ -622,11 +764,10 @@ class Detector:
         if saturation == "default":
             saturation = self.saturation
 
-        flux_pixel = flux/npix_per_voxel  # ph/s/pixel
-
         # Variance estimators works with input flux in e-/s (not ph/s)
-        qe = complete_dims(self.get_qe(lbda=lbda), -np.ndim(flux_pixel))
-        flux_e = flux_pixel * qe  # [e-/s]
+        # flux_e is read-out independent: it can be cached, as the thermal dark.
+        flux_e, flux_e_max = self._get_flux_e_(flux, lbda=lbda, npix_per_voxel=npix_per_voxel,
+                                               cached=cached_thermal)  # [e-/s]
 
         # Variance estimate in [ADU²]
         ## gain, ron, dark etc. are in there.
@@ -636,7 +777,24 @@ class Detector:
 
         # actual signal registered, including darks for staturation tests.
         effective_dark = self.get_effective_dark(cached_thermal=cached_thermal, incl_thermal=True)
-        signal = (flux_e + effective_dark) * self.electronpers_to_adu()  # Total signal [ADU]
+        electronpers_to_adu = self.electronpers_to_adu()
+
+        # Saturation test from the brightest pixel only: (x + dark) * t * gain is monotonic
+        # in x, so it saturates iff the brightest pixel does (exact, NaN ignored as in signal > saturation).
+        if saturation is not None and np.ndim(effective_dark) == 0 and \
+            (flux_e_max + effective_dark) * electronpers_to_adu <= saturation:
+            self.nsaturated_detpx = 0
+            need_signal = incl_signal
+        else: # saturation not tested or some pixels are saturated (or non-scalar dark): full calculation
+            need_signal = True
+
+        if not need_signal: # only the variance is requested and nothing saturates
+            if npix_per_voxel != 1: # now recompute in ADU/voxel
+                variance *= npix_per_voxel
+
+            return None, variance  # [ADU²/voxel]
+
+        signal = (flux_e + effective_dark) * electronpers_to_adu  # Total signal [ADU]
 
         # Detect and mask saturated pixels
         if saturation is not None:
@@ -655,13 +813,42 @@ class Detector:
             self.nsaturated_detpx = None
 
         if not withdark:  # Remove dark contribution
-            signal -= effective_dark * self.electronpers_to_adu()  # [ADU]
+            signal -= effective_dark * electronpers_to_adu  # [ADU]
 
         # now recompute in ADU/voxel
-        signal *= npix_per_voxel
-        variance *= npix_per_voxel
+        if npix_per_voxel != 1: # *1 is a costly no-op on large cubes
+            signal *= npix_per_voxel
+            variance *= npix_per_voxel
+
+        if not incl_signal:
+            return None, variance  # [ADU²/voxel]
 
         return signal, variance  # [ADU/voxel], [ADU²/voxel]
+
+    def _get_flux_e_(self, flux, lbda=None, npix_per_voxel=1, cached=False):
+        """Electron rate per pixel ``flux / npix_per_voxel * qe`` [e-/s] and its (nan)maximum.
+
+        Internal: with ``cached=True``, the result is stored and reused only for
+        the very same ``flux`` array (identity), ``lbda`` and ``npix_per_voxel``.
+        See `estimate_pixel_signal`.
+        """
+        if cached and getattr(self, "_cached_flux_e", None) is not None:
+            cache = self._cached_flux_e
+            if cache["flux"] is flux and cache["npix_per_voxel"] == npix_per_voxel and \
+                np.array_equal(cache["lbda"], lbda):
+                return cache["flux_e"], cache["flux_e_max"]
+
+        # /1 is an exact no-op, avoid copying the cube.
+        flux_pixel = flux if npix_per_voxel == 1 else flux/npix_per_voxel  # ph/s/pixel
+        qe = complete_dims(self.get_qe(lbda=lbda), -np.ndim(flux_pixel))
+        flux_e = flux_pixel * qe  # [e-/s]
+        flux_e_max = np.nanmax(flux_e) if np.size(flux_e) > 0 else -np.inf
+
+        if cached:
+            self._cached_flux_e = {"flux": flux, "lbda": lbda, "npix_per_voxel": npix_per_voxel,
+                                   "flux_e": flux_e, "flux_e_max": flux_e_max}
+
+        return flux_e, flux_e_max
 
     def estimate_variance(self, flux, model=None, incl_thermal=True, cached_thermal=False):
         """Estimate the variance of the integrated signal of a pixel.

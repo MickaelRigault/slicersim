@@ -298,6 +298,14 @@ def test_public_accessors(simu):
     simu.reset_cache()
     assert simu.get_projected_scene(cached=True) is not cube
 
+    # cached spectrum (projected scene, thermal, psf) identical to the non-cached one
+    _, _, variance = simu.get_spectrum(cached=False)
+    _, _, variance_cached = simu.get_spectrum(cached=True)
+    assert np.array_equal(variance, variance_cached)
+    assert simu.spectrograph._cached_psf is not None
+    simu.reset_cache()
+    assert simu.spectrograph._cached_psf is None
+
     background = simu.scene.background
     simu.scene.set_background(None)
     assert simu.scene.background is None
@@ -315,3 +323,159 @@ def test_slicer_one_pixel_per_voxel(simu):
     ron_variance = simu.detector.get_effective_ron(as_variance=True) * simu.detector.gain**2 # [ADU²]
     assert np.allclose(signal, 0)
     assert np.allclose(variance, ron_variance), "an empty voxel should have the read noise of 1 detector pixel, not 2"
+
+
+# ================================ #
+#  fetch_snr speed-ups: exactness  #
+# ================================ #
+SNR_PROP = dict(lbda_range=[4000, 6800], frame="rest")
+
+def _snr_at(simu, nmd, nramps, **kwargs):
+    """ band SNR of the simulation at the given read-out configuration (state left changed) """
+    simu.update(nmd=nmd, nramps=nramps)
+    return simu.get_band_snr(**(SNR_PROP | kwargs))
+
+
+# tests for the sqrt(nramps) scaling used by fetch_snr
+def test_snr_scales_as_sqrt_nramps(simu):
+    """ signal and variance both scale with nramps: SNR(n) = sqrt(n) SNR(1) """
+    for redshift in [0.5, 1.5]:
+        simu.update(redshift=redshift)
+        snr_1 = _snr_at(simu, (64, 8, 0), 1)
+        for nramps in [2, 3, 7, 20]:
+            assert np.isclose(_snr_at(simu, (64, 8, 0), nramps), np.sqrt(nramps) * snr_1, rtol=1e-12, atol=0)
+
+    # saturation is per ramp: it does not depend on nramps.
+    simu.update(redshift=0.01)
+    assert np.isinf(_snr_at(simu, (64, 8, 0), 1)) and np.isinf(_snr_at(simu, (64, 8, 0), 5))
+
+
+def test_snr_increases_with_exposure(simu):
+    """ physical sanity: longer ramps or more ramps give a larger SNR """
+    simu.update(redshift=1.)
+    snrs_group = [_snr_at(simu, (ngroup, 8, 0), 1) for ngroup in [4, 8, 16, 32, 64]]
+    snrs_ramps = [_snr_at(simu, (32, 8, 0), nramps) for nramps in [1, 2, 4, 8]]
+    assert np.all(np.diff(snrs_group) > 0), "SNR should increase with the number of groups"
+    assert np.all(np.diff(snrs_ramps) > 0), "SNR should increase with the number of ramps"
+
+
+# tests for the func fetch_snr
+def test_fetch_snr_multiramp_minimal(simu):
+    """ several ramps: the smallest number of full ramps reaching the target is used """
+    simu.update(redshift=1.5)
+    max_group = simu.detector.max_group
+    for target_snr in [5, 10, 20]:
+        config, snr, exptime = simu.fetch_snr(target_snr, allow_smaller_ramps=False, nframe_per_group=8)
+        nramps = config["nramps"]
+        assert nramps >= 2 and tuple(config["nmd"]) == (max_group, 8, 0)
+
+        # consistent with the simulation at that configuration
+        assert np.isclose(_snr_at(simu, config["nmd"], nramps), snr, rtol=1e-12, atol=0)
+        assert np.isclose(simu.observing_time, exptime)
+
+        # minimal: reached with nramps, not with nramps-1
+        assert snr >= target_snr
+        assert nramps == 2 or _snr_at(simu, config["nmd"], nramps - 1) < target_snr
+
+
+def test_fetch_snr_multiramp_finetuned(simu):
+    """ allow_smaller_ramps: groups are reduced, never longer than full ramps """
+    simu.update(redshift=1.5)
+    for target_snr in [5, 10, 20]:
+        config_full, snr_full, exptime_full = simu.fetch_snr(target_snr, allow_smaller_ramps=False, nframe_per_group=8)
+        config, snr, exptime = simu.fetch_snr(target_snr, nframe_per_group=8)
+        assert exptime <= exptime_full
+        assert config["nmd"][0] <= simu.detector.max_group
+        assert np.isclose(_snr_at(simu, config["nmd"], config["nramps"]), snr, rtol=1e-12, atol=0)
+        assert snr > target_snr - 1, "reached snr far below target"
+
+
+def test_fetch_snr_single_ramp(simu):
+    """ bright targets: one ramp, returned values consistent with the simulation """
+    for redshift, target_snr in [(0.1, 10), (0.5, 10), (0.01, 10)]: # 0.01: full ramp saturates
+        simu.update(redshift=redshift, nmd=(16, 8, 0), nramps=1)
+        config, snr, exptime = simu.fetch_snr(target_snr)
+        assert config["nramps"] == 1
+        assert np.isfinite(snr) and snr > target_snr - 1
+        assert np.isclose(_snr_at(simu, config["nmd"], 1), snr, rtol=1e-12, atol=0)
+        assert np.isclose(simu.observing_time, exptime)
+
+
+def test_fetch_snr_reset_param(simu):
+    """ reset_param: input configuration restored, or kept at the solution """
+    simu.update(redshift=1.5, nmd=(16, 8, 0), nramps=1)
+    config, _, _ = simu.fetch_snr(10)
+    assert tuple(simu.get_parameter("nmd")) == (16, 8, 0) and simu.get_parameter("nramps") == 1
+
+    config, _, _ = simu.fetch_snr(10, reset_param=False)
+    assert tuple(simu.get_parameter("nmd")) == tuple(config["nmd"])
+    assert simu.get_parameter("nramps") == config["nramps"]
+
+
+# tests for the caches (projected scene, psf, electron rate, thermal) and incl_signal
+def test_cached_results_identical(simu):
+    """ cached results are bitwise those computed from scratch, for any read-out (incl. saturation) """
+    for redshift in [0.01, 0.5, 1.5]:
+        simu.update(redshift=redshift)
+        simu.reset_cache(keep_thermal=False)
+        _ = _snr_at(simu, (64, 8, 0), 1, cached=True)  # fills the caches with another read-out
+        for nmd, nramps in [((64, 8, 0), 1), ((8, 4, 0), 3), ((2, 1, 0), 1), ((20, 8, 2), 2)]:
+            simu.update(nmd=nmd, nramps=nramps)
+            sig, var = simu.get_cube(cached=False)
+            nsat = simu.detector.nsaturated_detpx
+            sig_c, var_c = simu.get_cube(cached=True)
+            assert np.array_equal(sig, sig_c, equal_nan=True) and np.array_equal(var, var_c)
+            assert simu.detector.nsaturated_detpx == nsat
+            for method in ["optimal", "aperture"]:
+                spec = simu.get_spectrum(method=method, cached=False)
+                spec_c = simu.get_spectrum(method=method, cached=True)
+                assert all(np.array_equal(a, b) for a, b in zip(spec, spec_c))
+            assert simu.get_band_snr(**SNR_PROP) == simu.get_band_snr(**SNR_PROP, cached=True)
+        simu.reset_cache()
+
+    # fetch_snr itself
+    simu.update(redshift=1.5)
+    assert simu.fetch_snr(10, use_cache=True) == simu.fetch_snr(10, use_cache=False)
+
+
+def test_get_cube_incl_signal(simu):
+    """ incl_signal=False only skips the signal cube: same variance and saturation """
+    for redshift in [0.01, 1.]: # saturated and not
+        simu.update(redshift=redshift, nmd=(64, 8, 0), nramps=2)
+        for per_ramp in [True, False]:
+            sig, var = simu.get_cube(per_ramp=per_ramp)
+            nsat = simu.detector.nsaturated_detpx
+            no_sig, var_nosig = simu.get_cube(per_ramp=per_ramp, incl_signal=False)
+            assert no_sig is None
+            assert np.array_equal(var, var_nosig)
+            assert simu.detector.nsaturated_detpx == nsat
+        assert (nsat > 0) == (redshift == 0.01)
+
+
+def test_thermal_dark_inputs(simu):
+    """ the thermal dark is reused only for unchanged inputs (and dispersed elements do not matter) """
+    detector = simu.detector
+    simu.reset_cache(keep_thermal=False)
+    reference = detector.get_thermal_dark(units="e-/s", cached=True)
+    inputs = detector.get_thermal_inputs(units="e-/s")
+    dispersed = np.asarray(detector.thermaloptics.meta["dispersed"]).astype(bool)
+
+    # nelements of a dispersed element (e.g. the IFU of a field): same inputs, same thermal dark
+    # (n, 1) column, as stored: ThermalOptics.update uses np.atleast_2d
+    nelements = np.array(detector.thermaloptics.nelements, dtype=float)
+    nelements[np.argmax(dispersed)] += 2
+    simu.update(optics__nelements=nelements)
+    assert detector.get_thermal_inputs(units="e-/s") == inputs
+    assert np.array_equal(detector.get_thermal_dark(units="e-/s"), reference)
+
+    # temperature (integrated together with the others): new inputs, recomputed
+    temperature = np.array(detector.thermaloptics.temperature, dtype=float) + 10
+    simu.update(optics__temperature=temperature)
+    assert detector.get_thermal_inputs(units="e-/s") != inputs
+    hotter = detector.get_thermal_dark(units="e-/s", cached=True)
+    assert np.all(hotter > reference), "hotter optics should emit more"
+    assert np.array_equal(hotter, detector.get_thermal_dark(units="e-/s"))
+
+    # kept by reset_cache (called by fetch_snr)
+    _ = simu.fetch_snr(10)
+    assert detector._cached_thermal is not None
