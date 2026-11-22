@@ -2240,7 +2240,8 @@ class Simulation:
         use_cache : bool, optional
             If True, cache the projected scene while iterating (only the
             read-out configuration changes). The cache is cleared at the
-            end. Default is True.
+            end, except for the thermal dark (see `Simulation.reset_cache`).
+            Default is True.
         lbda_range : list of float, optional
             (wmin, wmax) test wavelength range [Angstrom].
             Default is ``[4000, 6800]``.
@@ -2396,16 +2397,26 @@ class Simulation:
         # return what you where looking for.
         return read_config, snr, integration_time
 
-    def reset_cache(self):
-        """Discard any cached result (projected scene, thermal signal, electron rate, spatial PSF).
+    def reset_cache(self, keep_thermal=True):
+        """Discard cached results (projected scene, electron rate, spatial PSF, thermal dark).
 
         Subclasses keeping their own cached results should extend this method
         (it is also called internally, e.g. at the end of `fetch_snr`).
+
+        Parameters
+        ----------
+        keep_thermal : bool, optional
+            If True, keep the thermal dark (computed or set with
+            `~slicersim.detector.Detector.set_thermal_dark`): it is only
+            reused while its inputs are unchanged (see
+            `~slicersim.detector.Detector.get_thermal_inputs`), so keeping it
+            is safe. Default is True.
         """
         self._cube_cached = None
-        self.detector._cached_thermal = None
         self.detector._cached_flux_e = None
         self.spectrograph._cached_psf = None
+        if not keep_thermal:
+            self.detector._cached_thermal = None
 
     def _reset_cached(self):
         """Alias of `reset_cache` (backward compatibility)."""

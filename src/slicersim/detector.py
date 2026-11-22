@@ -407,9 +407,11 @@ class Detector:
             Wavelength range ``[lmin, lmax]`` in Angstrom. If None,
             `lbda_range` is used. Default is None.
         cached : bool, optional
-            If True, store the result (per unit) and reuse it in later calls
-            made with ``cached=True`` and ``as_sum=True``; the cache is not
-            invalidated when parameters change. Default is False.
+            If True (and ``as_sum``), store the result (per unit, see
+            `set_thermal_dark`) and reuse it in later calls made with
+            ``cached=True`` as long as its inputs (see `get_thermal_inputs`)
+            are unchanged. Only results for the detector's own `thermaloptics`
+            and `lbda_range` (i.e. both None) are stored. Default is False.
 
         Returns
         -------
@@ -421,11 +423,13 @@ class Detector:
         ------
         ValueError
             If ``units`` is not one of the accepted values.
+
+        See Also
+        --------
+        set_thermal_dark : Set a thermal dark computed elsewhere (e.g. shared by a `~slicersim.sample.Sample`).
         """
-        if as_sum and cached and hasattr(self, "_cached_thermal") and self._cached_thermal is not None:
-            # cached by unit
-            if (cached := self._cached_thermal.get(units, None)) is not None:
-                return cached
+        # only the detector's own thermal dark can be stored (see set_thermal_dark)
+        is_own = thermaloptics is None and lbda_range is None
 
         # which thermaloptics to consider.
         if thermaloptics is None:
@@ -434,6 +438,13 @@ class Detector:
         # nothing given ? returns 0, i.e. no thermal dark.
         if thermaloptics is None:
             return 0
+
+        # cached by unit, only valid for the inputs it was computed from.
+        if as_sum and cached:
+            inputs = self.get_thermal_inputs(thermaloptics=thermaloptics, units=units, lbda_range=lbda_range)
+            stored = (getattr(self, "_cached_thermal", None) or {}).get(units, None)
+            if stored is not None and stored[0] == inputs:
+                return stored[1]
 
         # select the coefficient to match the request output units.
         if units == "ph/s":
@@ -462,13 +473,132 @@ class Detector:
         if as_sum:
             signals = np.sum(signals, axis=0)
 
-        if cached:
-            if not hasattr(self, "_cached_thermal") or self._cached_thermal is None:
-                self._cached_thermal = {}
-
-            self._cached_thermal[units] = signals
+        if as_sum and cached and is_own:
+            _ = self.set_thermal_dark(signals, units=units, inputs=inputs)
 
         return signals
+
+    def get_thermal_inputs(self, thermaloptics=None, units="ph/s", lbda_range=None):
+        """Get the inputs the thermal dark current depends on.
+
+        These are the temperatures of all optical elements (integrated
+        together), the emissivity, number of elements and solid angle of the
+        non-dispersed ones (the only ones contributing), the dispersed flags,
+        the wavelength range, the pixel size and (for electron units) the QE.
+        Two detectors with equal inputs have exactly the same thermal dark
+        (see `get_thermal_dark`).
+
+        Parameters
+        ----------
+        thermaloptics : `~slicersim.thermal.ThermalOptics` or None, optional
+            Optics emitting the thermal signal. If None, `thermaloptics` is
+            used. Default is None.
+        units : str, optional
+            Units of the thermal dark, ``"ph/s"`` or ``"e/s"`` (alias
+            ``"e-/s"``); the QE only matters for the latter.
+            Default is ``"ph/s"``.
+        lbda_range : array_like or None, optional
+            Wavelength range ``[lmin, lmax]`` in Angstrom. If None,
+            `lbda_range` is used. Default is None.
+
+        Returns
+        -------
+        tuple or None
+            Comparable (``==``) description of the inputs, or None if there
+            are no thermal optics.
+        """
+        if thermaloptics is None:
+            thermaloptics = self.thermaloptics
+
+        if thermaloptics is None:
+            return None
+
+        if lbda_range is None:
+            lbda_range = self.lbda_range
+
+        # arrays as (shape, bytes) to be exactly comparable with ==
+        as_key = lambda x: (np.shape(x), np.asarray(x, dtype=float).tobytes())
+
+        # qe only matters for electron units.
+        if units in ["e/s", "e-/s"]:
+            qe = self.qe
+            if hasattr(qe, "_eval_args"): # scipy spline: fully defined by knots, coefficients and degree
+                knots, coefs, degree = qe._eval_args
+                qe = (as_key(knots), as_key(coefs), degree, getattr(qe, "ext", None))
+            elif not callable(qe): # float or array
+                qe = as_key(qe)
+            # other functions are compared by identity.
+        else:
+            qe = None
+
+        # The black body integral (quad_vec) is computed for all temperatures at once,
+        # hence all temperatures matter. It is then multiplied row by row by
+        # solid_angle * emissivity * nelements and only non-dispersed rows are kept:
+        # for these, only the non-dispersed rows matter (e.g. not the IFU nelements of a field).
+        dispersed = np.asarray(thermaloptics.meta["dispersed"]).astype(bool)
+        undispersed_rows = lambda x: np.asarray(x)[~dispersed] if np.shape(x)[:1] == dispersed.shape else x
+
+        return (units, tuple(dispersed.tolist()),
+                as_key(thermaloptics.temperature),
+                as_key(undispersed_rows(thermaloptics.emissivity)),
+                as_key(undispersed_rows(thermaloptics.nelements)),
+                as_key(undispersed_rows(thermaloptics.solid_angle)),
+                as_key(lbda_range), float(self.get_pixel_size("m")), qe)
+
+    def set_thermal_dark(self, thermal_dark, units="e-/s", inputs=None):
+        """Set the thermal dark current, as computed elsewhere.
+
+        This avoids recomputing the thermal dark (an integral over the
+        thermal emission) for identical detectors, e.g. for all the targets
+        of a `~slicersim.sample.Sample` (see
+        `~slicersim.sample.Sample.set_thermal_dark`). The value is stored as
+        the cached result of `get_thermal_dark`: it is used by calls made with
+        ``cached=True`` (e.g. during
+        `~slicersim.simulation.Simulation.fetch_snr`) as long as the thermal
+        inputs (see `get_thermal_inputs`) are unchanged.
+
+        Parameters
+        ----------
+        thermal_dark : float or numpy.ndarray
+            Thermal dark current per pixel, in ``units``, as returned by
+            `get_thermal_dark` (with ``as_sum=True``).
+        units : str, optional
+            Units of ``thermal_dark``, ``"ph/s"`` or ``"e/s"`` (alias
+            ``"e-/s"``). Default is ``"e-/s"`` (used by `get_effective_dark`).
+        inputs : tuple or None, optional
+            Thermal inputs ``thermal_dark`` was computed for (see
+            `get_thermal_inputs`). If given and different from that of this
+            detector, ``thermal_dark`` is ignored. If None, it is assumed to
+            match this detector. Default is None.
+
+
+        Returns
+        -------
+        bool
+            True if the value has been set, False if ignored.
+
+        Warns
+        -----
+        UserWarning
+            If ``inputs`` differ from that of this detector (value ignored).
+
+        Notes
+        -----
+        This is the only place where the thermal dark cache is set; it is
+        also used by `get_thermal_dark` with ``cached=True``.
+        """
+        current_inputs = self.get_thermal_inputs(units=units)
+        if inputs is not None and inputs != current_inputs:
+            warnings.warn("thermal_dark ignored: it was computed for different thermal inputs "
+                          "(optics, lbda_range, pixel size or qe) ; see get_thermal_inputs().")
+            return False
+
+        if getattr(self, "_cached_thermal", None) is None:
+            self._cached_thermal = {}
+
+        # stored with its inputs: get_thermal_dark only reuses it if they are unchanged.
+        self._cached_thermal[units] = (current_inputs, thermal_dark)
+        return True
 
     def get_effective_ron(self, nmd=None, variance_model="default", ron=None, as_variance=False):
         """Compute the effective read-out noise of a ramp.
