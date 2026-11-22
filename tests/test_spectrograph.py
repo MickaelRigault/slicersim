@@ -113,6 +113,22 @@ def test_oversampling(slicer):
     assert cube_oversampling.shape == cube.shape
     assert np.all(cube_oversampled.shape[1:] == np.asarray(cube.shape[1:])*10) and cube_oversampled.shape[0] == cube.shape[0]
 
+def test_spatial_psf_cached(slicer):
+    """ cached PSF is stored per input arguments and identical to the computed one """
+    psf = slicer.get_spatial_psf(position=(1, 0))
+    psf_cached = slicer.get_spatial_psf(position=(1, 0), cached=True)
+    assert np.array_equal(psf, psf_cached), "cached psf differs from the computed one"
+    assert slicer.get_spatial_psf(position=(1, 0), cached=True) is psf_cached, "psf not reused from cache"
+
+    # other position => other psf
+    psf_other = slicer.get_spatial_psf(position=(0, 0), cached=True)
+    assert not np.array_equal(psf_other, psf_cached)
+    assert np.array_equal(psf_other, slicer.get_spatial_psf(position=(0, 0)))
+
+    # not cached => recomputed
+    assert slicer.get_spatial_psf(position=(1, 0)) is not psf_cached
+
+
 def test_cube_profile(slicer):
     """ """
 

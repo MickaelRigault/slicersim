@@ -72,3 +72,35 @@ def test_estimate_pixel_signal_npix_per_voxel(detector, lbda_test):
     # default is 1 pixel per voxel.
     signal_default, variance_default = detector.estimate_pixel_signal(flux, lbda=lbda_test, saturation=None)
     assert np.allclose(variance_default, variance_1)
+
+
+def test_estimate_pixel_signal_cached_and_incl_signal(detector, lbda_test):
+    """ cached electron rate and incl_signal=False do not change the results, saturation included """
+    flux = np.linspace(0, 50, len(lbda_test)) # ph/s/voxel
+    signal, variance = detector.estimate_pixel_signal(flux, lbda=lbda_test)
+
+    # signal not requested => None, same variance
+    no_signal, variance_nosignal = detector.estimate_pixel_signal(flux, lbda=lbda_test, incl_signal=False)
+    assert no_signal is None
+    assert np.array_equal(variance, variance_nosignal)
+
+    # cached electron rate, reused for the very same flux array only
+    _, variance_cached = detector.estimate_pixel_signal(flux, lbda=lbda_test, cached_thermal=True)
+    assert np.array_equal(variance, variance_cached)
+    assert detector._cached_flux_e["flux"] is flux
+    _, variance_other = detector.estimate_pixel_signal(flux*2, lbda=lbda_test, cached_thermal=True)
+    assert not np.array_equal(variance, variance_other), "cache used for another flux"
+
+    # saturation: same masking and count with or without signal
+    saturation = np.nanmax(signal) / 2
+    signal_sat, variance_sat = detector.estimate_pixel_signal(flux, lbda=lbda_test, saturation=saturation)
+    nsaturated = detector.nsaturated_detpx
+    _, variance_sat_nosignal = detector.estimate_pixel_signal(flux, lbda=lbda_test, saturation=saturation,
+                                                                  incl_signal=False)
+    assert nsaturated > 0 and detector.nsaturated_detpx == nsaturated
+    assert np.array_equal(variance_sat, variance_sat_nosignal)
+    assert np.all(np.isinf(variance_sat[np.isnan(signal_sat)]))
+
+    # no saturation => nsaturated_detpx is 0
+    _ = detector.estimate_pixel_signal(flux, lbda=lbda_test, saturation=np.nanmax(signal) * 10, incl_signal=False)
+    assert detector.nsaturated_detpx == 0
