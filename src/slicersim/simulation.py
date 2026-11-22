@@ -2317,20 +2317,30 @@ class Simulation:
 
         # is one ramp not enought:
         else:
-             # no ? fix nmd at fullramp and  loop over ngroup
+            # Under that situation, SNR ∝ sqrt(nramps) exactly
+            # (signal and variance both scale with nramps)
+            # so the number of full ramps is known directly as:
+            nramps = int(max(2, np.ceil((target_snr / single_fullramp_snr)**2)))
+            # Assuming the max config for a single ramp already cumputed.
+
+            # Then uptade the simulation with this to see if we are happy with this.
+            self.update( nramps=nramps, nmd=(max_group, nframe_per_group, ndrop) )
+            read_config = {"nmd": self.get_parameter("nmd"), "nramps": nramps}
+
+            # And this is the acquired SNR.
+            snr = single_fullramp_snr * np.sqrt(nramps)
+            integration_time = self.observing_time # includes nramps
             free_parameter = "nramps"
-            if guess is None:
-                guess = 4 # we expect less than, say, 20 ramps and at least 2.
 
-            self.update( nramps=guess, nmd=(max_group, nframe_per_group, ndrop) )
-            prop_fetch |= {"min_value": 2}
-
-        read_config, snr, integration_time = self._fetch_snr(target_snr,
-                                                             free_parameter=free_parameter,
-                                                             iterstep=iterstep, maxiter=maxiter,
-                                                             use_cache=use_cache,
-                                                             **prop_fetch)
-        # fine tune ramps
+        # single ramp: loop over ngroup
+        if free_parameter == "ngroup":
+            read_config, snr, integration_time = self._fetch_snr(target_snr,
+                                                                 free_parameter=free_parameter,
+                                                                 iterstep=iterstep, maxiter=maxiter,
+                                                                 use_cache=use_cache,
+                                                                 **prop_fetch)
+        # multiple ramps |
+        # case with multiple ramp and max group config already computed as analytic
         if free_parameter == "nramps" and allow_smaller_ramps and \
             ((snr - too_large > target_snr) or (snr + too_large < target_snr)):
             # number of ramp that leads to too high snr. nramps-1 is too low by design here.
@@ -2352,6 +2362,7 @@ class Simulation:
                                                              iterstep=iterstep, maxiter=maxiter,
                                                              use_cache=use_cache,
                                                              **prop_fetch)
+
         if reset_param:
             self.update(nmd = input_nmd, nramps=input_nramps)
 
