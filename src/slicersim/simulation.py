@@ -1204,6 +1204,7 @@ class Simulation:
     def get_cube(self, switch_off=[], psf_profile="default",
                      as_oversampled=False, oversampling=None,
                      per_ramp=False, apply_lsf=True, cached=False,
+                     incl_signal=True,
                      **kwargs):
         """Get the signal and variance cubes as extracted from the exposure.
 
@@ -1229,15 +1230,22 @@ class Simulation:
         apply_lsf : bool, optional
             If True, apply the line spread function. Default is True.
         cached : bool, optional
-            If True, use (or store) the cached projected scene and thermal
-            signal (see `Simulation.get_projected_scene`). Default is False.
+            If True, use (or store) the cached projected scene, thermal
+            signal and electron rate (see `Simulation.get_projected_scene` and
+            `~slicersim.detector.Detector.estimate_pixel_signal`).
+            Default is False.
+        incl_signal : bool, optional
+            If False, the signal cube is not computed (slicer) and None is
+            returned in its place. Use it to speed things up when only the
+            variance cube is needed (as `Simulation.get_spectrum` does); the
+            variance cube is unchanged. Default is True.
         **kwargs
             Goes to `Simulation.get_projected_scene`.
 
         Returns
         -------
-        cube_signal : numpy.ndarray
-            (nlbda, ny, nx) signal cube [ADU].
+        cube_signal : numpy.ndarray or None
+            (nlbda, ny, nx) signal cube [ADU], or None (see ``incl_signal``).
         cube_variance : numpy.ndarray
             (nlbda, ny, nx) variance cube [ADU^2].
 
@@ -1308,6 +1316,7 @@ class Simulation:
                           as_oversampled=as_oversampled, oversampling=oversampling,
                           apply_lsf=apply_lsf,
                           cached=cached,
+                          incl_signal=incl_signal,
                         ) | kwargs
 
         # mla
@@ -1342,14 +1351,15 @@ class Simulation:
         #
         if not per_ramp:
             nramps = self.get_parameter("nramps")
-            sig_cube *= nramps
+            if sig_cube is not None:
+                sig_cube *= nramps
             var_cube *= nramps
 
         return sig_cube, var_cube
 
     def _get_slicer_cube_(self, psf_profile="default", switch_off=[],
                            oversampling=None, as_oversampled=False,
-                           apply_lsf=True, cached=False,
+                           apply_lsf=True, cached=False, incl_signal=True,
                            **kwargs):
         """Get slicer cube.
 
@@ -1367,15 +1377,19 @@ class Simulation:
         apply_lsf : bool, optional
             If True, apply the line spread function. Default is True.
         cached : bool, optional
-            If True, use cached projected scene and thermal signal.
-            Default is False.
+            If True, use cached projected scene, thermal signal and electron
+            rate. Default is False.
+        incl_signal : bool, optional
+            If False, the signal cube is not computed and None is returned in
+            its place, to speed things up when only the variance cube is
+            needed. Default is True.
         **kwargs
             Goes to `Simulation.get_projected_scene`.
 
         Returns
         -------
         sig_cube, var_cube : numpy.ndarray
-            (nlbda, ny, nx) signal [ADU] and variance [ADU^2], per ramp.
+            (nlbda, ny, nx) signal [ADU] (or None) and variance [ADU^2], per ramp.
 
         """
         # scene split per slices
@@ -1395,13 +1409,14 @@ class Simulation:
                                                                 # the 2 pixels of the slice width (anamorphosis) are along the dispersion,
                                                                 # i.e. already in the wavelength sampling and the LSF. See docs/anamorphosis.rst.
                                                                  npix_per_voxel=1,
+                                                                 incl_signal=incl_signal,
                                                                  cached_thermal=cached) # expects input in [ph/...]
 
         return sig_cube, var_cube
 
     def _get_mla_cube_(self, psf_profile="default", switch_off=[],
                            as_oversampled=False, oversampling=None,
-                           apply_lsf=True, cached=False,
+                           apply_lsf=True, cached=False, incl_signal=True,
                            **kwargs): # pragma: no cover
         """Get MLA cube.
 
@@ -1420,6 +1435,9 @@ class Simulation:
             If True, apply the line spread function. Default is True.
         cached : bool, optional
             If True, use the cached projected scene. Default is False.
+        incl_signal : bool, optional
+            Not used: the MLA extraction always computes the signal.
+            Default is True.
         **kwargs
             Goes to `Simulation.get_projected_scene`.
 
@@ -1590,7 +1608,9 @@ class Simulation:
             If True, apply the line spread function. Default is True.
         cached : bool, optional
             If True, use cached intermediate products (see
-            `Simulation.get_cube`). Default is False.
+            `Simulation.get_cube`) and the cached spatial PSF of the point
+            source (see `~slicersim.spectrograph.Spectrograph.get_spatial_psf`).
+            Default is False.
 
         Returns
         -------
@@ -1617,7 +1637,8 @@ class Simulation:
         _, var_cube = self.get_cube(switch_off=switch_off,
                                                per_ramp=True, # see later.
                                                psf_profile=psf_profile,
-                                               apply_lsf=apply_lsf, cached=cached)
+                                               apply_lsf=apply_lsf, cached=cached,
+                                               incl_signal=False) # signal cube not used here.
 
         # no pointsource, e.g. a galaxy alone: extract the host from the cubes
         if not self.scene.has_element("pointsource") or of_host:
@@ -1647,7 +1668,8 @@ class Simulation:
             spec_variance = self.spectrograph.pointsource_variance(var_cube,
                                                     position=self.scene.pointsource_position,
                                                     radius=self._get_pointsource_radius_(),
-                                                    psf_profile=psf_profile)
+                                                    psf_profile=psf_profile,
+                                                    cached=cached)
 
             # Assume the spectrum is perfectly extracted
             if "pointsource" not in switch_off:
@@ -2375,13 +2397,15 @@ class Simulation:
         return read_config, snr, integration_time
 
     def reset_cache(self):
-        """Discard any cached result (projected scene, thermal signal).
+        """Discard any cached result (projected scene, thermal signal, electron rate, spatial PSF).
 
         Subclasses keeping their own cached results should extend this method
         (it is also called internally, e.g. at the end of `fetch_snr`).
         """
         self._cube_cached = None
         self.detector._cached_thermal = None
+        self.detector._cached_flux_e = None
+        self.spectrograph._cached_psf = None
 
     def _reset_cached(self):
         """Alias of `reset_cache` (backward compatibility)."""

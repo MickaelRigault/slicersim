@@ -298,6 +298,14 @@ def test_public_accessors(simu):
     simu.reset_cache()
     assert simu.get_projected_scene(cached=True) is not cube
 
+    # cached spectrum (projected scene, thermal, psf) identical to the non-cached one
+    _, _, variance = simu.get_spectrum(cached=False)
+    _, _, variance_cached = simu.get_spectrum(cached=True)
+    assert np.array_equal(variance, variance_cached)
+    assert simu.spectrograph._cached_psf is not None
+    simu.reset_cache()
+    assert simu.spectrograph._cached_psf is None
+
     background = simu.scene.background
     simu.scene.set_background(None)
     assert simu.scene.background is None

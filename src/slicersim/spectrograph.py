@@ -1026,6 +1026,7 @@ class Spectrograph:
                         as_oversampled=False,
                         incl_instrument=True,
                         incl_telescope=True,
+                        cached=False,
                         **kwargs):
         """Get the normalized 2D spatial PSF on the spaxel grid.
 
@@ -1064,6 +1065,12 @@ class Spectrograph:
         incl_telescope : bool, optional
             If True, include the telescope PSF and jitter. If False, the
             guiding sigma is forced to 0. Default is True.
+        cached : bool, optional
+            If True, store the result (per set of input arguments) and reuse
+            it in later calls made with ``cached=True``; the cache is not
+            invalidated when parameters change (see
+            `~slicersim.simulation.Simulation.reset_cache`). Ignored if
+            ``kwargs`` are given. Default is False.
         **kwargs
             For the Gaussian (erf) profile, additional arguments passed to
             `~slicersim.profiles.get_gaussian2d`. Ignored otherwise.
@@ -1071,7 +1078,8 @@ class Spectrograph:
         Returns
         -------
         numpy.ndarray
-            Normalized PSF, of shape ``(nlbda, ny, nx)``.
+            Normalized PSF, of shape ``(nlbda, ny, nx)``. With ``cached=True``,
+            the stored array itself is returned: do not modify it in place.
 
         Raises
         ------
@@ -1084,6 +1092,26 @@ class Spectrograph:
             If ``incl_telescope`` is False while ``guiding_sigma`` is
             positive.
         """
+        # cached by input arguments (kwargs could be unhashable, hence ignored then)
+        if cached and len(kwargs) == 0:
+            cache_key = (profile, tuple(np.ravel(position).tolist()), guiding_sigma, oversampling,
+                         as_oversampled, incl_instrument, incl_telescope)
+            if hasattr(self, "_cached_psf") and self._cached_psf is not None:
+                if (cached_psf := self._cached_psf.get(cache_key, None)) is not None:
+                    return cached_psf
+
+            psf = self.get_spatial_psf(profile=profile, position=position,
+                                       guiding_sigma=guiding_sigma, oversampling=oversampling,
+                                       as_oversampled=as_oversampled,
+                                       incl_instrument=incl_instrument,
+                                       incl_telescope=incl_telescope,
+                                       cached=False)
+            if not hasattr(self, "_cached_psf") or self._cached_psf is None:
+                self._cached_psf = {}
+
+            self._cached_psf[cache_key] = psf
+            return psf
+
         from . import profiles
         if oversampling is None:
             oversampling = 3 # like ~10 (9) subpixels
@@ -1416,7 +1444,7 @@ class Spectrograph:
     # ------------- #
     def pointsource_variance(self, varcube, position=(0, 0), radius=5,
                               psf_profile="default",
-                              optimal=True, verbose=False):
+                              optimal=True, verbose=False, cached=False):
         """Point-source extracted variance from variance cube.
 
         It is evaluated from a plain summation over the aperture, or from an
@@ -1444,6 +1472,8 @@ class Spectrograph:
         verbose : bool, optional
             If True, print the number of spaxels in the aperture.
             Default is False.
+        cached : bool, optional
+            Passed as ``cached`` to `get_spatial_psf`. Default is False.
 
         Returns
         -------
@@ -1456,7 +1486,8 @@ class Spectrograph:
             If ``radius`` cannot be parsed.
         """
         # Spatial PSF
-        psf = self.get_spatial_psf(position=position, profile=psf_profile)  # (nlbda, ny, nx)
+        psf = self.get_spatial_psf(position=position, profile=psf_profile,
+                                   cached=cached)  # (nlbda, ny, nx)
 
         # Aperture
         aper = self.get_aperture(position=position, radius=radius)

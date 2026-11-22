@@ -566,7 +566,8 @@ class Detector:
                                   variance_model="default",
                                   saturation="default",
                                   cached_thermal=False,
-                                  npix_per_voxel=1):
+                                  npix_per_voxel=1,
+                                  incl_signal=True):
         """Estimate the measured signal and variance from an incident flux.
 
         The flux of each voxel is spread over ``npix_per_voxel`` detector
@@ -596,18 +597,29 @@ class Detector:
             signal and an infinite variance. If ``"default"``, `saturation` is
             used. If None, saturation is not tested. Default is ``"default"``.
         cached_thermal : bool, optional
-            Passed as ``cached`` to `get_thermal_dark`. Default is False.
+            Passed as ``cached`` to `get_thermal_dark`. If True, the electron
+            rate ``flux * qe`` (read-out independent) and its maximum are also
+            stored and reused in later calls made with ``cached_thermal=True``
+            and the very same ``flux`` array (e.g. the cached projected scene,
+            see `~slicersim.simulation.Simulation.get_cube`). Default is False.
         npix_per_voxel : float, optional
             Number of detector pixels over which the flux of one voxel
             (one spaxel × one wavelength bin) is spread. Each of these pixels
             adds its own read noise and dark current. This is 1 for an image
             slicer: the anamorphosis is already in the line spread function
             (see :doc:`/anamorphosis`). Default is 1.
+        incl_signal : bool, optional
+            If False, the signal is not computed and None is returned instead.
+            Use it to speed things up when only the variance is needed (e.g.
+            point-source extraction): building the signal array is skipped
+            unless some pixels saturate. Saturation is still tested (from the
+            brightest pixel) and masked in the variance, so the variance is
+            unchanged. Default is True.
 
         Returns
         -------
-        signal : numpy.ndarray or float
-            Integrated signal in ADU/voxel.
+        signal : numpy.ndarray or float or None
+            Integrated signal in ADU/voxel (None if ``incl_signal`` is False).
         variance : numpy.ndarray or float
             Signal variance in ADU^2/voxel.
 
@@ -622,11 +634,10 @@ class Detector:
         if saturation == "default":
             saturation = self.saturation
 
-        flux_pixel = flux/npix_per_voxel  # ph/s/pixel
-
         # Variance estimators works with input flux in e-/s (not ph/s)
-        qe = complete_dims(self.get_qe(lbda=lbda), -np.ndim(flux_pixel))
-        flux_e = flux_pixel * qe  # [e-/s]
+        # flux_e is read-out independent: it can be cached, as the thermal dark.
+        flux_e, flux_e_max = self._get_flux_e_(flux, lbda=lbda, npix_per_voxel=npix_per_voxel,
+                                               cached=cached_thermal)  # [e-/s]
 
         # Variance estimate in [ADU²]
         ## gain, ron, dark etc. are in there.
@@ -636,7 +647,24 @@ class Detector:
 
         # actual signal registered, including darks for staturation tests.
         effective_dark = self.get_effective_dark(cached_thermal=cached_thermal, incl_thermal=True)
-        signal = (flux_e + effective_dark) * self.electronpers_to_adu()  # Total signal [ADU]
+        electronpers_to_adu = self.electronpers_to_adu()
+
+        # Saturation test from the brightest pixel only: (x + dark) * t * gain is monotonic
+        # in x, so it saturates iff the brightest pixel does (exact, NaN ignored as in signal > saturation).
+        if saturation is not None and np.ndim(effective_dark) == 0 and \
+            (flux_e_max + effective_dark) * electronpers_to_adu <= saturation:
+            self.nsaturated_detpx = 0
+            need_signal = incl_signal
+        else: # saturation not tested or some pixels are saturated (or non-scalar dark): full calculation
+            need_signal = True
+
+        if not need_signal: # only the variance is requested and nothing saturates
+            if npix_per_voxel != 1: # now recompute in ADU/voxel
+                variance *= npix_per_voxel
+
+            return None, variance  # [ADU²/voxel]
+
+        signal = (flux_e + effective_dark) * electronpers_to_adu  # Total signal [ADU]
 
         # Detect and mask saturated pixels
         if saturation is not None:
@@ -655,13 +683,42 @@ class Detector:
             self.nsaturated_detpx = None
 
         if not withdark:  # Remove dark contribution
-            signal -= effective_dark * self.electronpers_to_adu()  # [ADU]
+            signal -= effective_dark * electronpers_to_adu  # [ADU]
 
         # now recompute in ADU/voxel
-        signal *= npix_per_voxel
-        variance *= npix_per_voxel
+        if npix_per_voxel != 1: # *1 is a costly no-op on large cubes
+            signal *= npix_per_voxel
+            variance *= npix_per_voxel
+
+        if not incl_signal:
+            return None, variance  # [ADU²/voxel]
 
         return signal, variance  # [ADU/voxel], [ADU²/voxel]
+
+    def _get_flux_e_(self, flux, lbda=None, npix_per_voxel=1, cached=False):
+        """Electron rate per pixel ``flux / npix_per_voxel * qe`` [e-/s] and its (nan)maximum.
+
+        Internal: with ``cached=True``, the result is stored and reused only for
+        the very same ``flux`` array (identity), ``lbda`` and ``npix_per_voxel``.
+        See `estimate_pixel_signal`.
+        """
+        if cached and getattr(self, "_cached_flux_e", None) is not None:
+            cache = self._cached_flux_e
+            if cache["flux"] is flux and cache["npix_per_voxel"] == npix_per_voxel and \
+                np.array_equal(cache["lbda"], lbda):
+                return cache["flux_e"], cache["flux_e_max"]
+
+        # /1 is an exact no-op, avoid copying the cube.
+        flux_pixel = flux if npix_per_voxel == 1 else flux/npix_per_voxel  # ph/s/pixel
+        qe = complete_dims(self.get_qe(lbda=lbda), -np.ndim(flux_pixel))
+        flux_e = flux_pixel * qe  # [e-/s]
+        flux_e_max = np.nanmax(flux_e) if np.size(flux_e) > 0 else -np.inf
+
+        if cached:
+            self._cached_flux_e = {"flux": flux, "lbda": lbda, "npix_per_voxel": npix_per_voxel,
+                                   "flux_e": flux_e, "flux_e_max": flux_e_max}
+
+        return flux_e, flux_e_max
 
     def estimate_variance(self, flux, model=None, incl_thermal=True, cached_thermal=False):
         """Estimate the variance of the integrated signal of a pixel.
